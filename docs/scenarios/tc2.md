@@ -4,8 +4,9 @@
 **Epic:** ANVIL-16 (Demo scenarios + QA)  
 **Spike Ticket:** ANVIL-17  
 **Target Repository:** `github.com/vishal7pandey/rtems-lwip` (Mirror of RTEMS lwIP integration)  
-**Base Branch:** `tc2/upgrade-base` (Branched at commit `6ee76a7bf4a16cdd6eec8b3332c186bf25e73c76`)  
+**Base Branch:** `tc2/upgrade-base` (Created at commit `6ee76a7bf4a16cdd6eec8b3332c186bf25e73c76`)  
 **Upgrade Target:** Upgrade vendored lwIP from `2.1.3` (`STABLE-2_1_3_RELEASE`) to `2.2.1` (`STABLE-2_2_1_RELEASE`)  
+**Reference Upstream Solution (Withheld):** Upstream commits `a30180a462` (*lwip: Update lwIP to 2.2.1*), `0302d22c0a` (*lwip: Add missing ACD source file*), and `3543bbd989` (*lwipopts.h: Update default values for new version*)  
 **Target Architecture / BSP:** SPARC / LEON3 (`sparc/leon3`) with GRETH Ethernet controller  
 **Simulator Harness:** SIS (SPARC Instruction Simulator)  
 
@@ -24,6 +25,12 @@ Unlike TC1 (defect diagnosis and isolated code patch), TC2 exercises:
 6. Execution and verification of network tests on an instruction set simulator (SIS).
 7. Automated generation of compliance and release artifacts: Software Bill of Materials (SBOM) delta, CVE vulnerability deltas, API impact reports, and human-readable release notes.
 
+### Evaluation & Training Cutoff Caveat
+Upstream RTEMS executed this exact upgrade in late 2025 (`a30180a462`, `0302d22c0a`, `3543bbd989`). Like TC1, evaluators can objectively compare the agent's live upgrade diff, build resolution, and configuration adjustments against this real upstream reference solution (which is strictly withheld from the agent's prompts and context).
+
+> [!NOTE]
+> **Caveat on Model Training Cutoffs:** Unlike TC1 where defects were fixed in August–October 2026 (firmly post-dating model training cutoffs), the upstream lwIP 2.2.1 upgrade occurred in late 2025, which may fall within the training data of frontier LLMs. The benchmark therefore measures autonomous orchestration and end-to-end tooling rather than pure withheld reasoning.
+
 ---
 
 ## 2. Target Selection
@@ -36,8 +43,8 @@ Unlike TC1 (defect diagnosis and isolated code patch), TC2 exercises:
 * **Baseline State:** `STABLE-2_1_3_RELEASE` (commit `6ca936f6b588cee702c638eee75c2436e6cf75de`).
 * **Target State:** `STABLE-2_2_1_RELEASE` (commit `77dcd25a72509eb83f72b033d219b1d40cd8eb95`).
 * **Why this is optimal for the demo:**
-  - **Bounded Execution Time:** Full rebuild of `rtems-lwip` with Waf takes ~1–2 minutes in the container, fitting comfortably within demo constraints.
-  - **Deterministic Testability:** The test application `networking01.exe` runs directly under SIS without needing external TAP/TUN network interfaces or host administrative privileges.
+  - **Bounded Execution Time:** Full rebuild of `rtems-lwip` with Waf is expected to take ~1–2 minutes in the container (*[UNVERIFIED: to be confirmed in Step 2 sandbox baseline]*), fitting comfortably within demo constraints.
+  - **Deterministic Testability:** The test application `networking01.exe` is intended to run directly under SIS without needing external host TAP/TUN network interfaces (*[UNVERIFIED: to be confirmed in Step 2 sandbox baseline; see Fallback Test Strategy below]*).
   - **Rich Artifact Surface:** Moves across a minor version boundary (2.1.x to 2.2.x), introducing measurable API changes (Address Conflict Detection / ACD, updated socket options) and tangible CVE remediation points.
 
 ### Fallback Options (Evaluated & Kept in Reserve)
@@ -93,22 +100,25 @@ flowchart TD
 3. **Port & Build Adaptation:**
    - Update `file-import.json` if new dependencies are mandatory in 2.2.1 core.
    - Verify `rtemslwip/greth` driver compiles against new lwIP netif signatures.
-   - Adjust `lwipopts.h` if upstream default macro behaviors shifted.
+   - Adjust `lwipopts.h` if upstream default macro behaviors shifted (e.g. ACD defaults).
 4. **Compilation:**
-   - Configure Waf:
+   - Configure Waf using standard `rtems_waf` arguments (*exact flags to be confirmed in Step 2 sandbox baseline*):
      ```bash
-     ./waf configure --rtems=/opt/rtems/7 --rtems-bsp=sparc/leon3
+     ./waf configure --prefix=/opt/rtems/7 --rtems-tools=/opt/rtems/7/bin --rtems-bsps=sparc/leon3
      ```
    - Build:
      ```bash
      ./waf
      ```
 5. **Simulator Verification:**
-   - Run the networking test executable on the SIS simulator:
+   - Run the networking test executable on the SIS simulator (*subject to confirmation in Step 2*):
      ```bash
      sis -leon3 -m 32 build/sparc-rtems7-leon3/networking01.exe
      ```
    - Verify output ends with expected test success markers (`*** END OF TEST NETWORKING 1 ***`).
+   - **Fallback Test Strategy:** If SIS does not emulate the GRETH hardware without an active host TAP network interface, the test plan falls back to:
+     1. Running a loopback interface test (`loopif`) configured in `rtemslwip/test/`.
+     2. Alternatively, compiling and running a unit test harness exercising the core TCP/IP stack routines.
 6. **Artifact Generation:**
    - **SBOM Delta:** Generate Syft SBOM (SPDX JSON) before and after upgrade.
    - **CVE Delta:** Run OSV-Scanner against baseline vs. upgraded tree to document patched vulnerabilities.
@@ -122,7 +132,7 @@ flowchart TD
 | Deliverable | Requirement | Verification Method |
 |---|---|---|
 | **Compilation** | Clean build with zero errors under RTEMS 7 SPARC toolchain | `./waf` exits 0 |
-| **Test Execution** | `networking01.exe` executes and passes on SIS | Terminal log shows clean test termination |
+| **Test Execution** | `networking01.exe` executes and passes on SIS (or fallback loopback test) | Terminal log shows clean test termination |
 | **Pre-commit** | Code formatting, trailing whitespace, commit message convention | `pre-commit run --all-files` exits 0 |
 | **SBOM Delta** | SPDX / CycloneDX format highlighting `lwip` 2.1.3 -> 2.2.1 transition | Syft diff artifact in PR / run record |
 | **CVE Delta** | Documentation of resolved vulnerabilities | OSV-Scanner output attached to PR |
@@ -133,12 +143,15 @@ flowchart TD
 
 ## 6. Seed RTEMS Ticket Definition
 
-Below is the specification for the ticket to be created in the `RTEMS` Jira project (Board 139) to initiate this run:
+Below is the specification for the ticket to be created in the `RTEMS` Jira project (Board 139) to initiate this run.
+
+> [!IMPORTANT]
+> The `anvil` label is intentionally omitted from the ticket at creation time so the intake poller does not prematurely launch the agent before the demo. The label `anvil` is added only when the live demo is started.
 
 * **Issue Type:** Task
 * **Summary:** `[TC2] Upgrade vendored lwIP to 2.2.1 in rtems-lwip`
 * **Components:** `network`, `lwip`
-* **Labels:** `anvil`, `component-upgrade`, `tc2`
+* **Labels:** `component-upgrade`, `tc2`
 * **Description:**
   ```text
   h2. Summary
@@ -149,12 +162,12 @@ Below is the specification for the ticket to be created in the `RTEMS` Jira proj
   2. Synchronize the in-tree lwip/ source tree and update file-import.json as required.
   3. Resolve any build incompatibilities or configuration header changes (lwipopts.h) for RTEMS 7.
   4. Build and verify the networking stack for sparc/leon3 using Waf.
-  5. Run networking01.exe under the SIS simulator and confirm test passage.
+  5. Run networking01.exe under the SIS simulator (or loopback fallback) and confirm test passage.
   6. Provide an upgrade summary with SBOM delta, CVE vulnerability status, and API impact notes.
 
   h2. Acceptance Criteria
   - Waf build succeeds for sparc/leon3 without warnings treated as errors.
-  - networking01.exe runs cleanly on SIS.
+  - networking01.exe (or fallback loopback test) runs cleanly on SIS.
   - Pre-commit checks pass.
   - PR opened with release notes, SBOM delta, and CVE delta attached.
   ```

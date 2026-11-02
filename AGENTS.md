@@ -12,6 +12,17 @@ how your work fits with everyone else's.
 2. Check the issue is assigned to you via label `agent-<name>` (`agent-claude`, `agent-codex`,
    `agent-devin`, `agent-copilot`, `agent-cline`, `agent-opencode`). Do not take another
    agent's issue.
+3. Check your inbox `C:\Dev\comms\<name>\Inbox\` at the start of every session and between
+   tasks. The protocol (sending, replying, archiving only when every action is done) is in
+   `C:\Dev\comms\README.md`. Read it once per session.
+
+## One laptop, one GitHub account, one Jira account
+
+All six agents run on this laptop as the same GitHub and Atlassian user, so label yourself:
+commit trailer `Agent: <name>`, PR body first line `Agent: <name>`, Jira comments start with
+`[<name>]`. CPU, memory, Docker and network are shared: take `C:\Dev\comms\locks\rtems-build.lock`
+before any RTEMS build, prefix your containers `<name>-`, never touch others' containers,
+worktrees or processes. Details in `C:\Dev\comms\README.md`.
 
 ## Doing the work
 

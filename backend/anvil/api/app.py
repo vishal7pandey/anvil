@@ -48,8 +48,9 @@ RUN_STATUSES = {
     "handoff",
     "succeeded",
     "failed",
+    "cancelled",
 }
-TERMINAL_RUN_STATUSES = {"handoff", "succeeded", "failed"}
+TERMINAL_RUN_STATUSES = {"handoff", "succeeded", "failed", "cancelled"}
 POLL_INTERVAL_SECONDS = 60
 
 JiraCandidates = Callable[..., list[dict[str, Any]]]
@@ -95,10 +96,13 @@ def _append_event(
     data: dict[str, Any],
     agent: str | None = None,
 ) -> RunEvent:
-    run.last_event_seq += 1
+    locked_run = db.scalar(select(Run).where(Run.id == run.id).with_for_update())
+    if locked_run is None:
+        raise ValueError("Cannot append an event to a missing run")
+    locked_run.last_event_seq += 1
     event = RunEvent(
-        run_id=run.id,
-        seq=run.last_event_seq,
+        run_id=locked_run.id,
+        seq=locked_run.last_event_seq,
         type=event_type,
         agent=agent,
         data=data,
@@ -132,14 +136,21 @@ def _run_is_owned(session_factory: SessionFactory, run_id: UUID, user_id: str) -
 
 def _run_payload(run: Run) -> dict[str, Any]:
     return {
+        "run_id": run.id,
         "id": run.id,
         "session_id": run.session_id,
         "trigger": run.trigger,
         "repo": run.repo,
         "status": run.status,
         "mode": run.mode,
-        "base_sha": run.base_sha,
+        "network": run.network,
+        "base_ref": run.base_ref,
         "branch": run.branch,
+        "merge_policy": run.session.merge_policy,
+        "jira_key": run.jira_key,
+        "model_profile": run.session.model_profile,
+        "last_event_seq": run.last_event_seq,
+        "base_sha": run.base_sha,
         "sandbox_image_digest": run.sandbox_image_digest,
         "model_aliases": run.model_aliases,
         "skill_versions": run.skill_versions,
@@ -152,6 +163,7 @@ def _run_payload(run: Run) -> dict[str, Any]:
         "output_tokens": run.output_tokens,
         "human_touches": run.human_touches,
         "artifacts": run.artifacts,
+        "run_record": run.run_record,
     }
 
 
@@ -160,11 +172,22 @@ def _persist_executor_event(
     run_id: UUID,
     payload: dict[str, Any],
 ) -> None:
+    try:
+        event_run_id = UUID(str(payload["run_id"]))
+    except (KeyError, ValueError) as exc:
+        raise ValueError("Executor events must include the matching run_id") from exc
+    sequence = payload.get("seq")
     event_type = payload.get("type")
     data = payload.get("data", {})
     agent = payload.get("agent")
-    if not isinstance(event_type, str) or not isinstance(data, dict):
-        raise ValueError("Executor events must contain a string type and object data")
+    if event_run_id != run_id:
+        raise ValueError("Executor event run_id does not match the active run")
+    if type(sequence) is not int or sequence < 1:
+        raise ValueError("Executor events must include a positive integer seq")
+    if not isinstance(event_type, str) or not event_type or "data" not in payload:
+        raise ValueError("Executor events must contain seq, type, and object data")
+    if not isinstance(data, dict):
+        raise ValueError("Executor events must contain seq, type, and object data")
     if agent is not None and not isinstance(agent, str):
         raise ValueError("Executor event agent must be a string or null")
 
@@ -174,6 +197,11 @@ def _persist_executor_event(
             raise ValueError("Executor event references a missing run")
         if run.status in TERMINAL_RUN_STATUSES:
             raise ValueError("Executor emitted an event after the run finished")
+        if sequence != run.last_event_seq + 1:
+            raise ValueError(
+                f"Executor event seq {sequence} is not the next sequence "
+                f"after {run.last_event_seq}"
+            )
 
         if event_type == "run.status":
             new_status = data.get("status")
@@ -187,16 +215,41 @@ def _persist_executor_event(
             if new_status == "failed":
                 run.error = "Run failed"
         elif event_type == "usage":
-            input_tokens = int(data.get("input_tokens", 0))
-            output_tokens = int(data.get("output_tokens", 0))
+            input_tokens = data.get("input_tokens", 0)
+            output_tokens = data.get("output_tokens", 0)
             usd = Decimal(str(data.get("usd", 0)))
-            if input_tokens < 0 or output_tokens < 0 or usd < 0:
+            if (
+                type(input_tokens) is not int
+                or type(output_tokens) is not int
+                or input_tokens < 0
+                or output_tokens < 0
+                or not usd.is_finite()
+                or usd < 0
+            ):
                 raise ValueError("Usage values must be non-negative")
             run.input_tokens += input_tokens
             run.output_tokens += output_tokens
             run.usd += usd
         elif event_type == "artifact":
             run.artifacts = [*run.artifacts, data]
+        elif event_type == "run.record":
+            string_fields = {
+                "base_sha",
+                "branch",
+                "sandbox_image_digest",
+                "prompt_hash",
+            }
+            object_fields = {"model_aliases", "skill_versions", "budgets"}
+            for field in string_fields:
+                if field in data and data[field] is not None and not isinstance(data[field], str):
+                    raise ValueError(f"Run record field {field} must be a string or null")
+            for field in object_fields:
+                if field in data and not isinstance(data[field], dict):
+                    raise ValueError(f"Run record field {field} must be an object")
+            run.run_record = {**run.run_record, **data}
+            for field in string_fields | object_fields:
+                if field in data:
+                    setattr(run, field, data[field])
         elif event_type == "approval.request":
             try:
                 approval_id = UUID(str(data["approval_id"]))
@@ -222,7 +275,16 @@ def _persist_executor_event(
                 )
             elif approval.run_id != run_id:
                 raise ValueError("Approval event UUID is already in use by another run")
-        _append_event(db, run, event_type, data, agent)
+        run.last_event_seq = sequence
+        db.add(
+            RunEvent(
+                run_id=run.id,
+                seq=sequence,
+                type=event_type,
+                agent=agent,
+                data=data,
+            )
+        )
         db.commit()
 
 
@@ -244,24 +306,45 @@ def _mark_run_failed(session_factory: SessionFactory, run_id: UUID, error: str) 
         db.commit()
 
 
+def _mark_run_started(session_factory: SessionFactory, run_id: UUID) -> None:
+    with session_factory() as db:
+        run = db.scalar(select(Run).where(Run.id == run_id).with_for_update())
+        if run is None or run.status in TERMINAL_RUN_STATUSES:
+            return
+        run.status = "running"
+        if run.started_at is None:
+            run.started_at = utc_now()
+        _append_event(db, run, "run.status", {"status": "running"}, "api")
+        db.commit()
+
+
+def _mark_run_cancelled(session_factory: SessionFactory, run_id: UUID) -> None:
+    with session_factory() as db:
+        run = db.scalar(select(Run).where(Run.id == run_id).with_for_update())
+        if run is None or run.status in TERMINAL_RUN_STATUSES:
+            return
+        run.status = "cancelled"
+        run.ended_at = utc_now()
+        _append_event(db, run, "run.status", {"status": "cancelled"}, "api")
+        db.commit()
+
+
 def _mark_run_interrupted(session_factory: SessionFactory, run_id: UUID) -> None:
     with session_factory() as db:
         run = db.scalar(select(Run).where(Run.id == run_id).with_for_update())
         if run is None or run.status in TERMINAL_RUN_STATUSES:
             return
-        error = (
-            "Cancelled by user"
-            if run.cancel_requested_at is not None
-            else "Interrupted by API shutdown"
-        )
-        run.status = "failed"
+        cancelled = run.cancel_requested_at is not None
+        new_status = "cancelled" if cancelled else "failed"
+        error = None if cancelled else "Interrupted by API shutdown"
+        run.status = new_status
         run.error = error
         run.ended_at = utc_now()
         _append_event(
             db,
             run,
             "run.status",
-            {"status": "failed", "error": error},
+            {"status": new_status, **({"error": error} if error else {})},
             "api",
         )
         db.commit()
@@ -272,18 +355,18 @@ async def _execute_run(app: FastAPI, run_id: UUID, message: str) -> None:
     executor: RunExecutor = app.state.executor
     session_factory = app.state.session_factory
     try:
+        await run_in_threadpool(_mark_run_started, session_factory, run_id)
         run_payload = await run_in_threadpool(_load_run_payload, session_factory, run_id)
-        await run_in_threadpool(
-            _persist_executor_event,
-            session_factory,
-            run_id,
-            {"type": "run.status", "data": {"status": "running"}, "agent": "api"},
-        )
         async for event in executor.start(run_payload, message):
             await run_in_threadpool(_persist_executor_event, session_factory, run_id, event)
+            if (
+                event.get("type") == "run.status"
+                and event.get("data", {}).get("status") == "waiting_approval"
+            ):
+                break
 
         run_status = await run_in_threadpool(_read_run_status, session_factory, run_id)
-        if run_status not in TERMINAL_RUN_STATUSES:
+        if run_status not in TERMINAL_RUN_STATUSES | {"waiting_approval"}:
             await run_in_threadpool(
                 _mark_run_failed,
                 session_factory,
@@ -318,6 +401,129 @@ async def _execute_run(app: FastAPI, run_id: UUID, message: str) -> None:
     finally:
         if app.state.run_tasks.get(run_id) is current_task:
             app.state.run_tasks.pop(run_id, None)
+
+
+async def _execute_resume(
+    app: FastAPI,
+    run_id: UUID,
+    decisions: list[dict[str, Any]],
+) -> None:
+    current_task = asyncio.current_task()
+    executor: RunExecutor = app.state.executor
+    session_factory = app.state.session_factory
+    try:
+        run_payload = await run_in_threadpool(_load_run_payload, session_factory, run_id)
+        async for event in executor.resume(run_payload, decisions):
+            await run_in_threadpool(_persist_executor_event, session_factory, run_id, event)
+            if (
+                event.get("type") == "run.status"
+                and event.get("data", {}).get("status") == "waiting_approval"
+            ):
+                break
+
+        run_status = await run_in_threadpool(_read_run_status, session_factory, run_id)
+        if run_status not in TERMINAL_RUN_STATUSES | {"waiting_approval"}:
+            await run_in_threadpool(
+                _mark_run_failed,
+                session_factory,
+                run_id,
+                "RunExecutor resume ended without a terminal or approval status event",
+            )
+    except asyncio.CancelledError:
+        await asyncio.shield(
+            run_in_threadpool(_mark_run_interrupted, session_factory, run_id)
+        )
+        raise
+    except (ValueError, TypeError):
+        logger.error("Executor returned an invalid resume event for run %s", run_id)
+        await run_in_threadpool(
+            _mark_run_failed,
+            session_factory,
+            run_id,
+            "RunExecutor returned an invalid resume event",
+        )
+    except Exception as exc:
+        logger.error(
+            "RunExecutor resume failed for run %s (%s)",
+            run_id,
+            type(exc).__name__,
+        )
+        await run_in_threadpool(
+            _mark_run_failed,
+            session_factory,
+            run_id,
+            "RunExecutor resume failed; see API logs",
+        )
+    finally:
+        if app.state.run_tasks.get(run_id) is current_task:
+            app.state.run_tasks.pop(run_id, None)
+
+
+async def _resume_after_active_task(
+    app: FastAPI,
+    run_id: UUID,
+    decisions: list[dict[str, Any]],
+    approval_responses: list[dict[str, Any]],
+    previous_task: asyncio.Task[Any] | None,
+) -> None:
+    current_task = asyncio.current_task()
+    if previous_task is not None and previous_task is not current_task and not previous_task.done():
+        await previous_task
+    run_status = await run_in_threadpool(
+        _read_run_status,
+        app.state.session_factory,
+        run_id,
+    )
+    if run_status not in TERMINAL_RUN_STATUSES:
+        await run_in_threadpool(
+            _record_approval_responses,
+            app.state.session_factory,
+            run_id,
+            approval_responses,
+        )
+        await _execute_resume(app, run_id, decisions)
+    elif app.state.run_tasks.get(run_id) is current_task:
+        app.state.run_tasks.pop(run_id, None)
+
+
+def _record_approval_responses(
+    session_factory: SessionFactory,
+    run_id: UUID,
+    responses: list[dict[str, Any]],
+) -> None:
+    with session_factory() as db:
+        run = db.scalar(select(Run).where(Run.id == run_id).with_for_update())
+        if run is None or run.status in TERMINAL_RUN_STATUSES:
+            return
+        for response in responses:
+            _append_event(
+                db,
+                run,
+                "approval.response",
+                response,
+                "user",
+            )
+        db.commit()
+
+
+def _schedule_resume(
+    app: FastAPI,
+    run_id: UUID,
+    decisions: list[dict[str, Any]],
+    approval_responses: list[dict[str, Any]],
+) -> None:
+    previous_task = app.state.run_tasks.get(run_id)
+    task = asyncio.create_task(
+        _resume_after_active_task(
+            app,
+            run_id,
+            decisions,
+            approval_responses,
+            previous_task,
+        ),
+        name=f"anvil-run-resume-{run_id}",
+    )
+    app.state.run_tasks[run_id] = task
 
 
 
@@ -379,6 +585,7 @@ def _get_or_create_intake_run(
     message = f"Work on Jira issue {key}: {summary}"
     if description:
         message = f"{message}\n\n{description}"
+    base_ref = _code_base_ref(description)
 
     with session_factory() as db:
         user = db.get(User, user_id)
@@ -410,6 +617,9 @@ def _get_or_create_intake_run(
             status="queued",
             mode="autonomous",
             input_text=message,
+            network=_jira_network(issue),
+            base_ref=base_ref,
+            jira_key=key,
         )
         db.add(run)
         db.flush()
@@ -422,6 +632,21 @@ def _get_or_create_intake_run(
         )
         db.commit()
         return run.id, message, True
+
+
+def _code_base_ref(description: str) -> str:
+    for line in description.splitlines():
+        label, separator, value = line.partition(":")
+        if separator and label.strip().casefold() == "code base" and value.strip():
+            return value.strip()
+    return "main"
+
+
+def _jira_network(issue: dict[str, Any]) -> str:
+    labels = issue.get("labels", [])
+    if not isinstance(labels, list) or not all(isinstance(label, str) for label in labels):
+        raise ValueError("Jira intake candidate labels must be a list of strings")
+    return "online" if "anvil-online" in labels else "offline"
 
 
 async def poll_jira_intake(app: FastAPI) -> list[UUID]:
@@ -592,6 +817,8 @@ def create_app(
             status="queued",
             mode=session.mode,
             input_text=payload.text,
+            network="offline",
+            base_ref="main",
         )
         db.add(run)
         db.flush()
@@ -679,9 +906,10 @@ def create_app(
         "/api/approvals/{approval_id}",
         response_model=ApprovalResponse,
     )
-    def decide_approval(
+    async def decide_approval(
         approval_id: UUID,
         payload: ApprovalDecision,
+        request: Request,
         db: DBSession = Depends(get_db),
         user: User = Depends(_authenticated_user),
     ) -> Approval:
@@ -699,23 +927,59 @@ def create_app(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Approval has already been decided",
             )
+        run = approval.run
+        if run.status in TERMINAL_RUN_STATUSES:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Run has already finished",
+            )
         approval.status = "approved" if payload.decision == "approve" else "rejected"
         approval.comment = payload.comment
-        approval.decided_at = utc_now()
-        approval.run.human_touches += 1
-        _append_event(
-            db,
-            approval.run,
-            "approval.response",
-            {
-                "approval_id": str(approval.id),
-                "decision": payload.decision,
-                "comment": payload.comment,
-            },
-            "user",
+        decision_time = utc_now()
+        approval.decided_at = decision_time
+        run.human_touches += 1
+
+        pending_group = list(
+            db.scalars(
+                select(Approval)
+                .where(Approval.run_id == run.id, Approval.resumed_at.is_(None))
+                .order_by(Approval.requested_at, Approval.id)
+                .with_for_update()
+            )
         )
+        resume_group = bool(pending_group) and all(
+            item.status != "pending" for item in pending_group
+        )
+        decisions: list[dict[str, Any]] = []
+        approval_responses: list[dict[str, Any]] = []
+        if resume_group:
+            if request.app.state.executor is None:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="RunExecutor is not configured",
+                )
+            for item in pending_group:
+                item.resumed_at = decision_time
+                approval_responses.append(
+                    {
+                        "approval_id": str(item.id),
+                        "decision": "approve" if item.status == "approved" else "reject",
+                        "comment": item.comment,
+                    }
+                )
+                if item.status == "approved":
+                    decisions.append({"type": "approve"})
+                else:
+                    decisions.append(
+                        {
+                            "type": "reject",
+                            "message": item.comment or "Rejected by user",
+                        }
+                    )
         db.commit()
         db.refresh(approval)
+        if resume_group:
+            _schedule_resume(request.app, run.id, decisions, approval_responses)
         return approval
 
     @app.post(
@@ -723,45 +987,59 @@ def create_app(
         response_model=RunResponse,
         status_code=status.HTTP_202_ACCEPTED,
     )
-    def cancel_run(
+    async def cancel_run(
         run_id: UUID,
         request: Request,
         db: DBSession = Depends(get_db),
         user: User = Depends(_authenticated_user),
     ) -> Run:
-        run = _load_run(db, run_id, user.id)
+        run = db.scalar(
+            select(Run)
+            .join(Session, Run.session_id == Session.id)
+            .where(Run.id == run_id, Session.user_id == user.id)
+            .with_for_update()
+        )
+        if run is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
         if run.status in TERMINAL_RUN_STATUSES:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Run has already finished",
             )
-        task = request.app.state.run_tasks.get(run.id)
-        if task is None or task.done():
+        executor: RunExecutor | None = request.app.state.executor
+        if executor is None:
             raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="No active RunExecutor task is available to cancel",
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="RunExecutor is not configured",
             )
+        task = request.app.state.run_tasks.get(run.id)
         run.cancel_requested_at = utc_now()
-        _append_event(
-            db,
-            run,
-            "run.cancel_requested",
-            {"run_id": str(run.id)},
-            "user",
-        )
-        run.status = "failed"
-        run.error = "Cancelled by user"
-        run.ended_at = utc_now()
-        _append_event(
-            db,
-            run,
-            "run.status",
-            {"status": "failed", "error": run.error},
-            "api",
-        )
         db.commit()
         db.refresh(run)
-        task.cancel()
+        run_payload = await run_in_threadpool(
+            _load_run_payload,
+            request.app.state.session_factory,
+            run.id,
+        )
+        try:
+            await executor.cancel(run_payload)
+        except Exception as exc:
+            logger.error(
+                "RunExecutor cancellation failed for run %s (%s)",
+                run.id,
+                type(exc).__name__,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="RunExecutor cancellation failed",
+            ) from exc
+        if task is None or task.done():
+            await run_in_threadpool(
+                _mark_run_cancelled,
+                request.app.state.session_factory,
+                run.id,
+            )
+            db.refresh(run)
         return run
 
     @app.post("/api/intake/jira/poll", response_model=IntakeResponse)

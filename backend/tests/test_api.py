@@ -1,4 +1,5 @@
 import asyncio
+from time import sleep
 from uuid import uuid4
 
 import pytest
@@ -14,25 +15,101 @@ from anvil.api.models import Approval, Base, Run, Session, User
 AUTH = {"Authorization": "Bearer test-token"}
 
 
+def executor_event(run, offset, event_type, data, agent="main"):
+    return {
+        "run_id": str(run["run_id"]),
+        "seq": run["last_event_seq"] + offset,
+        "type": event_type,
+        "agent": agent,
+        "data": data,
+    }
+
+
 class SuccessfulExecutor:
     async def start(self, run, message):
-        yield {
-            "type": "message.delta",
-            "agent": "main",
-            "data": {"role": "assistant", "text": f"received: {message}"},
-        }
-        yield {
-            "type": "usage",
-            "agent": "main",
-            "data": {"input_tokens": 10, "output_tokens": 4, "usd": 0.012345},
-        }
-        yield {"type": "run.status", "agent": "main", "data": {"status": "succeeded"}}
+        yield executor_event(
+            run, 1, "message.delta", {"role": "assistant", "text": f"received: {message}"}
+        )
+        yield executor_event(
+            run,
+            2,
+            "run.record",
+            {
+                "base_sha": "a" * 40,
+                "branch": "anvil/test",
+                "sandbox_image_digest": "sha256:test",
+                "prompt_hash": "prompt-hash",
+                "model_aliases": {"main": "test-model"},
+                "skill_versions": {"factory": "1"},
+                "budgets": {"usd": 1},
+            },
+        )
+        yield executor_event(
+            run, 3, "usage", {"input_tokens": 10, "output_tokens": 4, "usd": 0.012345}
+        )
+        yield executor_event(run, 4, "run.status", {"status": "succeeded"})
+
+    async def resume(self, run, decisions):
+        yield executor_event(run, 1, "run.status", {"status": "succeeded"})
+
+    async def cancel(self, run):
+        return None
 
 
 class WaitingExecutor:
+    def __init__(self):
+        self.cancelled = asyncio.Event()
+        self.cancel_run = None
+
     async def start(self, run, message):
-        await asyncio.Event().wait()
-        yield {"type": "run.status", "data": {"status": "succeeded"}}
+        await self.cancelled.wait()
+        yield executor_event(
+            self.cancel_run,
+            1,
+            "run.status",
+            {"status": "cancelled"},
+        )
+
+    async def resume(self, run, decisions):
+        yield executor_event(run, 1, "run.status", {"status": "succeeded"})
+
+    async def cancel(self, run):
+        self.cancel_run = run
+        self.cancelled.set()
+
+
+class ApprovalExecutor:
+    def __init__(self, approval_ids):
+        self.approval_ids = approval_ids
+        self.decisions = None
+
+    async def start(self, run, message):
+        for offset, approval_id in enumerate(self.approval_ids, start=1):
+            yield executor_event(
+                run,
+                offset,
+                "approval.request",
+                {
+                    "approval_id": str(approval_id),
+                    "action": "git_push",
+                    "args": {"branch": f"anvil/example-{offset}"},
+                    "reason": "Push the reviewed branch",
+                },
+            )
+        yield executor_event(
+            run,
+            len(self.approval_ids) + 1,
+            "run.status",
+            {"status": "waiting_approval"},
+        )
+
+    async def resume(self, run, decisions):
+        self.decisions = decisions
+        yield executor_event(run, 1, "run.status", {"status": "running"})
+        yield executor_event(run, 2, "run.status", {"status": "succeeded"})
+
+    async def cancel(self, run):
+        return None
 
 
 @pytest.fixture
@@ -156,7 +233,8 @@ def test_message_run_and_sse_resume(api_factory, client_factory):
     full_stream = client.get(f"/api/runs/{run_id}/events", headers=AUTH)
     assert full_stream.status_code == 200
     assert "id: 1" in full_stream.text
-    assert "id: 5" in full_stream.text
+    assert "id: 6" in full_stream.text
+    assert "event: run.record" in full_stream.text
     assert "event: message.delta" in full_stream.text
     assert '"status":"succeeded"' in full_stream.text
 
@@ -170,6 +248,7 @@ def test_message_run_and_sse_resume(api_factory, client_factory):
     assert "id: 3" in resumed.text
     assert "id: 4" in resumed.text
     assert "id: 5" in resumed.text
+    assert "id: 6" in resumed.text
 
     run = client.get(f"/api/runs/{run_id}", headers=AUTH)
     assert run.status_code == 200
@@ -177,6 +256,9 @@ def test_message_run_and_sse_resume(api_factory, client_factory):
     assert run.json()["input_tokens"] == 10
     assert run.json()["output_tokens"] == 4
     assert run.json()["usd"] == pytest.approx(0.012345)
+    assert run.json()["network"] == "offline"
+    assert run.json()["run_record"]["branch"] == "anvil/test"
+    assert run.json()["branch"] == "anvil/test"
 
 
 def test_message_rejected_without_executor(api_factory, client_factory):
@@ -194,7 +276,57 @@ def test_message_rejected_without_executor(api_factory, client_factory):
     assert response.json()["detail"] == "RunExecutor is not configured"
 
 
-def test_approval_decision_persists_and_emits_event(api_factory, client_factory):
+def test_approval_decision_resumes_run(api_factory, client_factory):
+    approval_ids = [uuid4(), uuid4()]
+    executor = ApprovalExecutor(approval_ids)
+    app = api_factory(executor=executor)
+    client = client_factory(app)
+    session_id = create_session(client)
+    start = client.post(
+        f"/api/sessions/{session_id}/messages",
+        headers=AUTH,
+        json={"text": "approve this"},
+    )
+    run_id = start.json()["id"]
+    for _ in range(50):
+        with app.state.session_factory() as db:
+            if all(db.get(Approval, approval_id) is not None for approval_id in approval_ids):
+                break
+        sleep(0.02)
+    else:
+        pytest.fail("executor did not persist all approval requests")
+
+    first_response = client.post(
+        f"/api/approvals/{approval_ids[0]}",
+        headers=AUTH,
+        json={"decision": "approve", "comment": "Reviewed"},
+    )
+    assert first_response.status_code == 200
+    assert executor.decisions is None
+
+    response = client.post(
+        f"/api/approvals/{approval_ids[1]}",
+        headers=AUTH,
+        json={"decision": "reject", "comment": "Not ready"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "rejected"
+    events = client.get(f"/api/runs/{run_id}/events", headers=AUTH)
+    assert "event: approval.response" in events.text
+    assert '"status":"succeeded"' in events.text
+    assert executor.decisions == [
+        {"type": "approve"},
+        {"type": "reject", "message": "Not ready"},
+    ]
+    with app.state.session_factory() as db:
+        assert all(
+            db.get(Approval, approval_id).resumed_at is not None
+            for approval_id in approval_ids
+        )
+
+
+def test_approval_decision_persists_without_resuming_terminal_run(api_factory, client_factory):
     app = api_factory()
     client = client_factory(app)
     create_session(client)
@@ -213,28 +345,19 @@ def test_approval_decision_persists_and_emits_event(api_factory, client_factory)
         )
         db.add(run)
         db.flush()
-        approval = Approval(
-            id=approval_id,
-            run_id=run.id,
-            action="git_push",
-            args={"branch": "anvil/example"},
-            reason="Push the reviewed branch",
-        )
-        db.add(approval)
+        db.add(Approval(id=approval_id, run_id=run.id, action="git_push"))
         db.commit()
         run_id = run.id
 
     response = client.post(
         f"/api/approvals/{approval_id}",
         headers=AUTH,
-        json={"decision": "approve", "comment": "Reviewed"},
+        json={"decision": "approve"},
     )
 
-    assert response.status_code == 200
-    assert response.json()["status"] == "approved"
+    assert response.status_code == 409
     events = client.get(f"/api/runs/{run_id}/events", headers=AUTH)
-    assert "event: approval.response" in events.text
-    assert '"decision":"approve"' in events.text
+    assert "event: approval.response" not in events.text
 
 
 def test_manual_jira_intake_creates_and_starts_run(api_factory, client_factory):
@@ -242,7 +365,14 @@ def test_manual_jira_intake_creates_and_starts_run(api_factory, client_factory):
 
     def candidates(*, max_results):
         assert max_results == 20
-        return [{"key": "RTEMS-1", "summary": "Investigate the example issue"}]
+        return [
+            {
+                "key": "RTEMS-1",
+                "summary": "Investigate the example issue",
+                "description": "Code base: release-branch\nAdditional details.",
+                "labels": ["anvil", "anvil-online"],
+            }
+        ]
 
     def transition(key, target):
         transitions.append((key, target))
@@ -266,10 +396,14 @@ def test_manual_jira_intake_creates_and_starts_run(api_factory, client_factory):
     run = client.get(f"/api/runs/{run_id}", headers=AUTH).json()
     assert run["trigger"] == "jira:RTEMS-1"
     assert run["mode"] == "autonomous"
+    assert run["base_ref"] == "release-branch"
+    assert run["jira_key"] == "RTEMS-1"
+    assert run["network"] == "online"
 
 
-def test_cancel_requests_stop_and_records_terminal_failure(api_factory, client_factory):
-    app = api_factory(executor=WaitingExecutor())
+def test_cancel_requests_stop_and_records_terminal_cancelled_status(api_factory, client_factory):
+    executor = WaitingExecutor()
+    app = api_factory(executor=executor)
     client = client_factory(app)
     session_id = create_session(client)
     start = client.post(
@@ -284,7 +418,6 @@ def test_cancel_requests_stop_and_records_terminal_failure(api_factory, client_f
     assert response.status_code == 202
     assert response.json()["cancel_requested_at"] is not None
     events = client.get(f"/api/runs/{run_id}/events", headers=AUTH)
-    assert "event: run.cancel_requested" in events.text
+    assert '"status":"cancelled"' in events.text
     run = client.get(f"/api/runs/{run_id}", headers=AUTH).json()
-    assert run["status"] == "failed"
-    assert run["error"] == "Cancelled by user"
+    assert run["status"] == "cancelled"

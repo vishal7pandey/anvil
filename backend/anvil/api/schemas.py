@@ -47,6 +47,9 @@ class RunResponse(BaseModel):
     repo: str
     status: str
     mode: str
+    network: str
+    base_ref: str
+    jira_key: str | None
     base_sha: str | None
     branch: str | None
     sandbox_image_digest: str | None
@@ -61,6 +64,7 @@ class RunResponse(BaseModel):
     output_tokens: int
     human_touches: int
     artifacts: list[dict[str, Any]]
+    run_record: dict[str, Any]
     cancel_requested_at: datetime | None
     error: str | None
     created_at: datetime

@@ -78,8 +78,12 @@ class Run(Base):
     __table_args__ = (
         CheckConstraint(
             "status IN ('queued', 'running', 'waiting_approval', 'handoff', "
-            "'succeeded', 'failed')",
+            "'succeeded', 'failed', 'cancelled')",
             name="ck_runs_status",
+        ),
+        CheckConstraint(
+            "network IN ('offline', 'online')",
+            name="ck_runs_network",
         ),
         Index("ix_runs_trigger", "trigger"),
     )
@@ -93,6 +97,9 @@ class Run(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
     mode: Mapped[str] = mapped_column(String(32), nullable=False)
     input_text: Mapped[str] = mapped_column(Text, nullable=False)
+    network: Mapped[str] = mapped_column(String(16), nullable=False, default="offline")
+    base_ref: Mapped[str] = mapped_column(String(256), nullable=False, default="main")
+    jira_key: Mapped[str | None] = mapped_column(String(64))
     base_sha: Mapped[str | None] = mapped_column(String(64))
     branch: Mapped[str | None] = mapped_column(String(256))
     sandbox_image_digest: Mapped[str | None] = mapped_column(String(256))
@@ -116,6 +123,9 @@ class Run(Base):
     human_touches: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     artifacts: Mapped[list[dict[str, Any]]] = mapped_column(
         JSON_DOCUMENT, default=list, nullable=False
+    )
+    run_record: Mapped[dict[str, Any]] = mapped_column(
+        JSON_DOCUMENT, default=dict, nullable=False
     )
     last_event_seq: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -170,5 +180,6 @@ class Approval(Base):
         DateTime(timezone=True), default=utc_now, nullable=False
     )
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     run: Mapped[Run] = relationship(back_populates="approvals")

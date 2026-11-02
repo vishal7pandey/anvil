@@ -77,7 +77,7 @@ driver boundary (malformed frames -> kernel), and the UART console (physical acc
 ## 3. The Annex I Checklist (machine-readable: `backend/anvil/skills/cra-review/annex1.yaml`)
 
 The checklist is `annex1.yaml`: one entry per CRA Annex I requirement, each with the
-requirement paraphrased from the regulation, the citation (Annex I Part I items (a)–(m), Part II
+requirement paraphrased from the regulation, the citation (Annex I Part I item (1) plus items (2)(a)–(m), Part II
 vulnerability-handling items, Article 6), the inputs the agent needs to assess it, and what
 counts as evidence. The agent fills `status` and `evidence`; it never edits the `requirement`
 or `cite` fields.

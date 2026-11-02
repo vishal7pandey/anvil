@@ -90,6 +90,7 @@ def _model(config: RunConfig, alias: str) -> ChatOpenAI:
 
 def build_agent(config: RunConfig, sandbox: DockerSandbox, *, tools: Sequence[Any] = (),
                 on_handoff: Callable[[dict[str, str]], None] | None = None,
+                skills: list[str] | None = None,
                 checkpointer: Any = None, store: Any = None) -> Any:
     handoffs: list[dict[str, str]] = []
     handoff = make_handoff_tool(on_handoff or handoffs.append)
@@ -118,6 +119,7 @@ def build_agent(config: RunConfig, sandbox: DockerSandbox, *, tools: Sequence[An
         # write_todos: deepagents adds it only for its Codex profile; our gateway alias needs it explicitly.
         middleware=[TodoListMiddleware()],
         system_prompt=prompts.MAIN,
+        skills=skills,
         subagents=subagents,
         backend=backend,
         interrupt_on={name: gate for name, gate in approval_policy(config.mode, config.merge_policy).items()

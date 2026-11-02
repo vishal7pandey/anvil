@@ -13,6 +13,7 @@ import os
 import re
 import shlex
 from collections.abc import AsyncIterator, Callable
+from pathlib import Path
 from typing import Any
 
 import docker
@@ -26,6 +27,21 @@ from anvil.runtime.sandbox import DEFAULT_IMAGE, DockerSandbox, SandboxSpec
 
 GITHUB_BASE = os.environ.get("ANVIL_GIT_BASE", "https://github.com")
 RECURSION_LIMIT = int(os.environ.get("ANVIL_RECURSION_LIMIT", "400"))
+SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
+SANDBOX_SKILLS = "/workspace/.anvil/skills/"
+
+
+def skill_files(root: Path = SKILLS_DIR) -> list[tuple[str, bytes]]:
+    """(sandbox path, content) for every file under backend/anvil/skills/."""
+    return [(SANDBOX_SKILLS + p.relative_to(root).as_posix(), p.read_bytes())
+            for p in sorted(root.rglob("*")) if p.is_file() and "__pycache__" not in p.parts]
+
+
+def skills_hash(files: list[tuple[str, bytes]]) -> str:
+    h = hashlib.sha256()
+    for path, content in files:
+        h.update(path.encode() + b"\0" + content)
+    return h.hexdigest()[:16]
 
 ToolsFactory = Callable[[DockerSandbox, dict[str, Any]], list[Any]]
 AgentFactory = Callable[..., Any]
@@ -144,9 +160,15 @@ class DeepAgentExecutor:
         # Answer-leak control: --single-branch only limits the *default* fetch; with network the agent
         # could still `git fetch origin main` and read a withheld fix. Offline runs (the default) lose
         # the network after checkout. Builds and simulator tests don't need it; push runs on the host.
+        files = skill_files()
+        uploaded = sandbox.upload_files(files)
+        failed = [r.path for r in uploaded if r.error]
+        if failed:
+            raise RuntimeError(f"could not upload skills: {failed}")
         network = run.get("network", "offline")
         sandbox.set_network("bridge" if network == "online" else None)
         return {"repo": repo, "path": path, "base_ref": base, "branch": branch, "network": network,
+                "skills": [p for p, _ in files if p.endswith("SKILL.md")], "skills_hash": skills_hash(files),
                 "base_sha": found.get("BASE_SHA"), "head_sha": found.get("HEAD_SHA")}
 
     def run_record(self, run: dict[str, Any], checkout: dict[str, Any]) -> dict[str, Any]:
@@ -206,7 +228,8 @@ class DeepAgentExecutor:
         config = RunConfig(run_id=run["run_id"], repo=run["repo"], mode=run.get("mode", "interactive"),
                            merge_policy=run.get("merge_policy", "human"))
         agent = self.agent_factory(config, sandbox, tools=self.tools_factory(sandbox, run),
-                                   on_handoff=handoffs.append, checkpointer=checkpointer, store=store)
+                                   on_handoff=handoffs.append, checkpointer=checkpointer, store=store,
+                                   skills=[SANDBOX_SKILLS])
         waiting = False
         try:
             async for item in agent.astream(graph_input, config={"configurable": {"thread_id": str(run["session_id"])},

@@ -14,6 +14,7 @@ seed, Jira is the record afterwards.
 | GitHub Copilot (coding agent) | Backend engineer | WS-C control API | Works from GitHub issues, small well-specified PRs |
 | Cline | Frontend engineer | WS-D web UI | Iterates visually in VS Code with a browser |
 | OpenCode | Data/eval engineer | WS-G knowledge ingestion + kb_search, TC1 eval harness | Self-contained pipelines |
+| Antigravity | Scenario + QA engineer | WS-H TC2 setup, end-to-end browser tests of the UI, demo runbook and rehearsals | Built-in browser agent; can drive and check the UI like a user |
 
 Rules of engagement are in [AGENTS.md](../AGENTS.md).
 
@@ -83,6 +84,11 @@ before TC1 loses anything. The Cloud environment option stays a stretch goal.
 * G2 TC1 eval harness: create `tc1/<issue>-base` branches, Jira tickets from upstream text,
   score agent PR vs. upstream fix (diff overlap + human judgement sheet).
 * G3 Seed the Confluence KB space (synthetic notes, runbooks) for TC4.
+
+### WS-H Demo scenarios + QA (Antigravity)
+* H1 TC2 spike: lwIP upgrade path, demo target, `docs/scenarios/tc2.md`, RTEMS ticket (ANVIL-17).
+* H2 End-to-end browser tests of the TC1 flow in the UI (M2-M4).
+* H3 Demo runbook, reset script, three recorded rehearsals (M4).
 
 ### Gateway and stack (Claude, M0)
 * M0-1 `deploy/compose.yaml`: Postgres 17 + pgvector, LiteLLM with `gateway/config.yaml`.

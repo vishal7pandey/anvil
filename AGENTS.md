@@ -1,7 +1,7 @@
 # Anvil: rules for agents building this repo
 
 Several coding agents build Anvil in parallel (Claude, Codex, Devin, GitHub Copilot, Cline,
-OpenCode) under one GitHub account. These rules keep that from turning into a mess. Read
+OpenCode, Antigravity) under one GitHub account. These rules keep that from turning into a mess. Read
 [docs/02-architecture.md](docs/02-architecture.md) before writing code; the contracts there are
 how your work fits with everyone else's.
 
@@ -10,7 +10,7 @@ how your work fits with everyone else's.
 1. Your work has a Jira issue in project `ANVIL` (site vishal7pandey.atlassian.net). No issue,
    no work: ask the owner or Claude (PM) to create it.
 2. Check the issue is assigned to you via label `agent-<name>` (`agent-claude`, `agent-codex`,
-   `agent-devin`, `agent-copilot`, `agent-cline`, `agent-opencode`). Do not take another
+   `agent-devin`, `agent-copilot`, `agent-cline`, `agent-opencode`, `agent-antigravity`). Do not take another
    agent's issue.
 3. Check your inbox `C:\Dev\comms\<name>\Inbox\` at the start of every session and between
    tasks. The protocol (sending, replying, archiving only when every action is done) is in
@@ -18,7 +18,7 @@ how your work fits with everyone else's.
 
 ## One laptop, one GitHub account, one Jira account
 
-All six agents run on this laptop as the same GitHub and Atlassian user, so label yourself:
+All seven agents run on this laptop as the same GitHub and Atlassian user, so label yourself:
 commit trailer `Agent: <name>`, PR body first line `Agent: <name>`, Jira comments start with
 `[<name>]`. CPU, memory, Docker and network are shared: take `C:\Dev\comms\locks\rtems-build.lock`
 before any RTEMS build, prefix your containers `<name>-`, never touch others' containers,

@@ -86,9 +86,12 @@ itself.
 * `interrupt_on` gates: `git_push`, `github_open_pr`, `github_merge`, `jira_transition`,
   `confluence_write`. Policy per run mode: *interactive* asks for each; *autonomous* auto-approves
   push, PR and comments. Merge follows the run's merge policy (step 10); the default is human.
-* The agent never changes `.github/workflows`: `git_push` refuses any diff touching it, and the GitHub
-  token has no Workflows permission, so GitHub rejects such pushes too. (Path permissions in the
-  harness don't apply to sandboxes with a shell, which could bypass them.)
+* The agent never changes `.github/`: `git_push` refuses, on the host clone, any push whose new
+  commits touch it, and `github_merge` refuses PRs that do. These are the only guards: GitHub auth
+  is the owner's `gh` login, which has `workflow` scope. (Harness path permissions don't apply to
+  sandboxes with a shell, which could bypass them.)
+* Subagents get no host tools (`"tools": []`): the approval gate lives on the main agent only, so
+  inherited outward tools would bypass it.
 * Budgets per run (tokens, USD, wall time) enforced in the runtime and in the gateway.
 
 ## Environments ("where does the agent run")
@@ -117,8 +120,9 @@ Every event: `{"run_id", "seq", "ts", "type", "agent", "data"}`. Types:
 | `diff` | `{files: [{path, patch}]}` |
 | `approval.request` | `{approval_id, action, args, reason}` |
 | `subagent` | `{name, phase: start|end, summary}` |
-| `usage` | `{model_alias, input_tokens, output_tokens, usd}` |
-| `artifact` | `{kind: pr|jira_comment|confluence_page|sbom|report, url, title}` |
+| `usage` | `{model_alias, input_tokens, output_tokens}` (USD comes from the gateway spend log per run, ANVIL-25) |
+| `artifact` | `{kind: pr|jira_comment|confluence_page|sbom|report|handoff, url, title}` |
+| `run.record` | reproducibility fields: base_ref/base_sha, branch, network, sandbox image + digest, model aliases, prompt_hash, skills + skills_hash, mode, merge_policy, trigger |
 
 ### REST
 

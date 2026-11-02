@@ -19,7 +19,7 @@ MergePolicy = Literal["human", "agent-after-approval", "agent"]
 
 # Outward-facing host tools (devin, ANVIL-13). Gated by policy; anything not listed runs freely.
 OUTWARD_TOOLS = ("git_push", "github_open_pr", "github_merge", "jira_transition", "jira_comment",
-                 "confluence_write")
+                 "jira_set_labels", "jira_create", "confluence_write", "publish_evidence")
 
 
 @dataclass
@@ -66,6 +66,23 @@ def make_handoff_tool(on_handoff: Callable[[dict[str, str]], None]) -> Callable[
     return handoff
 
 
+def subagent_specs(fast_model: Any) -> list[dict[str, Any]]:
+    return [
+        {"name": "investigator", "description": "Finds the root cause of a defect in the code base. Read-only.",
+         "system_prompt": prompts.INVESTIGATOR, "tools": []},
+        {"name": "builder", "description": "Builds the RTEMS BSP and runs tests on the simulator; reports results.",
+         "system_prompt": prompts.BUILDER, "model": fast_model, "tools": []},
+        {"name": "reviewer", "description": "Reviews the current git diff like a senior maintainer.",
+         "system_prompt": prompts.REVIEWER, "tools": []},
+        # deepagents adds a default "general-purpose" subagent that inherits every tool; replace it
+        # with one that has only the sandbox (same reason as above).
+        {"name": "general-purpose", "description": "General helper for self-contained research or "
+         "edits inside the sandbox. Cannot push, open PRs, merge or write to Jira/Confluence.",
+         "system_prompt": "You are a careful assistant working inside a Linux sandbox. Do the task and "
+                          "report concisely what you did and found.", "tools": []},
+    ]
+
+
 def _model(config: RunConfig, alias: str) -> ChatOpenAI:
     return ChatOpenAI(model=alias, base_url=config.gateway_url, api_key=config.gateway_key, stream_usage=True,
                       extra_body={"metadata": {"run_id": config.run_id}})
@@ -87,14 +104,11 @@ def build_agent(config: RunConfig, sandbox: DockerSandbox, *, tools: Sequence[An
 
     tool_names = {getattr(t, "name", getattr(t, "__name__", "")) for t in tools}
     fast = _model(config, config.fast_model)
-    subagents = [
-        {"name": "investigator", "description": "Finds the root cause of a defect in the code base. Read-only.",
-         "system_prompt": prompts.INVESTIGATOR},
-        {"name": "builder", "description": "Builds the RTEMS BSP and runs tests on the simulator; reports results.",
-         "system_prompt": prompts.BUILDER, "model": fast},
-        {"name": "reviewer", "description": "Reviews the current git diff like a senior maintainer.",
-         "system_prompt": prompts.REVIEWER},
-    ]
+    # "tools": [] matters: without it deepagents subagents inherit the main agent's tools, and the
+    # approval gate (interrupt_on) lives only on the main agent. A subagent could then push or merge
+    # unapproved. Subagents keep shell + filesystem through the sandbox backend's middleware.
+    subagents = subagent_specs(fast)
+
     # No FilesystemPermission here: deepagents rejects path permissions on backends with `execute`
     # (a shell can bypass them). "Never edit .github/workflows" is enforced where it can't be
     # bypassed: git_push refuses such diffs, and the GitHub token has no Workflows permission.

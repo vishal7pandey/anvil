@@ -117,6 +117,34 @@ def test_merge_refuses_human_branch():
 
 
 @respx.mock
+def test_pr_state_merged_includes_comments_and_reviews():
+    respx.get(f"{API}/pulls/7").respond(json={**PR, "state": "closed", "merged_at": "2026-11-02T20:00:00Z", "merge_commit_sha": "m1", "draft": False, "title": "RTEMS-1: fix"})
+    respx.get(f"{API}/issues/7/comments").respond(json=[{"user": {"login": "claude"}, "created_at": "t1", "body": "REVIEW (claude): APPROVE"}])
+    respx.get(f"{API}/pulls/7/reviews").respond(json=[{"user": {"login": "codex"}, "state": "COMMENTED", "body": "nit", "submitted_at": "t2"}])
+    out = github.github_pr_state("rtems", 7)
+    assert out["state"] == "merged" and out["merge_commit_sha"] == "m1"
+    assert out["comments"][0]["body"].startswith("REVIEW") and out["reviews"][0]["state"] == "COMMENTED"
+
+
+@respx.mock
+def test_pr_state_waits_until_not_open():
+    calls = {"n": 0}
+
+    def pr(req):
+        calls["n"] += 1
+        p = {**PR, "state": "open", "merged_at": None, "merge_commit_sha": None, "draft": True, "title": "t"}
+        if calls["n"] >= 2:
+            p["merged_at"] = "t"
+        return httpx.Response(200, json=p)
+
+    respx.get(f"{API}/pulls/7").mock(side_effect=pr)
+    respx.get(f"{API}/issues/7/comments").respond(json=[])
+    respx.get(f"{API}/pulls/7/reviews").respond(json=[])
+    out = github.github_pr_state("rtems", 7, wait_seconds=60, poll_seconds=1)
+    assert out["state"] == "merged" and calls["n"] == 2
+
+
+@respx.mock
 def test_code_scanning_alerts_for_pr_ref():
     route = respx.get(f"{API}/code-scanning/alerts").respond(json=[{
         "number": 3, "html_url": "https://a", "rule": {"id": "cpp/overflow", "severity": "warning", "security_severity_level": "high", "description": "d"},

@@ -31,6 +31,15 @@ def mock_checks(runs, statuses=()):
     respx.get(f"{API}/commits/abc/status").respond(json={"statuses": list(statuses)})
 
 
+def test_falls_back_to_gh_cli_token(monkeypatch):
+    monkeypatch.setenv("GITHUB_TOKEN", "")
+    monkeypatch.setattr(github, "_gh_cli_token", lambda: "from-gh-cli")
+    assert github.GitHubSettings().github_token == "from-gh-cli"
+    monkeypatch.setattr(github, "_gh_cli_token", lambda: "")
+    with pytest.raises(ToolError, match="gh auth login"):
+        github._gh("GET", "/user")
+
+
 @respx.mock
 def test_open_pr_creates_and_sends_bearer():
     respx.get(f"{API}/pulls").respond(json=[])

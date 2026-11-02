@@ -1,5 +1,6 @@
 """GitHub host tools over REST (httpx). Host process only; the token never reaches a sandbox (ADR-004)."""
 
+import subprocess
 import time
 from typing import Any
 
@@ -12,12 +13,31 @@ from anvil.tools.errors import ToolError
 _OK = {"success", "neutral", "skipped"}
 
 
+_cli_token = ""
+
+
+def _gh_cli_token() -> str:
+    """The owner's `gh` login (same GitHub account as everything else on this laptop). Cached once found."""
+    global _cli_token
+    if not _cli_token:
+        try:
+            r = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, timeout=60)
+            _cli_token = r.stdout.strip() if r.returncode == 0 else ""
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return _cli_token
+
+
 class GitHubSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=REPO_ENV, extra="ignore")
     github_token: str = ""
     github_owner: str = "vishal7pandey"
     github_api: str = "https://api.github.com"
     github_remote_base: str = "https://github.com"
+
+    def model_post_init(self, _: Any) -> None:
+        if not self.github_token:
+            self.github_token = _gh_cli_token()
 
 
 def full_name(repo: str) -> str:
@@ -27,7 +47,7 @@ def full_name(repo: str) -> str:
 def _gh(method: str, path: str, **kwargs: Any) -> Any:
     s = GitHubSettings()
     if not s.github_token:
-        raise ToolError("GITHUB_TOKEN is not set in the API process environment")
+        raise ToolError("no GitHub credentials: set GITHUB_TOKEN or log in with `gh auth login`")
     headers = {"Authorization": f"Bearer {s.github_token}", "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
     with httpx.Client(base_url=s.github_api, headers=headers, timeout=30, follow_redirects=True) as c:
         r = c.request(method, path, **kwargs)

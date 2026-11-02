@@ -18,7 +18,7 @@ AUTH = {"Authorization": "Bearer test-token"}
 def executor_event(run, offset, event_type, data, agent="main"):
     return {
         "run_id": str(run["run_id"]),
-        "seq": run["last_event_seq"] + offset,
+        "seq": 1,
         "type": event_type,
         "agent": agent,
         "data": data,
@@ -29,8 +29,8 @@ class SuccessfulExecutor:
     async def start(self, run, message):
         assert isinstance(run["run_id"], str)
         assert isinstance(run["session_id"], str)
-        assert run["last_event_seq"] == 1
-        assert run["last_seq"] == 1
+        assert run["last_event_seq"] == 2
+        assert run["last_seq"] == 2
         assert run["network"] in {"offline", "online"}
         yield executor_event(run, 1, "run.status", {"status": "running"})
         yield executor_event(
@@ -248,7 +248,7 @@ def test_message_run_and_sse_resume(api_factory, client_factory):
     full_stream = client.get(f"/api/runs/{run_id}/events", headers=AUTH)
     assert full_stream.status_code == 200
     assert "id: 1" in full_stream.text
-    assert "id: 6" in full_stream.text
+    assert "id: 7" in full_stream.text
     assert "event: run.record" in full_stream.text
     assert "event: message.delta" in full_stream.text
     assert '"status":"succeeded"' in full_stream.text
@@ -264,6 +264,13 @@ def test_message_run_and_sse_resume(api_factory, client_factory):
     assert "id: 4" in resumed.text
     assert "id: 5" in resumed.text
     assert "id: 6" in resumed.text
+    assert "id: 7" in resumed.text
+    ids = [
+        line.removeprefix("id: ")
+        for line in full_stream.text.splitlines()
+        if line.startswith("id: ")
+    ]
+    assert ids == [str(sequence) for sequence in range(1, 8)]
 
     run = client.get(f"/api/runs/{run_id}", headers=AUTH)
     assert run.status_code == 200
@@ -332,6 +339,7 @@ def test_approval_decision_resumes_run(api_factory, client_factory):
     assert response.json()["status"] == "rejected"
     events = client.get(f"/api/runs/{run_id}/events", headers=AUTH)
     assert "event: approval.response" in events.text
+    assert "event: approval.resume_requested" in events.text
     assert '"status":"succeeded"' in events.text
     assert executor.decisions == [
         {"type": "approve"},
@@ -437,7 +445,14 @@ def test_cancel_requests_stop_and_records_terminal_cancelled_status(api_factory,
     assert response.status_code == 202
     assert response.json()["cancel_requested_at"] is not None
     events = client.get(f"/api/runs/{run_id}/events", headers=AUTH)
+    assert "event: run.cancel_requested" in events.text
     assert '"status":"cancelled"' in events.text
+    ids = [
+        line.removeprefix("id: ")
+        for line in events.text.splitlines()
+        if line.startswith("id: ")
+    ]
+    assert ids == [str(sequence) for sequence in range(1, 5)]
     run = client.get(f"/api/runs/{run_id}", headers=AUTH).json()
     assert run["status"] == "cancelled"
 

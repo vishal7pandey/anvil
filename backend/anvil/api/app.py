@@ -200,12 +200,6 @@ def _persist_executor_event(
             raise ValueError("Executor event references a missing run")
         if run.status in TERMINAL_RUN_STATUSES:
             raise ValueError("Executor emitted an event after the run finished")
-        if sequence != run.last_event_seq + 1:
-            raise ValueError(
-                f"Executor event seq {sequence} is not the next sequence "
-                f"after {run.last_event_seq}"
-            )
-
         if event_type == "run.status":
             new_status = data.get("status")
             if new_status not in RUN_STATUSES:
@@ -281,16 +275,7 @@ def _persist_executor_event(
                 )
             elif approval.run_id != run_id:
                 raise ValueError("Approval event UUID is already in use by another run")
-        run.last_event_seq = sequence
-        db.add(
-            RunEvent(
-                run_id=run.id,
-                seq=sequence,
-                type=event_type,
-                agent=agent,
-                data=data,
-            )
-        )
+        _append_event(db, run, event_type, data, agent)
         db.commit()
 
 
@@ -320,6 +305,7 @@ def _mark_run_started(session_factory: SessionFactory, run_id: UUID) -> None:
         run.status = "running"
         if run.started_at is None:
             run.started_at = utc_now()
+        _append_event(db, run, "run.status", {"status": "running"}, "api")
         db.commit()
 
 
@@ -468,7 +454,6 @@ async def _resume_after_active_task(
     app: FastAPI,
     run_id: UUID,
     decisions: list[dict[str, Any]],
-    approval_responses: list[dict[str, Any]],
     previous_task: asyncio.Task[Any] | None,
 ) -> None:
     current_task = asyncio.current_task()
@@ -485,12 +470,6 @@ async def _resume_after_active_task(
             run_id,
         )
         if run_status not in TERMINAL_RUN_STATUSES:
-            await run_in_threadpool(
-                _record_approval_responses,
-                app.state.session_factory,
-                run_id,
-                approval_responses,
-            )
             await _execute_resume(app, run_id, decisions)
     except asyncio.CancelledError:
         await asyncio.shield(
@@ -502,31 +481,10 @@ async def _resume_after_active_task(
             app.state.run_tasks.pop(run_id, None)
 
 
-def _record_approval_responses(
-    session_factory: SessionFactory,
-    run_id: UUID,
-    responses: list[dict[str, Any]],
-) -> None:
-    with session_factory() as db:
-        run = db.scalar(select(Run).where(Run.id == run_id).with_for_update())
-        if run is None or run.status in TERMINAL_RUN_STATUSES:
-            return
-        for response in responses:
-            _append_event(
-                db,
-                run,
-                "approval.response",
-                response,
-                "user",
-            )
-        db.commit()
-
-
 def _schedule_resume(
     app: FastAPI,
     run_id: UUID,
     decisions: list[dict[str, Any]],
-    approval_responses: list[dict[str, Any]],
 ) -> None:
     previous_task = app.state.run_tasks.get(run_id)
     task = asyncio.create_task(
@@ -534,7 +492,6 @@ def _schedule_resume(
             app,
             run_id,
             decisions,
-            approval_responses,
             previous_task,
         ),
         name=f"anvil-run-resume-{run_id}",
@@ -954,6 +911,17 @@ def create_app(
         decision_time = utc_now()
         approval.decided_at = decision_time
         run.human_touches += 1
+        _append_event(
+            db,
+            run,
+            "approval.response",
+            {
+                "approval_id": str(approval.id),
+                "decision": payload.decision,
+                "comment": payload.comment,
+            },
+            "user",
+        )
 
         pending_group = list(
             db.scalars(
@@ -967,7 +935,6 @@ def create_app(
             item.status != "pending" for item in pending_group
         )
         decisions: list[dict[str, Any]] = []
-        approval_responses: list[dict[str, Any]] = []
         if resume_group:
             if request.app.state.executor is None:
                 raise HTTPException(
@@ -976,13 +943,6 @@ def create_app(
                 )
             for item in pending_group:
                 item.resumed_at = decision_time
-                approval_responses.append(
-                    {
-                        "approval_id": str(item.id),
-                        "decision": "approve" if item.status == "approved" else "reject",
-                        "comment": item.comment,
-                    }
-                )
                 if item.status == "approved":
                     decisions.append({"type": "approve"})
                 else:
@@ -992,10 +952,17 @@ def create_app(
                             "message": item.comment or "Rejected by user",
                         }
                     )
+            _append_event(
+                db,
+                run,
+                "approval.resume_requested",
+                {"approval_ids": [str(item.id) for item in pending_group]},
+                "api",
+            )
         db.commit()
         db.refresh(approval)
         if resume_group:
-            _schedule_resume(request.app, run.id, decisions, approval_responses)
+            _schedule_resume(request.app, run.id, decisions)
         return approval
 
     @app.post(
@@ -1030,6 +997,13 @@ def create_app(
             )
         task = request.app.state.run_tasks.get(run.id)
         run.cancel_requested_at = utc_now()
+        _append_event(
+            db,
+            run,
+            "run.cancel_requested",
+            {"run_id": str(run.id)},
+            "user",
+        )
         db.commit()
         db.refresh(run)
         run_payload = await run_in_threadpool(

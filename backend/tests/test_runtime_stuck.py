@@ -4,7 +4,7 @@ from deepagents.backends.protocol import ExecuteResponse
 
 from anvil.runtime.stuck import Budgets, StuckDetector, failure_signature
 
-from .test_runtime_executor import RUN, OfflineExecutor, collect
+from test_runtime_executor import RUN, OfflineExecutor, collect
 
 
 def exec_ev(cmd, exit_code, tail="error: x"):
@@ -87,7 +87,7 @@ def failing_exec_items(n):
 
 
 async def test_runtime_forces_handoff_and_calls_hooks():
-    from .test_runtime_executor import factory_for
+    from test_runtime_executor import factory_for
     pushed, reported = [], []
     ex = StuckExecutor(agent_factory=factory_for(failing_exec_items(10)),
                        push_hook=lambda sb, run, wip: pushed.append(wip) or f"https://example/{wip}",
@@ -107,7 +107,7 @@ async def test_runtime_forces_handoff_and_calls_hooks():
 
 
 async def test_push_failure_does_not_block_handoff():
-    from .test_runtime_executor import factory_for
+    from test_runtime_executor import factory_for
 
     def bad_push(sb, run, wip):
         raise RuntimeError("no token")

@@ -1,0 +1,35 @@
+[project]
+name = "anvil"
+version = "0.1.0"
+description = "Anvil control API, agent runtime, host tools and knowledge base"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sse-starlette>=2.1",
+    "pydantic-settings>=2.4",
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    "psycopg[binary,pool]>=3.2",
+    "pgvector>=0.3",
+    "httpx>=0.27",
+    "docker>=7.1",
+    "deepagents>=0.7.32,<0.8",
+    "langchain-openai>=0.3",
+    "langgraph-checkpoint-postgres>=3.0",
+    "PyGithub>=2.4",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "respx>=0.21"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["anvil"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

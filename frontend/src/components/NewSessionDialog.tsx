@@ -1,0 +1,117 @@
+import { useState, type FormEvent } from 'react';
+import type { NewSessionForm } from '../types';
+
+interface NewSessionDialogProps {
+  onSubmit: (form: NewSessionForm) => void;
+  onClose: () => void;
+}
+
+export default function NewSessionDialog({
+  onSubmit,
+  onClose,
+}: NewSessionDialogProps) {
+  const [form, setForm] = useState<NewSessionForm>({
+    repo: '',
+    environment: 'local',
+    mode: 'interactive',
+    model_profile: 'anvil-main',
+    title: '',
+  });
+
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    onSubmit(form);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div
+        className="fixed inset-0 bg-black/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+        <h2 className="text-lg font-semibold text-slate-900 mb-4">New Session</h2>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="label">Title</label>
+            <input
+              type="text"
+              value={form.title}
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
+              placeholder="e.g. Fix pthread_mutex_init defect"
+              className="input"
+            />
+          </div>
+          <div>
+            <label className="label">Repository</label>
+            <input
+              type="text"
+              value={form.repo}
+              onChange={(e) => setForm({ ...form, repo: e.target.value })}
+              placeholder="rtems"
+              className="input"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">Environment</label>
+              <select
+                value={form.environment}
+                onChange={(e) =>
+                  setForm({ ...form, environment: e.target.value as 'local' | 'cloud' })
+                }
+                className="input"
+                disabled
+              >
+                <option value="local">Local sandbox</option>
+                <option value="cloud" disabled>
+                  Cloud (GitHub Actions) · M4
+                </option>
+              </select>
+              <p className="text-xs text-slate-400 mt-1">Disabled until M4</p>
+            </div>
+            <div>
+              <label className="label">Mode</label>
+              <select
+                value={form.mode}
+                onChange={(e) =>
+                  setForm({ ...form, mode: e.target.value as 'interactive' | 'autonomous' })
+                }
+                className="input"
+              >
+                <option value="interactive">Interactive</option>
+                <option value="autonomous">Autonomous</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="label">Model profile</label>
+            <select
+              value={form.model_profile}
+              onChange={(e) =>
+                setForm({ ...form, model_profile: e.target.value as 'anvil-main' | 'anvil-fast' | 'anvil-embed' })
+              }
+              className="input"
+            >
+              <option value="anvil-main">anvil-main</option>
+              <option value="anvil-fast">anvil-fast</option>
+              <option value="anvil-embed">anvil-embed</option>
+            </select>
+          </div>
+          <div className="flex gap-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="btn-secondary flex-1"
+            >
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary flex-1" disabled={!form.repo}>
+              Create
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}

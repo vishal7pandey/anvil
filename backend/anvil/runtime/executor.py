@@ -243,7 +243,7 @@ class DeepAgentExecutor:
                                    skills=[SANDBOX_SKILLS])
         waiting = False
         detector = StuckDetector(self.budgets)
-        path = f"/workspace/{run['repo'].split('/')[-1]}"
+        path = repo_path(run["repo"])
         recent: list[dict[str, Any]] = []
         stuck: str | None = None
         try:
@@ -280,7 +280,7 @@ class DeepAgentExecutor:
 
     @staticmethod
     def diff_state(sandbox: DockerSandbox, path: str) -> str:
-        res = sandbox.execute(f"cd {path} 2>/dev/null && (git diff HEAD; git status --porcelain) | sha1sum", timeout=60)
+        res = sandbox.execute(f"cd {shlex.quote(path)} 2>/dev/null && (git diff HEAD; git status --porcelain) | sha1sum", timeout=60)
         return res.output.strip()[:40]
 
     @staticmethod
@@ -311,7 +311,7 @@ class DeepAgentExecutor:
         key = run.get("jira_key") or "ANVIL"
         message = f"{key}: WIP handoff (Anvil run {run['run_id']})"
         commit = await asyncio.to_thread(sandbox.execute, (
-            f"cd {path} && git add -A && git commit -q --no-verify --allow-empty -m {shlex.quote(message)} "
+            f"cd {shlex.quote(path)} && git add -A && git commit -q --no-verify --allow-empty -m {shlex.quote(message)} "
             f"&& git branch -f {shlex.quote(wip)} HEAD && git rev-parse HEAD"), 120)
         url = None
         if commit.exit_code == 0 and self.push_hook:

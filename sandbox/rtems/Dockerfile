@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Pinned for reproducibility. Bump deliberately (that is Test Case 2 territory).
 ARG RSB_REPO=https://github.com/vishal7pandey/rtems-source-builder.git
 ARG RSB_REF=74fffa09a3df68b7e6cacabbde243ea7828edb34
-ARG JOBS=4
+ARG JOBS=6
 RUN git clone ${RSB_REPO} /src/rsb && cd /src/rsb && git checkout ${RSB_REF}
 WORKDIR /src/rsb/rtems
 RUN ../source-builder/sb-set-builder --prefix=/opt/rtems/7 --jobs=${JOBS} --log=/tmp/rsb.log 7/rtems-sparc \
@@ -50,7 +50,8 @@ ENV PATH=/opt/rtems/7/bin:$PATH \
 # Non-root agent user; the workspace is bind-mounted or cloned into /workspace.
 RUN useradd -m -u 1001 agent && mkdir -p /workspace && chown agent /workspace
 COPY smoke.sh /usr/local/bin/anvil-smoke
-RUN chmod +x /usr/local/bin/anvil-smoke
+COPY clang_format_staged.py /usr/local/bin/anvil-clang-format-staged
+RUN chmod +x /usr/local/bin/anvil-smoke /usr/local/bin/anvil-clang-format-staged
 USER agent
 WORKDIR /workspace
 CMD ["sleep", "infinity"]

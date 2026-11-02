@@ -136,9 +136,9 @@ def _run_is_owned(session_factory: SessionFactory, run_id: UUID, user_id: str) -
 
 def _run_payload(run: Run) -> dict[str, Any]:
     return {
-        "run_id": run.id,
+        "run_id": str(run.id),
         "id": run.id,
-        "session_id": run.session_id,
+        "session_id": str(run.session_id),
         "trigger": run.trigger,
         "repo": run.repo,
         "status": run.status,

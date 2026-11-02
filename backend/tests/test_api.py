@@ -27,6 +27,10 @@ def executor_event(run, offset, event_type, data, agent="main"):
 
 class SuccessfulExecutor:
     async def start(self, run, message):
+        assert isinstance(run["run_id"], str)
+        assert isinstance(run["session_id"], str)
+        assert run["last_event_seq"] == 2
+        assert run["network"] in {"offline", "online"}
         yield executor_event(
             run, 1, "message.delta", {"role": "assistant", "text": f"received: {message}"}
         )

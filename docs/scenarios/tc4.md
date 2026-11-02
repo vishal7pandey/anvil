@@ -4,176 +4,209 @@
 **Epic:** ANVIL-16 (Demo scenarios + QA)  
 **Task Ticket:** ANVIL-31  
 **Target Architecture / BSP:** SPARC / LEON3 (`sparc/leon3`) under SIS simulator  
-**Knowledge Base Sources:** RTEMS Documentation, Closed RTEMS GitLab Issues, and Confluence Space `RTKB`  
-**Output Artifacts:** Incident Investigation Confluence Page, Ranked Hypothesis Report, Reproduction Test Case, Remediation Jira Bug, and Knowledge Base Write-Back  
+**Knowledge Base Sources:** RTEMS Documentation (`rtems-docs`), Closed RTEMS GitLab Issues, and Confluence Space `RTKB`  
+**Output Artifacts:** Incident Investigation Confluence Page, Ranked Hypothesis Report, SIS Reproduction Test Case, Remediation Jira Bug, Knowledge Base Write-Back, and Follow-Up Retrospective Demonstration  
 
 ---
 
 ## 1. Context and Objective
 
-In TC4, Anvil demonstrates autonomous **incident investigation and self-learning** in an embedded real-time environment. Unlike traditional IT services, RTEMS-based real-time systems do not have heavy application-level APM agents or alert managers. When anomalies occur (such as deadline misses, timing degradation, or communication buffer drops), engineers must deduce root causes by synthesizing runtime symptoms with deep platform knowledge, system documentation, and historical operational post-mortems.
+In TC4, Anvil demonstrates autonomous **incident investigation, human-in-the-loop discrimination, and self-learning** in an embedded real-time environment. Unlike traditional cloud microservices, RTEMS real-time applications do not have heavy application-level APM agents or automated alarm management frameworks. When real-time timing degrades or communication buffers drop, flight software engineers must deduce root causes by synthesizing sparse diagnostic codes, operating system documentation, raw architecture specifications, and historical incident post-mortems.
 
-TC4 proves that the Anvil agent can:
-1. Ingest an incident report with ambiguous embedded symptoms (e.g., directive error codes, deadline overruns, telemetry packet drops).
-2. Query a multimodal knowledge base (`kb_search` over `rtems-docs`, closed GitLab issues, and internal Confluence engineering runbooks).
-3. Generate ranked, evidence-backed root-cause hypotheses with explicit citations.
-4. Synthesize an investigation plan on Confluence (`RTKB`).
-5. Reproduce the failure mechanism in the SIS simulator harness where applicable.
-6. Present findings to a Human Subject Matter Expert (SME) at a deliberate decision gate to validate domain judgement.
-7. File structured remediation bug reports and write back an authoritative post-mortem page to `RTKB`, demonstrating platform self-learning for future inquiries.
+TC4 demonstrates that the Anvil agent can:
+1. Ingest an incident report featuring ambiguous symptoms (`RTEMS_TOO_MANY` from an ISR, Rate Monotonic deadline overruns).
+2. Retrieve facts from a noisy multimodal knowledge base (`rtems-docs`, closed GitLab issues, and Confluence space `RTKB`) containing both relevant specifications and misleading look-alikes.
+3. **Discriminate between look-alike incidents**: Compare current runtime facts against past post-mortems (e.g., rejecting a historical priority inversion post-mortem because current error codes prove queue saturation).
+4. **Compute conclusions from raw architectural facts**: Derive burst exhaustion mathematically rather than reading a pre-computed answer from the knowledge base.
+5. Navigate a **human SME rejection and redirect gate**, demonstrating how real-time human oversight guides the investigation.
+6. Deterministically reproduce the failure in the SIS simulator harness.
+7. File structured remediation bug reports and write back an authoritative post-mortem to `RTKB`.
+8. **Demonstrate verified self-learning across two runs**: In a scripted follow-up ticket (Run 2), the agent retrieves and cites Run 1's published post-mortem as a primary source.
+
+> [!IMPORTANT]
+> **Corpus Hygiene & Anti-Leak Boundary:** This specification (`docs/scenarios/tc4.md`) exists solely in the project repository and is strictly excluded from knowledge base ingestion. The knowledge base contains only raw architectural facts, general runbooks, historical post-mortems, and unrelated noise. The expected hypotheses and numerical calculations below serve exclusively as the evaluator benchmark rubric.
 
 ---
 
-## 2. Incident Scenario: Telemetry Buffer Exhaustion & Deadline Overrun
+## 2. Incident Scenario: Telemetry Buffer Exhaustion Under Sensor Burst
 
 ### Operational Context
-A satellite payload instrument running RTEMS 7 on a LEON3 processor acquires science telemetry through an interrupt-driven interface (e.g., SpaceWire / CAN bus / high-speed serial) and dispatches telemetry packets to a storage task via an RTEMS Classic API Message Queue (`rtems_message_queue_send`). Simultaneously, a Rate Monotonic periodic task (`TM_GUIDANCE`, 50ms period) handles attitude determination.
+A satellite science payload instrument running RTEMS 7 on a SPARC/LEON3 processor acquires science telemetry through an interrupt-driven sensor interface (e.g., SpaceWire / high-speed serial) and dispatches telemetry packets to a storage worker task via an RTEMS Classic API Message Queue (`rtems_message_queue_send`). Concurrently, a Rate Monotonic periodic task (`TM_GUIDANCE`, priority 10, period 50ms) handles flight attitude control.
 
-### Incident Trigger & Symptoms
-During high-bandwidth downlink acquisition simulation, the instrument reports:
-1. **Telemetry Frame Drops:** Downlink ground station observes packet sequence gaps; internal buffer counters indicate frame drops.
-2. **Directive Failures:** Diagnostic logs record `rtems_message_queue_send` returning status code `RTEMS_TOO_MANY` (10) from the telemetry ISR handler.
+### Incident Symptoms Reported in Jira
+During maximum downlink acquisition simulation, the instrument reports:
+1. **Telemetry Packet Loss:** Downlink receiver logs record sequence gaps; telemetry counter registers frame drops.
+2. **ISR Directive Failure:** Telemetry interrupt service routine increments an error counter with status code `RTEMS_TOO_MANY` (10) from `rtems_message_queue_send`.
 3. **Periodic Deadline Misses:** `TM_GUIDANCE` task logs `RTEMS_TIMEOUT` (6) during `rtems_rate_monotonic_period`, reporting execution jitter exceeding 35ms.
-4. **Healthy Subsystems:** Watchdog does not trip, heap memory (`malloc`) shows zero leaks, and task stack bounds checker passes cleanly.
+4. **Negative Indicators:** Watchdog timer does not trip; heap memory (`malloc`) reports zero leaks; task stack bounds checker passes cleanly.
 
 ---
 
-## 3. Knowledge Base Corpus & Synthetic Assets
+## 3. Knowledge Base Corpus & Synthetic Asset Architecture
 
-The agent investigates this incident using the unified Knowledge Base backed by PostgreSQL (`pgvector`), containing three distinct tiers of information:
-
-```mermaid
-flowchart LR
-    subgraph Knowledge Base Sources
-        D[RTEMS Documentation<br/>rtems-docs]
-        I[GitLab Issue History<br/>Closed Issues]
-        C[Confluence RTKB Space<br/>Engineering Notes & Runbooks]
-    end
-    D --> KB[(pgvector Store<br/>anvil)]
-    I --> KB
-    C --> KB
-    KB --> Search[Hybrid Vector + FTS Search<br/>kb_search]
-    Search --> Agent[Anvil Investigation Agent]
-```
-
-### 1. Authoritative RTEMS Documentation (`rtems-docs`)
-* **Message Queue Manager (`c-user/message/`):** Explains that `rtems_message_queue_send` returns `RTEMS_TOO_MANY` when all message buffers allocated at creation (`rtems_message_queue_create`) are exhausted. Crucially documents that ISRs must invoke `rtems_message_queue_send` without blocking options, meaning bursts exceeding queue capacity drop data immediately.
-* **Rate Monotonic Manager (`c-user/rate-monotonic/`):** Documents period overrun mechanics, CPU budget exhaustion, and the impact of lower-priority consumer tasks starving when higher-priority ISRs saturate processing time.
-* **Interrupt Manager (`c-user/interrupt/`):** Outlines ISR execution constraints, interrupt storm dynamics, and deferred service task patterns.
-
-### 2. Historical RTEMS GitLab Issues
-* Closed issues documenting buffer depletion under burst conditions and ISR preemption chains.
-
-### 3. Seeded Internal Knowledge Pages (Confluence Space `RTKB`)
-All seeded internal pages are marked with `(synthetic)` in their titles per demo hygiene rules:
-* **Page 1: `[synthetic] Runbook: Real-Time Deadline Overrun & ISR Saturation Diagnostics`**
-  - Outlines diagnostic workflows when `RTEMS_TOO_MANY` and Rate Monotonic period overruns coincide.
-  - Specifies threshold metrics for distinguishing pure task CPU starvation from interrupt storm queue saturation.
-* **Page 2: `[synthetic] Post-Mortem: 2025 Payload Bus Buffer Exhaustion Incident`**
-  - Recounts a prior flight simulation incident where an unthrottled sensor interrupt burst filled the fixed message queue within 8ms, causing downstream processing backpressure and task starvation.
-  - Documents the approved remediation: queue depth rightsizing combined with high-watermark backpressure signaling.
-* **Page 3: `[synthetic] Architecture Note: Payload Telemetry Flow and Queue Sizing Guidelines`**
-  - Defines the mathematical calculation for RTEMS message queue depths based on maximum burst duration ($T_{burst}$) and consumer drain latency ($L_{drain}$).
-
-> [!NOTE]
-> Confluence space `RTKB` already contains Devin's real page *"ANVIL-13 evidence"*. That page remains untouched. All TC4 seed pages are created under dedicated hierarchy with the `(synthetic)` prefix.
-
----
-
-## 4. End-to-End Investigation Flow
-
-The autonomous agent executes the investigation workflow according to the following stages:
+The knowledge base indexes `rtems-docs`, closed GitLab issues, and 10 synthetic Confluence pages in the `RTKB` space. All synthetic pages are titled with the prefix `(synthetic)` per demo hygiene rules.
 
 ```mermaid
 flowchart TD
-    A[Read Incident Ticket in Jira] --> B[Extract Symptoms & Error Codes]
-    B --> C[Execute kb_search Queries]
-    C --> D[Rank Root-Cause Hypotheses with Citations]
-    D --> E[Draft Investigation Page on Confluence RTKB]
-    E --> F[Synthesize SIS Reproduction Test Case]
-    F --> G[Run SIS Simulation & Validate Overrun Trace]
-    G --> H[Human-in-the-Loop SME Review Gate]
-    H -->|SME Approves Hypothesis| I[File Remediation Bug in Jira]
-    H -->|SME Requests Adjustment| E
-    I --> J[Publish Post-Mortem & Update Knowledge Base]
+    subgraph Space RTKB (Confluence)
+        A1["[synthetic] Architecture Note: Payload Telemetry Flow and Queue Specifications"]
+        A2["[synthetic] Post-Mortem: 2025 Payload Guidance Timing Overrun Incident"]
+        A3["[synthetic] Runbook: Real-Time Deadline Overrun & Directive Failure Triage"]
+        N1["[synthetic] Runbook: Flash Memory ECC Single-Bit Error Scrubbing"]
+        N2["[synthetic] Meeting Notes: 2026-09-15 Instrument Thermal Vacuum Test Review"]
+        N3["[synthetic] Architecture Note: Star Tracker UART Frame Protocol Definition"]
+        N4["[synthetic] Post-Mortem: 2024 Power Distribution Unit Relay Chatter Flap"]
+        N5["[synthetic] Runbook: Spurious Watchdog Timer Reset Diagnostics"]
+        N6["[synthetic] Meeting Notes: 2026-10-02 Downlink Transponder X-Band Calibration"]
+        N7["[synthetic] Architecture Note: LEON3 Dual-Ported Memory Bank Partitioning"]
+    end
+    subgraph Real Existing Pages
+        D1["ANVIL-13 evidence (Devin - Leave Untouched)"]
+    end
+    subgraph Technical Documentation
+        R1["RTEMS Docs: Message Manager (c-user/message/)"]
+        R2["RTEMS Docs: Rate Monotonic (c-user/rate-monotonic/)"]
+        R3["RTEMS Docs: Interrupt Manager (c-user/interrupt/)"]
+    end
 ```
 
-### Detailed Execution Steps:
-1. **Intake & Symptom Extraction:**
-   - Ingest Jira ticket `RTEMS-XX` reporting telemetry drops and `RTEMS_TOO_MANY` / `RTEMS_TIMEOUT`.
-   - Parse error codes to symbolic RTEMS directives (`rtems_message_queue_send` -> `RTEMS_TOO_MANY`, `rtems_rate_monotonic_period` -> `RTEMS_TIMEOUT`).
-2. **Knowledge Retrieval (`kb_search`):**
-   - Query: `"rtems_message_queue_send RTEMS_TOO_MANY interrupt burst"`
-   - Query: `"rate monotonic period deadline overrun task starvation"`
-   - Query: `"telemetry queue sizing burst duration buffer exhaustion"`
-   - Retrieve top chunks across `rtems-docs` and `RTKB` synthetic runbooks.
-3. **Hypothesis Formulation & Ranking:**
-   - **Hypothesis 1 (Confidence: 85%, Primary):** *Interrupt Storm & Queue Sizing Mismatch.* Burst telemetry arrivals from ISR exceed the fixed message queue capacity (`RTEMS_TOO_MANY`), while excessive interrupt servicing starves the `TM_GUIDANCE` task, causing deadline misses. Supported by 2025 Post-Mortem and Queue Sizing Guidelines.
-   - **Hypothesis 2 (Confidence: 10%, Secondary):** *Priority Inversion / Lock Contention.* Storage task blocking on an un-inherited mutex while holding the queue read pointer. Contradicted by symptom trace (queue read is non-blocking).
-   - **Hypothesis 3 (Confidence: 5%, Tertiary):** *Memory Corruption / Leak.* Rejected based on zero heap leaks and clean stack guard checks.
-4. **Confluence Investigation Document:**
-   - Creates a structured page in Confluence `RTKB`: `[synthetic] Incident Analysis: Telemetry Queue Exhaustion & Rate Monotonic Overrun`.
-   - Formats timeline, symptom analysis, citation links to RTEMS documentation and runbooks, and candidate hypotheses.
-5. **Deterministic Reproduction in Simulator:**
-   - Constructs a standalone RTEMS C test application (`tc4_reproduce.c`) in the sandbox.
-   - Configures a Rate Monotonic 50ms periodic task alongside an interrupt/timer burst injecting messages into an undersized queue.
-   - Executes under `sis-leon3` and confirms reproduction of:
-     - `rtems_message_queue_send` returning `RTEMS_TOO_MANY`.
-     - `rtems_rate_monotonic_period` logging deadline misses.
-6. **Remediation Bug Creation:**
-   - Files Jira defect in `RTEMS` project detailing the exact fix: increase queue buffer capacity according to the burst sizing formula and implement rate-limiting watermark callbacks in the ISR.
-7. **Knowledge Capture ("Self-Learning"):**
-   - Updates the knowledge base by ingesting the newly published Confluence investigation page into PostgreSQL.
-   - Verifies that subsequent `kb_search` queries for these specific symptoms retrieve the new investigation report as Rank 1.
+### 1. The Discriminating Look-Alike Post-Mortem
+* **Title:** `[synthetic] Post-Mortem: 2025 Payload Guidance Timing Overrun Incident`
+* **Content:** Documents a past 2025 incident exhibiting nearly identical top-level symptoms: packet drops and `RTEMS_TIMEOUT` on `TM_GUIDANCE`. However, the root cause was **priority inversion** on a shared data mutex (`RTEMS_PRIORITY` without `RTEMS_INHERIT_PRIORITY`) between a low-priority logging task and guidance. Crucially, the 2025 incident records that `rtems_message_queue_send` always returned `RTEMS_SUCCESSFUL` (0).
+* **Investigation Function:** Tests the agent's discrimination ability. If the agent naively retrieves the post-mortem and blames priority inversion, it fails. The agent must contrast the symptoms: the presence of `RTEMS_TOO_MANY` in the current incident rules out the 2025 mutex hypothesis.
+
+### 2. Raw Facts Architecture Note (No Pre-Stated Sizing Conclusions)
+* **Title:** `[synthetic] Architecture Note: Payload Telemetry Flow and Queue Specifications`
+* **Content:** Provides raw engineering specifications only:
+  - Telemetry Message Queue Capacity: $N = 16$ messages.
+  - Message Payload: 64 bytes.
+  - Sensor Nominal Acquisition Rate: $100\text{ Hz}$ ($10\text{ ms}$ interval).
+  - Telemetry Consumer Drain Time: $1.5\text{ ms}$ per packet.
+  - Peak Burst Rate: $500\text{ Hz}$ ($2\text{ ms}$ interval) for up to $100\text{ ms}$.
+* **Investigation Function:** Forces the agent to perform domain math rather than reading a conclusion:
+  $$\text{Queue Capacity in Time} = 16 \text{ messages} \times 2\text{ ms} = 32\text{ ms}$$
+  When `TM_GUIDANCE` executes a 50ms periodic cycle with 35ms burst preemption, the queue fills in 32ms, causing subsequent non-blocking ISR sends to return `RTEMS_TOO_MANY` and drop frames.
+
+### 3. General Triage Runbook
+* **Title:** `[synthetic] Runbook: Real-Time Deadline Overrun & Directive Failure Triage`
+* **Content:** High-level troubleshooting flowchart: mapping `RTEMS_TOO_MANY` to buffer depletion, `RTEMS_TIMEOUT` to period expiration, and distinguishing ISR storms from mutex blocking.
+
+### 4. Noise Pages (7 Unrelated Pages)
+To ensure the retrieval step is realistic and challenging, the space contains 7 realistic but unrelated engineering pages (flash memory scrubbing, thermal vacuum meeting notes, star tracker UART protocol, relay chatter, watchdog resets, transponder calibration, dual-ported memory).
 
 ---
 
-## 5. Human-in-the-Loop SME Review Gate
+## 4. End-to-End Investigation Flow (Run 1 & Run 2)
 
-A core theme of Anvil's architecture is deliberate collaboration with human engineers. Domain judgement in mission-critical real-time systems carries high stakes.
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Human Evaluator / SME
+    participant Jira as Jira (RTEMS Board 139)
+    participant Agent as Anvil Agent
+    participant KB as Knowledge Base (pgvector)
+    participant Conf as Confluence (RTKB)
+    participant SIS as SIS Simulator
 
-* **Trigger:** After hypotheses are ranked and the simulation trace is captured, the agent halts and requests review via Jira comment / comms message.
-* **Presented Information:**
-  - Ranked hypotheses with explicit markdown citations to `RTKB` and `rtems-docs`.
-  - Simulator reproduction log showing the exact directive error codes.
-  - Proposed remediation strategy.
-* **Human Action:** An SME reviews the analysis and transitions the Jira ticket or replies with approval (`CONFIRMED: Root cause validated. Proceed to bug filing and KB update.`).
+    Note over Jira,Agent: RUN 1: Incident Investigation & Self-Learning
+    Jira->>Agent: Intake RTEMS-101 (Telemetry Drops + Overrun)
+    Agent->>KB: Search symptoms (RTEMS_TOO_MANY, deadline overrun)
+    KB-->>Agent: Returns 2025 Post-Mortem, Specs, and Docs
+    Agent->>Agent: Discriminate: Reject 2025 Mutex (Queue was empty in 2025; here RTEMS_TOO_MANY)
+    Agent->>Agent: Calculate Burst Math from Specs (16 msgs * 2ms = 32ms < 50ms period)
+    Agent->>Conf: Draft Incident Analysis Page
+    Agent->>SIS: Execute tc4_reproduce.c (Confirms RTEMS_TOO_MANY & Missed Period)
+    Agent->>User: Request SME Gate: Present Initial Hypotheses
+    User-->>Agent: REJECT & REDIRECT: "Verify whether queue depth accounts for burst duration."
+    Agent->>Agent: Re-score & emphasize queue capacity vs burst arrival
+    Agent->>User: Re-submit SME Gate: Primary Hypothesis validated with math
+    User-->>Agent: APPROVE: "Root cause validated. Proceed to bug filing."
+    Agent->>Jira: Create Bug RTEMS-102 (Remediation: Queue depth 32 + ISR watermark)
+    Agent->>Conf: Publish Final Post-Mortem: 2026 Telemetry Saturation
+    Agent->>KB: Ingest New Post-Mortem into pgvector
+
+    Note over Jira,Agent: RUN 2: Self-Learning Demonstration
+    Jira->>Agent: Intake RTEMS-103 (Secondary Payload Queue Jitter)
+    Agent->>KB: Query "secondary payload queue drops RTEMS_TOO_MANY"
+    KB-->>Agent: Returns 2026 Telemetry Post-Mortem (Rank 1 Citation!)
+    Agent->>Jira: Resolve RTEMS-103 citing 2026 Post-Mortem guidance
+```
+
+### Detailed Execution Breakdown:
+
+#### Stage 1: Symptom Extraction & Multi-Source Search
+* Agent reads ticket `RTEMS-101`, identifying core parameters: `RTEMS_TOO_MANY`, `RTEMS_TIMEOUT`, `TM_GUIDANCE`, and telemetry drops.
+* Queries KB using hybrid dense-vector + full-text search:
+  - Query: `"rtems_message_queue_send RTEMS_TOO_MANY telemetry drop"`
+  - Query: `"rate monotonic period overrun guidance deadline"`
+  - Query: `"telemetry queue depth burst arrival rate"`
+
+#### Stage 2: Hypothesis Discrimination & Sizing Computation
+The evaluator rubric expects the agent to formulate and discriminate:
+* **Candidate Hypothesis A (2025 Look-alike: Mutex Priority Inversion):**
+  - *Agent Analysis:* 2025 incident post-mortem indicates priority inversion on shared mutex. However, in that incident, queue sends succeeded (`RTEMS_SUCCESSFUL`). In the current incident, `rtems_message_queue_send` returns `RTEMS_TOO_MANY`.
+  - *Verdict:* **REJECTED.** Mutex contention does not explain ISR queue exhaustion.
+* **Candidate Hypothesis B (Primary: Queue Burst Capacity Exhaustion):**
+  - *Agent Analysis:* Architecture specifications state queue depth is 16. Sensor burst rate is 500 Hz (1 message every 2ms). Maximum continuous queue buffering time is $16 \times 2\text{ ms} = 32\text{ ms}$. Guidance task execution jitter delays queue draining by 35ms. The queue overflows at $t = 32\text{ ms}$, generating `RTEMS_TOO_MANY` in the ISR.
+  - *Verdict:* **ACCEPTED (Primary).**
+
+#### Stage 3: Simulator Reproduction (`tc4_reproduce.c`)
+* The agent writes a targeted standalone test harness `tc4_reproduce.c` compiling under RTEMS 7 SPARC/LEON3.
+* The test creates a 16-message queue and a 50ms Rate Monotonic task. An ISR timer injects 500 Hz messages.
+* Run on SIS:
+  ```bash
+  sis -leon3 -m 32 tc4_reproduce.exe
+  ```
+* Output logs capture explicit occurrences of `rtems_message_queue_send -> RTEMS_TOO_MANY` and `rtems_rate_monotonic_period -> RTEMS_TIMEOUT`.
+
+#### Stage 4: Human-in-the-Loop SME Review Gate (Interactive Demonstration)
+To show the evaluators that the human gate is active and impactful:
+1. **First Submission:** The agent presents its analysis with equal weighting between queue exhaustion and historical priority inversion.
+2. **SME Rejection & Redirect:** The human evaluator / SME replies via Jira comment / comms:
+   > *"REJECT: Look closely at the directive error code RTEMS_TOO_MANY in the ISR trace. The 2025 incident had RTEMS_SUCCESSFUL. Re-evaluate queue capacity against burst arrival rates."*
+3. **Agent Adaptation:** The agent acknowledges the feedback, recalculates the queue exhaustion timeline, establishes queue saturation as the definitive root cause, and re-submits.
+4. **SME Approval:**
+   > *"CONFIRMED: Root cause validated. Proceed to bug filing and KB update."*
+
+#### Stage 5: Remediation Filing & Knowledge Base Update
+* **Jira Defect Filed:** `RTEMS-102: Telemetry queue capacity inadequate for 500Hz burst acquisition during guidance cycles`.
+* **Confluence Post-Mortem Published:** `[synthetic] Post-Mortem: 2026 Telemetry Queue Saturation & Burst Overrun`.
+* **KB Indexing:** Ingests the new Confluence page into PostgreSQL (`anvil`).
+
+#### Stage 6: Run 2 — Self-Learning Verification
+* A follow-up ticket `RTEMS-103: Secondary payload telemetry dropped under burst mode` is opened.
+* The agent executes `kb_search`.
+* **Verification Proof:** The newly created 2026 Post-Mortem appears as **Rank 1** in the search results with high relevance score ($>0.030$). The agent directly cites the 2026 incident findings to prescribe sizing recommendations immediately, proving that the factory retains and leverages learned institutional knowledge.
 
 ---
 
-## 6. Required Deliverables & Acceptance Criteria
+## 5. Required Deliverables & Acceptance Criteria
 
 | Deliverable | Requirement | Verification Method |
 |---|---|---|
-| **Incident Scenario Specification** | `docs/scenarios/tc4.md` committed and merged to `main` | Peer review and PR merge |
-| **Synthetic Confluence Seed Pages** | 3 synthetic pages published to `RTKB` with `(synthetic)` titles | Confluence API inspection |
-| **Knowledge Base Ingestion** | Synthetic pages ingested into pgvector DB with zero answer leaks | `kb stats` confirms chunk count increase |
-| **Hypothesis Generation** | Agent produces ranked hypotheses citing both docs and runbooks | Output report includes valid URLs and chunk IDs |
-| **Simulator Reproduction** | Standalone C test reproduces `RTEMS_TOO_MANY` and deadline miss on SIS | SIS execution trace exits with expected error status |
-| **Jira Remediation Bug** | Detailed defect filed in `RTEMS` Jira project | Issue created with reproduction steps and sizing math |
-| **Self-Learning Write-Back** | Published post-mortem indexed into KB, verifiable via `kb_search` | `kb search` returns new incident page in top 3 hits |
+| **Incident Scenario Specification** | `docs/scenarios/tc4.md` merged to `main` | Peer review & PR merge |
+| **Synthetic Confluence Seed Pages** | 10 synthetic pages published in `RTKB` with `(synthetic)` titles | Confluence API inspection |
+| **Discrimination Evidence** | Agent report explicitly analyzes and rejects the 2025 Mutex hypothesis | Confluence report contains discrimination section |
+| **Burst Math Verification** | Agent calculates queue capacity ($16 \times 2\text{ ms} = 32\text{ ms}$) without pre-existing text | Comparison of agent output against formula |
+| **SME Gate Demonstration** | Documented rejection/redirect cycle resulting in adjusted hypothesis | Jira comment / audit log trace |
+| **SIS Simulator Reproduction** | `tc4_reproduce.exe` demonstrates `RTEMS_TOO_MANY` and `RTEMS_TIMEOUT` | Terminal log from SIS execution |
+| **Self-Learning Demonstration** | Run 2 retrieves and cites Run 1 post-mortem at Rank 1 | Search query log and citation in ticket RTEMS-103 |
 
 ---
 
-## 7. Seed RTEMS Incident Ticket Definition
+## 6. Seed RTEMS Jira Tickets for Demo
 
-Below is the specification for the ticket to be created in the `RTEMS` Jira project (Board 139) to initiate this demonstration run.
-
-> [!IMPORTANT]
-> Omit the `anvil` label at creation time so the automated intake listener does not trigger prematurely before the scheduled demo session.
-
+### Ticket 1: Initial Incident (Run 1)
 * **Project:** `RTEMS` (Board 139)
-* **Issue Type:** Bug
 * **Summary:** `[TC4] Incident: Telemetry packet drops and TM_GUIDANCE deadline overrun under burst traffic`
-* **Components:** `telemetry`, `queue`, `rate-monotonic`
-* **Labels:** `incident-investigation`, `tc4`
+* **Labels:** `incident-investigation`, `tc4` *(omit `anvil` label until demo execution)*
 * **Description:**
   ```text
   h2. Incident Summary
-  During high-rate telemetry downlink simulation on the LEON3 payload platform, telemetry receiver logs indicate severe packet loss accompanied by real-time deadline misses on periodic guidance tasks.
+  During high-rate sensor burst simulation on the LEON3 payload platform, telemetry receiver logs record packet losses accompanied by real-time deadline misses on the periodic guidance task.
 
   h2. Observed Symptoms
-  1. Downlink receiver logs record dropped telemetry frames during 100Hz sensor burst acquisition.
+  1. Downlink receiver logs record dropped frames during 500Hz burst acquisition.
   2. Telemetry ISR error counter increments with status code RTEMS_TOO_MANY (10).
   3. Task TM_GUIDANCE (priority 10, period 50ms) reports RTEMS_TIMEOUT (6) from rtems_rate_monotonic_period, indicating missed deadlines (>35ms delay).
   4. Stack monitoring and heap integrity checks report nominal status (no memory leaks or overflows).
@@ -184,4 +217,17 @@ Below is the specification for the ticket to be created in the `RTEMS` Jira proj
   3. Prepare an incident analysis page on Confluence (RTKB).
   4. Reproduce the failure mode under the SIS simulator.
   5. Present findings to the lead engineer for confirmation before logging design remediation.
+  ```
+
+### Ticket 2: Follow-Up Retrospective (Run 2 - Self-Learning)
+* **Project:** `RTEMS` (Board 139)
+* **Summary:** `[TC4] Secondary payload instrument reports intermittent telemetry packet drops during burst mode`
+* **Labels:** `incident-investigation`, `tc4-followup` *(omit `anvil` label until demo execution)*
+* **Description:**
+  ```text
+  h2. Incident Summary
+  The secondary payload instrument interface reports intermittent packet loss under 500Hz burst conditions. Error logs indicate rtems_message_queue_send returning RTEMS_TOO_MANY.
+
+  h2. Requested Action
+  Query the knowledge base for recent telemetry queue buffer investigations, review prior post-mortems, and recommend verified sizing adjustments.
   ```

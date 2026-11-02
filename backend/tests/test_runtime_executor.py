@@ -33,7 +33,15 @@ class OfflineExecutor(DeepAgentExecutor):
         self.received = None
 
     def sandbox_for(self, run):
-        return object()
+        from deepagents.backends.protocol import ExecuteResponse
+
+        class _Sandbox:
+            id = "anvil-sbx-offline"
+
+            def execute(self, command, timeout=None):
+                return ExecuteResponse(output="0" * 40, exit_code=0)
+
+        return _Sandbox()
 
     def checkout(self, sandbox, run):
         return {"repo": run["repo"], "path": "/workspace/x", "base_ref": "main", "branch": work_branch(run),

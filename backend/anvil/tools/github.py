@@ -133,6 +133,33 @@ def github_checks(repo: str, pr: int, wait_seconds: int = 900, poll_seconds: int
     return _check_state(name, pr, with_logs=True) if result["state"] == "failure" else result
 
 
+def github_pr_state(repo: str, pr: int, wait_seconds: int = 0, poll_seconds: int = 30) -> dict[str, Any]:
+    """PR state for the merge watch: open|merged|closed plus review and issue comments.
+
+    With wait_seconds > 0, polls until the PR is no longer open or the wait expires. On 'merged'
+    the runtime transitions the Jira ticket to Done; there is no webhook (a laptop has no URL).
+    """
+    name = full_name(repo)
+    deadline = time.monotonic() + wait_seconds
+    while True:
+        p = _gh("GET", f"/repos/{name}/pulls/{pr}")
+        state = "merged" if p.get("merged_at") else p["state"]
+        if state != "open" or time.monotonic() >= deadline:
+            break
+        time.sleep(poll_seconds)
+    comments = [
+        {"author": (c.get("user") or {}).get("login"), "created": c.get("created_at"), "body": (c.get("body") or "")[:2000]}
+        for c in _gh("GET", f"/repos/{name}/issues/{pr}/comments", params={"per_page": 100})
+    ]
+    reviews = [
+        {"author": (r.get("user") or {}).get("login"), "state": r.get("state"), "body": (r.get("body") or "")[:2000], "submitted": r.get("submitted_at")}
+        for r in _gh("GET", f"/repos/{name}/pulls/{pr}/reviews", params={"per_page": 100})
+    ]
+    return {"pr": pr, "state": state, "merged_at": p.get("merged_at"), "merge_commit_sha": p.get("merge_commit_sha"),
+            "head_sha": p["head"]["sha"], "draft": p.get("draft"), "title": p.get("title"), "url": p["html_url"],
+            "comments": comments, "reviews": reviews}
+
+
 def github_code_scanning_alerts(repo: str, pr: int) -> list[dict[str, Any]]:
     """Open code-scanning (CodeQL) alerts on a PR: rule, severity, message, file and line."""
     alerts = _gh("GET", f"/repos/{full_name(repo)}/code-scanning/alerts", params={"ref": f"refs/pull/{pr}/head", "state": "open", "per_page": 100})
@@ -171,4 +198,4 @@ def github_merge(repo: str, pr: int, method: str = "squash") -> dict[str, Any]:
     return {"pr": pr, "merged": r.get("merged", False), "sha": r.get("sha"), "message": r.get("message")}
 
 
-GITHUB_TOOLS = [github_open_pr, github_checks, github_code_scanning_alerts, github_merge]
+GITHUB_TOOLS = [github_open_pr, github_checks, github_code_scanning_alerts, github_merge, github_pr_state]

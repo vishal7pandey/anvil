@@ -1,0 +1,26 @@
+{
+  "key": "RTEMS-1",
+  "summary": "POSIX timer fires one tick late",
+  "jira_url": "https://vishal7pandey.atlassian.net/browse/RTEMS-1",
+  "repo": "vishal7pandey/rtems",
+  "branch": "anvil/rtems-1-timer-fix",
+  "pr_url": "https://github.com/vishal7pandey/rtems/pull/12",
+  "root_cause": "cpukit/score/src/core/timercancel.c:97: the guard used <= where the spec requires <, so a timer due at the current tick was re-queued for the next tick.",
+  "fix": "Changed <= to < in _Timer_Cancel's expiry comparison; added an assertion in psxtimer01 that a timer expiring at 'now' fires in the same tick.",
+  "tests": [
+    "Reproduced: psxtimer01 timed out waiting for the callback (1 tick late) before the fix: 'expected tick 5, fired at tick 6'.",
+    "After the fix: psxtimer01 passes; psxtimes and psxtimersuites on sparc/erc32 SIS: 412/412 passed.",
+    "Full psx subset on erc32-sis: 1284 passed, 0 failed."
+  ],
+  "reproduction": "psxtimer01 hung for one extra tick before the fix",
+  "ci_state": "success",
+  "ci_url": "https://github.com/vishal7pandey/rtems/actions/runs/111",
+  "risk": "Any timer expiring in the current tick is now delivered immediately; this is the POSIX-required behaviour. Periodic (rtems_timer) timers are unaffected: they re-arm before the comparison.",
+  "lesson": "RTEMS timer paths compare ticks as '< due' vs 'now'; off-by-one shows as a one-tick-late callback in psxtimer tests.",
+  "run_id": "run-3f9a2c",
+  "run_url": "http://localhost:5173/runs/run-3f9a2c",
+  "usd": 1.83,
+  "tokens": 412000,
+  "duration_min": 47,
+  "human_touches": 2
+}

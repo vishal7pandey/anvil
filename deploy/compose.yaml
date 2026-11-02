@@ -2,6 +2,7 @@ name: anvil
 services:
   postgres:
     image: pgvector/pgvector:pg17
+    container_name: anvil-postgres
     environment:
       POSTGRES_USER: anvil
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-anvil}
@@ -15,14 +16,27 @@ services:
 
   gateway:
     image: ghcr.io/berriai/litellm:main-stable
+    container_name: anvil-gateway
     command: ["--config", "/app/config.yaml", "--port", "4000"]
-    env_file: ../.env
+    env_file:
+      - path: ../.env
+        required: false
     environment:
+      OPENAI_API_KEY: "${OPENAI_API_KEY:?OPENAI_API_KEY not set, start the stack with scripts/up.ps1}"
+      ANVIL_MAIN_MODEL: ${ANVIL_MAIN_MODEL:-openai/gpt-5}
+      ANVIL_FAST_MODEL: ${ANVIL_FAST_MODEL:-openai/gpt-5-mini}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-anvil-local}
       LITELLM_DATABASE_URL: postgresql://anvil:${POSTGRES_PASSWORD:-anvil}@postgres:5432/litellm
+      STORE_MODEL_IN_DB: "False"
     volumes: [../gateway/config.yaml:/app/config.yaml:ro]
     ports: ["4000:4000"]
     depends_on:
       postgres: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"]
+      interval: 10s
+      retries: 60
+      start_period: 120s
 
 volumes:
   pgdata:

@@ -134,8 +134,15 @@ class DeepAgentExecutor:
 
     # -- RunExecutor -----------------------------------------------------------------------
 
-    async def start(self, run: dict[str, Any], message: str) -> AsyncIterator[dict[str, Any]]:
+    @staticmethod
+    def _mapper(run: dict[str, Any]) -> EventMapper:
+        # The API owns seq (it re-numbers on persist); starting after its last seq keeps ours readable.
         mapper = EventMapper(run["run_id"])
+        mapper.seq = int(run.get("last_event_seq") or 0)
+        return mapper
+
+    async def start(self, run: dict[str, Any], message: str) -> AsyncIterator[dict[str, Any]]:
+        mapper = self._mapper(run)
         yield mapper.event("run.status", {"status": "running"})
         try:
             sandbox = await asyncio.to_thread(self.sandbox_for, run)
@@ -153,8 +160,7 @@ class DeepAgentExecutor:
             yield ev
 
     async def resume(self, run: dict[str, Any], decisions: list[dict[str, Any]]) -> AsyncIterator[dict[str, Any]]:
-        mapper = EventMapper(run["run_id"])
-        mapper.seq = int(run.get("last_seq", 0))
+        mapper = self._mapper(run)
         sandbox = await asyncio.to_thread(self.sandbox_for, run)
         yield mapper.event("run.status", {"status": "running"})
         async for ev in self._stream(run, sandbox, mapper, Command(resume={"decisions": decisions})):

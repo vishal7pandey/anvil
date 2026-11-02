@@ -79,7 +79,11 @@ class KBStore:
         self.engine = engine or create_engine(self.settings.database_url, future=True)
         self._owns_engine = engine is None
         self.embedder = embedder or GatewayEmbedder(self.settings)
-        self.guard = guard or ExclusionGuard(self.settings.excluded_issue_ids)
+        self.guard = guard or ExclusionGuard(
+            self.settings.excluded_issue_ids,
+            self.settings.excluded_mr_ids,
+            self.settings.excluded_commit_prefixes,
+        )
 
     def close(self) -> None:
         if self._owns_engine:
@@ -170,6 +174,7 @@ class KBStore:
                 max_chars=self.settings.chunk_chars,
                 overlap_chars=self.settings.chunk_overlap,
             )
+            chunks = [c for c in chunks if self.guard.allows_content(c)]
             if not chunks:
                 return outcome, 0
             vectors = self.embedder.embed(chunks)
@@ -246,7 +251,12 @@ class KBStore:
                 )
                 for row in rows
             ]
-        return [hit for hit in hits if self.guard.allows(hit.source, hit.external_id)]
+        return [
+            hit
+            for hit in hits
+            if self.guard.allows(hit.source, hit.external_id)
+            and self.guard.allows_content(hit.content)
+        ]
 
     def stats(self) -> dict[str, int]:
         with self.engine.connect() as conn:

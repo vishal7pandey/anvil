@@ -166,3 +166,39 @@ def test_source_filter(store):
     hits = store.search("priority ceiling", k=5, sources=["rtems-docs"])
     assert hits
     assert {hit.source for hit in hits} == {"rtems-docs"}
+
+
+def test_planted_chunk_referencing_mr_or_fix_is_filtered(store):
+    planted_doc = _doc(
+        "gitlab-issue",
+        "6000",
+        "Safe issue title",
+        "This is an allowed issue talking about rate monotonic scheduling.\n\n"
+        "Planted comment discussing fix in MR !1493 and commit a62e60b52501.",
+    )
+    report = store.ingest([planted_doc])
+    assert report.documents_added == 1
+
+    with store.engine.connect() as conn:
+        contents = conn.execute(text("SELECT content FROM kb_chunks")).scalars().all()
+    assert not any("!1493" in c or "a62e60b5" in c for c in contents)
+
+    vector = _format_vector(DeterministicEmbedder().embed(["planted leak"])[0])
+    with store.engine.begin() as conn:
+        doc_id = conn.execute(text("SELECT id FROM kb_documents WHERE external_id = '6000'")).scalar_one()
+        conn.execute(
+            text(
+                "INSERT INTO kb_chunks "
+                "(document_id, chunk_index, content, content_sha256, token_count, embedding) "
+                "VALUES (:doc_id, 99, :content, :hash, 5, CAST(:embedding AS vector))"
+            ),
+            {
+                "doc_id": doc_id,
+                "content": "bypassed chunk mentioning !1493 and #5776",
+                "hash": content_hash("leak"),
+                "embedding": vector,
+            },
+        )
+    hits = store.search("planted leak", k=10)
+    assert not any("!1493" in h.content or "#5776" in h.content for h in hits)
+

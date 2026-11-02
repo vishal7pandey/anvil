@@ -14,9 +14,9 @@ DEFAULT_DATABASE_URL = "postgresql+psycopg://anvil:anvil@localhost:5433/anvil"
 DEFAULT_GATEWAY_URL = "http://localhost:4000"
 
 # Upstream RTEMS issues used by the TC1 demo. Their records (and the fix
-# discussion) must never enter the knowledge base: the eval would leak the
-# answer it is supposed to withhold. Keep this list in sync with
-# docs/03-demo-scenarios.md and the ANVIL-14 ticket.
+# discussion / merge requests / fix commit prefixes) must never enter the
+# knowledge base: the eval would leak the answer it is supposed to withhold.
+# Keep this list in sync with docs/03-demo-scenarios.md and the ANVIL-14 ticket.
 TC1_EXCLUDED_ISSUE_IDS: tuple[str, ...] = (
     "5776",
     "5806",
@@ -24,6 +24,24 @@ TC1_EXCLUDED_ISSUE_IDS: tuple[str, ...] = (
     "5750",
     "5749",
     "5760",
+)
+
+TC1_EXCLUDED_MR_IDS: tuple[str, ...] = (
+    "1493",
+    "1526",
+    "1448",
+    "1468",
+    "1484",
+    "1479",
+)
+
+TC1_EXCLUDED_COMMIT_PREFIXES: tuple[str, ...] = (
+    "a62e60b5",
+    "97cf8529",
+    "f2ad71ee",
+    "af256031",
+    "338bab40",
+    "80b1ba90",
 )
 
 
@@ -39,7 +57,7 @@ class KBSettings:
     )
     gateway_key: str = field(
         default_factory=lambda: os.environ.get(
-            "LITELLM_MASTER_KEY", "sk-anvil-local-change-me"
+            "LITELLM_MASTER_KEY", "sk-anvil-local"
         )
     )
     embed_model: str = field(
@@ -69,3 +87,5 @@ class KBSettings:
         default_factory=lambda: os.environ.get("GITLAB_TOKEN") or None
     )
     excluded_issue_ids: tuple[str, ...] = TC1_EXCLUDED_ISSUE_IDS
+    excluded_mr_ids: tuple[str, ...] = TC1_EXCLUDED_MR_IDS
+    excluded_commit_prefixes: tuple[str, ...] = TC1_EXCLUDED_COMMIT_PREFIXES

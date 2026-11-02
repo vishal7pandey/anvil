@@ -151,12 +151,16 @@ def _issue_text(issue: dict[str, Any]) -> str:
     return "\n\n".join(part for part in parts if part.strip())
 
 
+_METADATA_PREFIXES = ("%", "..", ":", "<!--", "|")
+
+
 def _title_from_text(text: str, fallback: str) -> str:
-    for line in text.splitlines():
-        stripped = line.strip()
-        if not stripped:
+    lines = [line.strip() for line in text.splitlines()]
+    for line in lines:
+        if line.startswith("#") and line.lstrip("#").strip():
+            return line.lstrip("#").strip()[:120]
+    for line in lines:
+        if not line or line.startswith(_METADATA_PREFIXES):
             continue
-        if stripped.startswith("#"):
-            return stripped.lstrip("#").strip() or fallback
-        return stripped[:120]
+        return line[:120]
     return fallback

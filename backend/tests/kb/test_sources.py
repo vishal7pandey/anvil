@@ -73,3 +73,12 @@ def test_docs_dir_loader_skips_hidden_build_and_binary(tmp_path):
     assert [document.external_id for document in documents] == ["user/intro.rst"]
     assert documents[0].title == "RTEMS Intro"
     assert documents[0].url.endswith("/blob/main/user/intro.rst")
+
+
+def test_title_skips_spdx_preamble(tmp_path):
+    (tmp_path / "book.md").write_text(
+        "% SPDX-License-Identifier: CC-BY-SA-4.0\n\n# RTEMS Documentation\n\nBody.",
+        encoding="utf-8",
+    )
+    documents = list(documents_from_docs_dir(tmp_path))
+    assert documents[0].title == "RTEMS Documentation"

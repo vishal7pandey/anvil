@@ -8,7 +8,7 @@ flowchart LR
     S[Sessions + chat] --- P[Plan / tool calls / diffs] --- A[Approvals] --- M[Run metrics]
   end
   subgraph API[Control API - FastAPI]
-    R[Sessions & runs] --- E[SSE event stream] --- I[Intake: Jira poller, GitHub webhooks]
+    R[Sessions & runs] --- E[SSE event stream] --- I[Intake: Jira poller]
   end
   subgraph RT[Agent runtime - Deep Agents]
     MA[Main agent] --> SA[Subagents: investigator, builder, reviewer, writer, compliance]
@@ -25,7 +25,7 @@ flowchart LR
   RT -- execute / files --> SB
   RT --> DB
   T --> EXT
-  EXT -- checks, webhooks --> I
+  RT -- polls issues, checks, PR state --> EXT
 ```
 
 ## Components
@@ -33,7 +33,7 @@ flowchart LR
 | # | Component | Tech | Does |
 |---|---|---|---|
 | C1 | Web UI | React + Vite + Tailwind, SSE | Session list; new task (repo, environment, mode, model profile); chat stream with plan (todos), collapsible tool calls, terminal output, diffs; approvals inbox; run record (replay info, cost, tokens, human touches) |
-| C2 | Control API | FastAPI, SQLAlchemy, Postgres | Users (one demo user + bearer token), sessions, runs, events (SSE), approvals, intake (Jira poller, GitHub webhook) |
+| C2 | Control API | FastAPI, SQLAlchemy, Postgres | Users (one demo user + bearer token), sessions, runs, events (SSE), approvals, intake (Jira poller) |
 | C3 | Agent runtime | `deepagents` 0.7.x on LangGraph 1.x | `create_deep_agent` with sandbox backend, subagents, skills, memory, `interrupt_on` for approvals, Postgres checkpointer |
 | C4 | Model gateway | LiteLLM proxy (docker) | Aliases (`anvil-main`, `anvil-fast`, `anvil-embed`), spend log per run (`metadata.run_id`), budget per run, provider swap without code change |
 | C5 | Sandbox manager | Docker SDK for Python | One container per session from `anvil-sandbox-rtems:7`; workspace volume; CPU/memory limits; no credentials inside; destroyed or kept on handoff |
@@ -86,7 +86,12 @@ itself.
 * `interrupt_on` gates: `git_push`, `github_open_pr`, `github_merge`, `jira_transition`,
   `confluence_write`. Policy per run mode: *interactive* asks for each; *autonomous* auto-approves
   push, PR and comments. Merge follows the run's merge policy (step 10); the default is human.
-* The agent never edits `.github/workflows` (path deny in the file permissions).
+* The agent never changes `.github/`: `git_push` refuses, on the host clone, any push whose new
+  commits touch it, and `github_merge` refuses PRs that do. These are the only guards: GitHub auth
+  is the owner's `gh` login, which has `workflow` scope. (Harness path permissions don't apply to
+  sandboxes with a shell, which could bypass them.)
+* Subagents get no host tools (`"tools": []`): the approval gate lives on the main agent only, so
+  inherited outward tools would bypass it.
 * Budgets per run (tokens, USD, wall time) enforced in the runtime and in the gateway.
 
 ## Environments ("where does the agent run")
@@ -106,7 +111,7 @@ Every event: `{"run_id", "seq", "ts", "type", "agent", "data"}`. Types:
 
 | type | data |
 |---|---|
-| `run.status` | `{status: queued|running|waiting_approval|handoff|succeeded|failed}` |
+| `run.status` | `{status: queued|running|waiting_approval|handoff|succeeded|failed|cancelled}` (`cancelled` = stopped by a human via `POST /api/runs/{id}/cancel`; terminal, distinct from `failed`) |
 | `message.delta` / `message` | `{role, text}` |
 | `plan` | `{todos: [{content, status}]}` |
 | `tool.call` | `{call_id, name, args}` |
@@ -115,16 +120,17 @@ Every event: `{"run_id", "seq", "ts", "type", "agent", "data"}`. Types:
 | `diff` | `{files: [{path, patch}]}` |
 | `approval.request` | `{approval_id, action, args, reason}` |
 | `subagent` | `{name, phase: start|end, summary}` |
-| `usage` | `{model_alias, input_tokens, output_tokens, usd}` |
-| `artifact` | `{kind: pr|jira_comment|confluence_page|sbom|report, url, title}` |
+| `usage` | `{model_alias, input_tokens, output_tokens}` (USD comes from the gateway spend log per run, ANVIL-25) |
+| `artifact` | `{kind: pr|jira_comment|confluence_page|sbom|report|handoff, url, title}` |
+| `run.record` | reproducibility fields: base_ref/base_sha, branch, network, sandbox image + digest, model aliases, prompt_hash, skills + skills_hash, mode, merge_policy, trigger |
 
 ### REST
 
 `POST /api/sessions` {repo, environment, mode, model_profile, title?} ->
 `POST /api/sessions/{id}/messages` {text} (starts or continues a run) ->
 `GET /api/runs/{id}/events` (SSE) · `POST /api/approvals/{id}` {decision, comment} ·
-`GET /api/runs/{id}` (run record) · `POST /api/intake/jira/poll` (manual trigger) ·
-`POST /api/webhooks/github`.
+`GET /api/runs/{id}` (run record) · `POST /api/runs/{id}/cancel` · `POST /api/intake/jira/poll`
+(manual trigger). No webhooks: a laptop has no public URL, so PR and check state are polled.
 
 ### Run record (reproducibility)
 

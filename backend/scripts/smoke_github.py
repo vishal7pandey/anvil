@@ -17,6 +17,7 @@ repo = sys.argv[1] if len(sys.argv) > 1 else "rtems"
 name, branch = github.full_name(repo), f"anvil/smoke-{int(time.time())}"
 main_sha = github._gh("GET", f"/repos/{name}/git/ref/heads/main")["object"]["sha"]
 github._gh("POST", f"/repos/{name}/git/refs", json={"ref": f"refs/heads/{branch}", "sha": main_sha})
+pr = None
 try:
     content = base64.b64encode(b"anvil smoke test, safe to delete\n").decode()
     github._gh("PUT", f"/repos/{name}/contents/ANVIL_SMOKE.md", json={"message": "ANVIL-13: smoke", "content": content, "branch": branch})
@@ -24,16 +25,18 @@ try:
     print("open_pr ok:", pr["url"])
     print("checks ok:", github.github_checks(repo, pr["number"], wait_seconds=60)["state"])
     try:
-        print("code_scanning ok:", len(github.github_code_scanning_alerts(repo, pr["number"])), "alerts")
-    except ToolError as e:
-        print("code_scanning:", e)
-    try:
         github.github_merge(repo, pr["number"])
         print("merge: UNEXPECTED, merged")
     except ToolError as e:
         print("merge refused ok:", e)
-    print("sonar ok:", sonar.sonar_issues(pr["number"])["quality_gate"])
-    github._gh("PATCH", f"/repos/{name}/pulls/{pr['number']}", json={"state": "closed"})
+    # Before CodeQL / SonarCloud have analysed the PR these return 404 "not found": reported, not fatal.
+    for label, call in [("code_scanning", lambda: f"{len(github.github_code_scanning_alerts(repo, pr['number']))} alerts"), ("sonar", lambda: sonar.sonar_issues(pr["number"])["quality_gate"])]:
+        try:
+            print(f"{label} ok:", call())
+        except ToolError as e:
+            print(f"{label} (no analysis yet?):", e)
 finally:
+    if pr:
+        github._gh("PATCH", f"/repos/{name}/pulls/{pr['number']}", json={"state": "closed"})
     github._gh("DELETE", f"/repos/{name}/git/refs/heads/{branch}")
     print("cleanup ok:", branch, "deleted")

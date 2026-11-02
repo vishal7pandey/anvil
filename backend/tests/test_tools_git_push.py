@@ -43,6 +43,7 @@ def setup(tmp_path, monkeypatch):
     monkeypatch.setenv("GITHUB_OWNER", "vishal7pandey")
     monkeypatch.setenv("GITHUB_TOKEN", "fake-gh-token")
     monkeypatch.setenv("ANVIL_REPOS_DIR", str(tmp_path / "host"))
+    monkeypatch.setenv("ANVIL_LOCKS_DIR", str(tmp_path / "locks"))
     return remote, ws, repo
 
 
@@ -62,6 +63,37 @@ def test_push_agent_branch_reaches_remote(setup):
     git("commit", "-am", "RTEMS-1: Second CI round", cwd=repo)
     push_from_sandbox(LocalSandbox(), "rtems", "anvil/rtems-1-fix", workspace=ws.as_posix())
     assert git("rev-parse", "refs/heads/anvil/rtems-1-fix", cwd=remote) == git("rev-parse", "HEAD", cwd=repo)
+
+
+def test_refuses_commits_touching_github_dir_on_host_side(setup):
+    remote, ws, repo = setup
+    git("checkout", "-b", "anvil/rtems-4-sneaky", cwd=repo)
+    (repo / "a.c").write_text("int a = 3;\n")
+    git("commit", "-am", "RTEMS-4: Fix", cwd=repo)
+    (repo / ".github" / "workflows").mkdir(parents=True)
+    (repo / ".github" / "workflows" / "ci.yml").write_text("on: push\n")
+    git("add", ".", cwd=repo)
+    git("commit", "-m", "RTEMS-4: Speed up CI", cwd=repo)
+    git("rm", "-r", "-q", ".github", cwd=repo)
+    git("commit", "-m", "RTEMS-4: Hide it again", cwd=repo)
+
+    with pytest.raises(ToolError, match=r"protected paths \(.github/workflows/ci.yml\)"):
+        push_from_sandbox(LocalSandbox(), "rtems", "anvil/rtems-4-sneaky", workspace=ws.as_posix())
+    assert "anvil/rtems-4-sneaky" not in git("branch", "--list", cwd=remote)
+    host_clone = next((setup[1].parent / "host").iterdir())
+    assert "anvil/rtems-4-sneaky" not in git("branch", "--list", cwd=host_clone)
+
+
+def test_acquire_lock_writes_owner_and_times_out(tmp_path, monkeypatch):
+    from anvil.tools.locks import acquire_lock
+
+    monkeypatch.setenv("ANVIL_LOCKS_DIR", str(tmp_path))
+    with acquire_lock("network-heavy", what="clone rtems") as path:
+        assert path.read_text().startswith("anvil-runtime ") and "clone rtems" in path.read_text()
+        with pytest.raises(ToolError, match="still held"):
+            with acquire_lock("network-heavy", timeout=0, poll=0):
+                pass
+    assert not path.exists()
 
 
 @pytest.mark.parametrize("branch", ["main", "feature/x", "anvil/../main", "anvil/x;rm -rf /", "anvil/main"])

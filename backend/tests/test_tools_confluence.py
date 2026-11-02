@@ -51,7 +51,15 @@ def test_write_updates_existing_page_with_next_version(atlassian_env):
 
 
 @respx.mock
-def test_write_unknown_space(atlassian_env):
+def test_write_refuses_spaces_outside_allowlist(atlassian_env):
+    with pytest.raises(ToolError, match=r"only write to Confluence spaces \['RTKB'\], not 'ANVIL'"):
+        confluence.confluence_write("ANVIL", "Anvil: charter", "overwritten")
+    assert not respx.calls
+
+
+@respx.mock
+def test_write_unknown_space(atlassian_env, monkeypatch):
+    monkeypatch.setenv("ANVIL_CONFLUENCE_WRITE_SPACES", "RTKB, nope")
     respx.get(f"{atlassian_env}/wiki/api/v2/spaces").respond(json={"results": []})
     with pytest.raises(ToolError, match="space 'NOPE' not found"):
         confluence.confluence_write("NOPE", "t", "x")

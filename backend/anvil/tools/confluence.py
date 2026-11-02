@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from anvil.tools._atlassian import ToolError, request, site
+from anvil.tools._atlassian import AtlassianSettings, ToolError, request, site
 from anvil.tools.markdown import to_storage
 
 
@@ -49,6 +49,9 @@ def confluence_write(space_key: str, title: str, markdown_or_storage: str, paren
 
     The body is Markdown, or storage-format XHTML if it starts with '<'. Returns id, version and url.
     """
+    allowed = {k.strip().upper() for k in AtlassianSettings().anvil_confluence_write_spaces.split(",") if k.strip()}
+    if space_key.upper() not in allowed:
+        raise ToolError(f"refused: agents may only write to Confluence spaces {sorted(allowed)}, not '{space_key}'")
     space_id = _space_id(space_key)
     text = markdown_or_storage.strip()
     body = {"representation": "storage", "value": text if text.startswith("<") else to_storage(text)}

@@ -2,6 +2,7 @@
 
 import json
 
+import httpx
 import pytest
 import respx
 
@@ -25,7 +26,13 @@ def run(name, status="completed", conclusion="success", id=1):
     return {"id": id, "name": name, "status": status, "conclusion": conclusion, "html_url": f"https://x/{name}", "output": {"summary": ""}, "app": {"slug": "github-actions"}}
 
 
+def mock_files(*names):
+    pages = {"1": [{"filename": n} for n in names]}
+    respx.get(f"{API}/pulls/7/files").mock(side_effect=lambda req: httpx.Response(200, json=pages.get(req.url.params["page"], [])))
+
+
 def mock_checks(runs, statuses=()):
+    mock_files("cpukit/score/src/x.c")
     respx.get(f"{API}/pulls/7").respond(json=PR)
     respx.get(f"{API}/commits/abc/check-runs").respond(json={"check_runs": runs})
     respx.get(f"{API}/commits/abc/status").respond(json={"statuses": list(statuses)})
@@ -85,6 +92,21 @@ def test_merge_refuses_unless_green_then_merges_pinned_sha():
     put = respx.put(f"{API}/pulls/7/merge").respond(json={"merged": True, "sha": "def", "message": "ok"})
     assert github.github_merge("rtems", 7)["merged"] is True
     assert json.loads(put.calls[0].request.content) == {"merge_method": "squash", "sha": "abc"}
+
+
+@respx.mock
+def test_merge_refuses_pr_touching_github_dir_even_when_green():
+    mock_checks([run("build")])
+    mock_files("cpukit/x.c", ".github/workflows/ci.yml")
+    merge = respx.put(f"{API}/pulls/7/merge")
+    with pytest.raises(ToolError, match=r"protected paths \(.github/workflows/ci.yml\)"):
+        github.github_merge("rtems", 7)
+    assert not merge.called
+
+
+def test_is_protected():
+    assert github.is_protected(".github/workflows/x.yml") and github.is_protected('".GitHub/dependabot.yml"')
+    assert not github.is_protected("docs/.github-notes.md") and not github.is_protected("cpukit/.github/x")
 
 
 @respx.mock

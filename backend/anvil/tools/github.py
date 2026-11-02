@@ -61,6 +61,11 @@ def _gh(method: str, path: str, **kwargs: Any) -> Any:
     return r.json() if "json" in ctype else r.text
 
 
+def is_protected(path: str) -> bool:
+    """Paths agents may never change: .github/ (workflows run with repo secrets; the gh token has workflow scope)."""
+    return path.strip().strip('"').lower().startswith(".github/")
+
+
 def _require_agent_branch(branch: str) -> None:
     if not branch.startswith("anvil/"):
         raise ToolError(f"refused: agent branches must start with 'anvil/', got '{branch}'")
@@ -153,6 +158,12 @@ def github_merge(repo: str, pr: int, method: str = "squash") -> dict[str, Any]:
     name = full_name(repo)
     head = _gh("GET", f"/repos/{name}/pulls/{pr}")["head"]["ref"]
     _require_agent_branch(head)
+    files, page = [], 1
+    while batch := _gh("GET", f"/repos/{name}/pulls/{pr}/files", params={"per_page": 100, "page": page}):
+        files += [p for f in batch for p in (f["filename"], f.get("previous_filename") or "")]
+        page += 1
+    if blocked := sorted({p for p in files if is_protected(p)}):
+        raise ToolError(f"refused: PR #{pr} changes protected paths ({', '.join(blocked[:10])}); agents may not change .github/")
     state = _check_state(name, pr, with_logs=False)
     if state["state"] != "success":
         raise ToolError(f"refused: checks on PR #{pr} are '{state['state']}' (failing: {', '.join(state['failing']) or 'none'})")

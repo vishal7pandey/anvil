@@ -16,6 +16,7 @@ class AtlassianSettings(BaseSettings):
     atlassian_site: str = "https://vishal7pandey.atlassian.net"
     atlassian_email: str = ""
     atlassian_api_token: str = ""
+    anvil_confluence_write_spaces: str = "RTKB"
 
 
 def site() -> str:

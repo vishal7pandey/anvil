@@ -35,11 +35,35 @@ def sandbox_name(session_id: str) -> str:
     return f"anvil-sbx-{re.sub(r'[^a-zA-Z0-9_.-]', '', session_id)[:24]}"
 
 
+# Run fields reach shell commands inside the sandbox; validate them at this boundary (they come
+# from Jira tickets and API requests). Quoting alone isn't enough: a ref starting with "-" would be
+# read by git as an option.
+_REPO = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
+_REF = re.compile(r"[A-Za-z0-9_.][A-Za-z0-9_./-]{0,199}")
+
+
+def validate_repo(repo: str) -> str:
+    if not isinstance(repo, str) or not _REPO.fullmatch(repo) or ".." in repo or repo.split("/")[1] in (".", ""):
+        raise ValueError(f"invalid repo {repo!r}: expected 'owner/name'")
+    return repo
+
+
+def validate_ref(ref: str, what: str) -> str:
+    if (not isinstance(ref, str) or not _REF.fullmatch(ref) or ".." in ref or "//" in ref
+            or ref.endswith(("/", ".", ".lock"))):
+        raise ValueError(f"invalid {what} {ref!r}")
+    return ref
+
+
+def repo_path(repo: str) -> str:
+    return f"/workspace/{validate_repo(repo).split('/')[1]}"
+
+
 def work_branch(run: dict[str, Any]) -> str:
     if run.get("branch"):
-        return run["branch"]
+        return validate_ref(run["branch"], "branch")
     key = (run.get("jira_key") or f"run-{run['run_id'][:8]}").lower()
-    return f"anvil/{key}"
+    return validate_ref(f"anvil/{key}", "branch")
 
 
 def prompt_hash() -> str:
@@ -98,13 +122,16 @@ class DeepAgentExecutor:
 
     def checkout(self, sandbox: DockerSandbox, run: dict[str, Any]) -> dict[str, Any]:
         """Clone only the base branch (answer-leak control: other refs may hold withheld fixes)."""
-        repo, base, branch = run["repo"], run.get("base_ref") or "main", work_branch(run)
-        path = f"/workspace/{repo.split('/')[-1]}"
+        repo = validate_repo(run["repo"])
+        base = validate_ref(run.get("base_ref") or "main", "base_ref")
+        branch = work_branch(run)
+        path = repo_path(repo)
+        qpath = shlex.quote(path)
         url = f"{GITHUB_BASE}/{repo}.git"
         script = (
-            f"set -e; if [ ! -d {path}/.git ]; then "
-            f"git clone --quiet --single-branch --branch {shlex.quote(base)} --depth 200 {shlex.quote(url)} {path}; fi; "
-            f"cd {path}; git config user.name anvil-bot; git config user.email anvil-bot@users.noreply.github.com; "
+            f"set -e; if [ ! -d {qpath}/.git ]; then "
+            f"git clone --quiet --single-branch --branch {shlex.quote(base)} --depth 200 {shlex.quote(url)} {qpath}; fi; "
+            f"cd {qpath}; git config user.name anvil-bot; git config user.email anvil-bot@users.noreply.github.com; "
             f"git remote set-url origin {shlex.quote(url)}; "
             f"git switch --quiet {shlex.quote(branch)} 2>/dev/null || git switch --quiet -c {shlex.quote(branch)}; "
             f"echo BASE_SHA=$(git rev-parse origin/{shlex.quote(base)}); echo HEAD_SHA=$(git rev-parse HEAD)"

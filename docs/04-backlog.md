@@ -1,6 +1,6 @@
 # 04 Backlog, milestones, team
 
-Jira project `ANVIL` tracks building the factory. Jira project `RTEMS` is the *product backlog the
+Jira project `ANVIL` (board 138) tracks building the factory. Jira project `RTEMS` (board 139) is the *product backlog the
 factory works on* (TC1/TC4 tickets live there). Keys below become Jira issues; this file is the
 seed, Jira is the record afterwards.
 
@@ -17,15 +17,19 @@ seed, Jira is the record afterwards.
 
 Rules of engagement are in [AGENTS.md](../AGENTS.md).
 
-## Milestones
+## Milestones (demo 2026-11-10, may slip 3-4 days)
 
-| Milestone | Exit criterion | Target |
+| Milestone | Exit criterion | Date |
 |---|---|---|
-| M0 Foundations | Mirrors pushed; Jira/Confluence exist; sandbox image builds and `anvil-smoke` passes; compose runs Postgres + gateway | Day 1 |
-| M1 Walking skeleton | In the UI: new session on `rtems`, ask "build erc32 and run hello", watch plan, tool calls and SIS output stream; run record saved | Day 3 |
-| M2 TC1 closed loop | Jira ticket -> PR -> CI (build, test, CodeQL, Sonar) -> agent reacts -> evidence -> human merge; forced stuck run hands off | Day 6 |
-| M3 TC2 + TC3 | Upgrade PR with SBOM/CVE delta; CRA artifacts set in Confluence + Jira stories | Day 9 |
-| M4 TC4 + rehearsal | KB investigation end to end; metrics page; three clean recorded runs per scenario | Day 12 |
+| M0 Foundations | Mirrors pushed; Jira/Confluence exist; sandbox image builds and `anvil-smoke` passes; compose runs Postgres + gateway | Tue 11-03 |
+| M1 Walking skeleton | In the UI: new session on `rtems`, ask "build erc32 and run hello", watch plan, tool calls and SIS output stream; run record saved | Thu 11-05 |
+| M2 TC1 closed loop | Jira ticket -> branch -> fix -> tests -> pre-commit -> commit -> push -> PR -> CI -> agent reacts -> evidence -> merge (by policy); forced stuck run hands off | Sat 11-07 |
+| M3 TC2 + TC3 | Same loop, new skills: upgrade PR with SBOM/CVE delta; CRA artefacts in RTKB + Jira stories | Sun 11-08 |
+| M4 TC4 + rehearsal | KB investigation end to end; metrics page; three clean recorded runs of TC1 | Mon 11-09 |
+
+**Cut line if we slip:** TC1 must be flawless; it is the scenario reviewers judge hardest. TC2-TC4
+are the same runtime with different skills, so they degrade to "shown live, less polished"
+before TC1 loses anything. The Cloud environment option stays a stretch goal.
 
 ## Workstreams and stories (M0-M2 detailed, M3-M4 coarse)
 
@@ -35,6 +39,7 @@ Rules of engagement are in [AGENTS.md](../AGENTS.md).
 * A3 Add leon3 BSP + `rtems-test` config for the posix/psx and sp test subsets; document test
   commands in `sandbox/rtems/README.md` (the agent's skill reads it).
 * A4 Add ccache volume so rebuilds in a session take < 2 min.
+* A5 `pre-commit` + `.pre-commit-config.yaml` for the rtems mirror (clang-format changed lines, whitespace, cppcheck, commit-msg key check); installed in the image.
 
 ### WS-B Agent runtime (Claude)
 * B1 `DockerSandbox(BaseSandbox)`: execute/upload/download/id over docker SDK; limits; no creds.
@@ -60,8 +65,8 @@ Rules of engagement are in [AGENTS.md](../AGENTS.md).
 
 ### WS-E Integrations (Devin)
 * E1 Host tools: `jira_get/comment/transition/create`, `confluence_search/get/write`.
-* E2 Host tools: `github_open_pr` (patch export from sandbox -> host clone -> push), `github_checks`,
-  `github_code_scanning_alerts`, `sonar_issues`.
+* E2 Host tools: `git_push` (git bundle from sandbox -> host clone -> push), `github_open_pr`,
+  `github_checks`, `github_code_scanning_alerts`, `sonar_issues`, `github_merge` (policy-checked).
 * E3 Jira intake poller + GitHub webhook (merged -> Done + lesson).
 * E4 `web_search` tool (OpenAI web search via the gateway; fallback Tavily if needed).
 
@@ -70,7 +75,7 @@ Rules of engagement are in [AGENTS.md](../AGENTS.md).
   subset on SIS, upload logs.
 * F2 CodeQL C/C++ (manual build mode) on PRs; Dependabot config where an ecosystem exists
   (`gitsubmodule` on rtems-libbsd, `github-actions` everywhere).
-* F3 SonarQube scan on PRs (owner's instance; token as repo secret).
+* F3 SonarCloud scan on PRs to the public `rtems` mirror (free for public repos; same setup as `ai-software-factory/docs/sonarcloud.md`; owner sets `SONAR_TOKEN`).
 * F4 Syft SBOM (SPDX + CycloneDX) and OSV-Scanner as artifacts; cppcheck + clang-format check.
 
 ### WS-G Knowledge + eval (OpenCode)

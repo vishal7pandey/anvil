@@ -2,8 +2,9 @@
 
 ## The one-sentence goal
 
-Show, live and on a real embedded codebase, an AI factory that goes from a ticket to a
-reviewed, CI-green pull request with its evidence, and that knows when to stop and hand back.
+Show, live and on a real embedded codebase, an AI factory that takes a ticket, branches the repo,
+changes the code, runs the tests and pre-commit hooks, commits, pushes, opens a pull request, reacts
+to CI, and merges when policy allows; and that knows when to stop and hand back.
 
 ## Why build our own instead of showing a vendor tool
 
@@ -45,7 +46,7 @@ the story is wrong.
 
 | # | Criterion | How we check |
 |---|---|---|
-| S1 | A Jira ticket becomes a PR without a human typing code | Recorded run, TC1 |
+| S1 | A Jira ticket becomes a merged PR without a human typing code (branch, tests, pre-commit, commit, push, PR, CI, merge) | Recorded run, TC1 |
 | S2 | The agent builds for the target and runs tests on the simulator | Sandbox logs in the run timeline |
 | S3 | CI (build + tests + CodeQL + Sonar) runs on the agent's PR and the agent reacts to it | PR checks, follow-up commit |
 | S4 | The TC1 root cause matches the withheld upstream fix | Side-by-side diff, judged by a human |

@@ -42,23 +42,33 @@ flowchart LR
 
 ## The closed loop (TC1 path)
 
-1. **Intake.** A Jira issue in project `RTEMS` gets label `anvil` and status *Ready for agent*.
-   The poller (every 60 s) creates a run in mode *autonomous* and moves the issue to *In Progress*.
-2. **Set up.** Sandbox starts; repo cloned at the issue's base ref into `/workspace/<repo>`;
-   branch `anvil/<issue-key-lower>`.
+1. **Intake.** A Jira issue in project `RTEMS` gets label `anvil` (= ready for agent; labels carry
+   agent state because the projects use the default workflow). The poller (every 60 s) creates a
+   run in mode *autonomous* and moves the issue to *In Progress*.
+2. **Branch.** Sandbox starts; repo cloned at the issue's base ref into `/workspace/<repo>`;
+   branch `anvil/<issue-key-lower>-<slug>`.
 3. **Work.** Main agent loads the `defect-fix` skill, writes a plan (todos), delegates code
    archaeology to `investigator`, reproduces with a failing test, fixes, builds the BSP, runs
    the targeted tests and the regression subset on SIS via `builder`.
-4. **Self-review.** `reviewer` reads the diff against the skill's checklist (coding style,
+4. **Pre-commit.** `pre-commit run` in the sandbox (clang-format on changed lines, trailing
+   whitespace, cppcheck on changed files, commit-message check `<KEY>: ...`). Failures go back to
+   the agent like any test failure.
+5. **Self-review.** `reviewer` reads the diff against the skill's checklist (coding style,
    MISRA-ish hazards, test present, docs touched).
-5. **Outward actions (approval-gated by policy).** Host tool `github_open_pr` exports the
-   sandbox diff as a patch, commits on the host clone and pushes. The sandbox never holds tokens.
-6. **CI.** Actions build + test + CodeQL + Sonar on the PR. Agent waits on `github_checks`,
-   reads failures and code-scanning alerts, iterates (max 3 CI rounds).
-7. **Evidence.** `writer` posts a Jira comment (root cause, fix, tests, CI links, cost) and a
-   Confluence evidence page; issue moves to *In Review*.
-8. **Human gate.** Engineer reviews and merges in GitHub. Webhook moves Jira to *Done*; the
-   agent writes one lesson to `/memories/rtems/lessons.md`.
+6. **Commit and push.** The agent commits in the sandbox (author `anvil-bot`, trailer
+   `Anvil-Run: <run_id>`). Host tool `git_push` exports the commits with `git bundle`, applies them
+   to the host clone and pushes. The sandbox never holds tokens.
+7. **PR.** Host tool `github_open_pr` opens the PR (title `<KEY>: ...`, body = root cause, change,
+   tests, evidence links, run record link) and links it in Jira.
+8. **CI.** Actions build + test + CodeQL + Sonar on the PR. Agent waits on `github_checks`,
+   reads failures, code-scanning alerts and Sonar issues, pushes fixes (max 3 CI rounds).
+9. **Evidence.** `writer` posts a Jira comment (root cause, fix, tests, CI links, cost) and a
+   Confluence evidence page in RTKB; label `anvil-in-review`.
+10. **Merge (policy).** `github_merge` is allowed only when CI is green, the `reviewer` subagent
+    approved, and the run's merge policy allows it: `human` (default for the demo of TC1: a person
+    merges), `agent-after-approval` (agent merges after a human clicks Approve in the UI or on the
+    PR), or `agent` (fully autonomous, for low-risk classes like docs). On merge: Jira *Done*, one
+    lesson written to `/memories/rtems/lessons.md`.
 
 ### Stuck detection and handoff (demonstrable)
 
@@ -66,16 +76,16 @@ The runtime, not the model, decides the agent is stuck when any of these hold:
 step budget hit, cost budget hit, same command failing 3 times with the same error signature,
 no change to the diff in the last N tool calls, CI red after 3 rounds. Then it forces the
 `handoff` path: commit WIP to `anvil/<key>-wip`, write a handoff note (goal, what was tried,
-evidence, current hypothesis, suggested next step) to Jira, move the issue to *Needs human*, and
+evidence, current hypothesis, suggested next step) to Jira, label the issue `anvil-needs-human`, and
 keep the sandbox for 24 h so the engineer can attach to it. The model can also call `handoff`
 itself.
 
 ### Safety rails
 
 * Credentials live in the API process only; sandbox containers get none and run as non-root.
-* `interrupt_on` gates: `github_open_pr`, `github_push`, `jira_transition`, `confluence_write`.
-  Policy per run mode: *interactive* asks for each; *autonomous* auto-approves PR and comments,
-  never merges. Merge is always human.
+* `interrupt_on` gates: `git_push`, `github_open_pr`, `github_merge`, `jira_transition`,
+  `confluence_write`. Policy per run mode: *interactive* asks for each; *autonomous* auto-approves
+  push, PR and comments. Merge follows the run's merge policy (step 10); the default is human.
 * The agent never edits `.github/workflows` (path deny in the file permissions).
 * Budgets per run (tokens, USD, wall time) enforced in the runtime and in the gateway.
 

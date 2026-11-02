@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: anvil
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-anvil}
       POSTGRES_DB: anvil
-    ports: ["5433:5432"]          # 5432 is taken by the host's own PostgreSQL
+    ports: ["127.0.0.1:5433:5432"]  # loopback only; 5432 is taken by the host's own PostgreSQL
     volumes: [pgdata:/var/lib/postgresql/data, ./initdb:/docker-entrypoint-initdb.d:ro]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U anvil"]
@@ -29,7 +29,7 @@ services:
       LITELLM_DATABASE_URL: postgresql://anvil:${POSTGRES_PASSWORD:-anvil}@postgres:5432/litellm
       STORE_MODEL_IN_DB: "False"
     volumes: [../gateway/config.yaml:/app/config.yaml:ro]
-    ports: ["4000:4000"]
+    ports: ["127.0.0.1:4000:4000"]  # loopback only: the master key is a fixed local default
     depends_on:
       postgres: {condition: service_healthy}
     healthcheck:

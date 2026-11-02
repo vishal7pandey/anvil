@@ -17,6 +17,11 @@ if (-not $env:OPENAI_API_KEY) {
     $env:OPENAI_API_KEY = $key
 }
 
-docker compose -f (Join-Path $root "deploy/compose.yaml") up -d --wait
-if ($LASTEXITCODE -ne 0) { throw "docker compose failed" }
+# docker compose writes progress to stderr; with "Stop", PowerShell would treat that as a failure.
+# Judge success by the exit code instead.
+$ErrorActionPreference = "Continue"
+docker compose -f (Join-Path $root "deploy/compose.yaml") up -d --wait 2>&1 | ForEach-Object { "$_" }
+$exit = $LASTEXITCODE
+$ErrorActionPreference = "Stop"
+if ($exit -ne 0) { throw "docker compose failed (exit $exit)" }
 Write-Host "Anvil stack up: Postgres on localhost:5433, gateway on http://localhost:4000"

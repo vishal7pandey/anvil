@@ -1,0 +1,129 @@
+# 02 Architecture
+
+Thin on purpose. Seven boxes, each doing real work in the demo.
+
+```mermaid
+flowchart LR
+  subgraph UI[Web UI - React/Vite]
+    S[Sessions + chat] --- P[Plan / tool calls / diffs] --- A[Approvals] --- M[Run metrics]
+  end
+  subgraph API[Control API - FastAPI]
+    R[Sessions & runs] --- E[SSE event stream] --- I[Intake: Jira poller, GitHub webhooks]
+  end
+  subgraph RT[Agent runtime - Deep Agents]
+    MA[Main agent] --> SA[Subagents: investigator, builder, reviewer, writer, compliance]
+    MA --> SK[Skills: defect-fix, upgrade, cra-review, investigate]
+    MA --> T[Host tools: jira, confluence, github, sonar, kb_search, web_search, handoff]
+  end
+  GW[Model gateway - LiteLLM] --> OAI[(OpenAI)]
+  SB[Sandbox container per session<br/>RTEMS SPARC toolchain + SIS]
+  DB[(Postgres + pgvector<br/>runs, events, checkpoints, memory, KB)]
+  EXT[GitHub / Actions / CodeQL / Dependabot<br/>Jira / Confluence / SonarQube]
+
+  UI <--> API --> RT
+  RT --> GW
+  RT -- execute / files --> SB
+  RT --> DB
+  T --> EXT
+  EXT -- checks, webhooks --> I
+```
+
+## Components
+
+| # | Component | Tech | Does |
+|---|---|---|---|
+| C1 | Web UI | React + Vite + Tailwind, SSE | Session list; new task (repo, environment, mode, model profile); chat stream with plan (todos), collapsible tool calls, terminal output, diffs; approvals inbox; run record (replay info, cost, tokens, human touches) |
+| C2 | Control API | FastAPI, SQLAlchemy, Postgres | Users (one demo user + bearer token), sessions, runs, events (SSE), approvals, intake (Jira poller, GitHub webhook) |
+| C3 | Agent runtime | `deepagents` 0.7.x on LangGraph 1.x | `create_deep_agent` with sandbox backend, subagents, skills, memory, `interrupt_on` for approvals, Postgres checkpointer |
+| C4 | Model gateway | LiteLLM proxy (docker) | Aliases (`anvil-main`, `anvil-fast`, `anvil-embed`), spend log per run (`metadata.run_id`), budget per run, provider swap without code change |
+| C5 | Sandbox manager | Docker SDK for Python | One container per session from `anvil-sandbox-rtems:7`; workspace volume; CPU/memory limits; no credentials inside; destroyed or kept on handoff |
+| C6 | Knowledge + memory | Postgres + pgvector | KB index (RTEMS GitLab issues, rtems-docs, Confluence KB space); LangGraph store for `/memories/`; code search stays agentic (ripgrep in the sandbox) |
+| C7 | Quality gates | GitHub Actions on the mirrors | Same sandbox image (GHCR) builds the BSP and runs tests on SIS; CodeQL (C/C++, manual build); SonarQube; cppcheck; Syft SBOM + OSV-Scanner; Dependabot where an ecosystem exists |
+
+## The closed loop (TC1 path)
+
+1. **Intake.** A Jira issue in project `RTEMS` gets label `anvil` and status *Ready for agent*.
+   The poller (every 60 s) creates a run in mode *autonomous* and moves the issue to *In Progress*.
+2. **Set up.** Sandbox starts; repo cloned at the issue's base ref into `/workspace/<repo>`;
+   branch `anvil/<issue-key-lower>`.
+3. **Work.** Main agent loads the `defect-fix` skill, writes a plan (todos), delegates code
+   archaeology to `investigator`, reproduces with a failing test, fixes, builds the BSP, runs
+   the targeted tests and the regression subset on SIS via `builder`.
+4. **Self-review.** `reviewer` reads the diff against the skill's checklist (coding style,
+   MISRA-ish hazards, test present, docs touched).
+5. **Outward actions (approval-gated by policy).** Host tool `github_open_pr` exports the
+   sandbox diff as a patch, commits on the host clone and pushes. The sandbox never holds tokens.
+6. **CI.** Actions build + test + CodeQL + Sonar on the PR. Agent waits on `github_checks`,
+   reads failures and code-scanning alerts, iterates (max 3 CI rounds).
+7. **Evidence.** `writer` posts a Jira comment (root cause, fix, tests, CI links, cost) and a
+   Confluence evidence page; issue moves to *In Review*.
+8. **Human gate.** Engineer reviews and merges in GitHub. Webhook moves Jira to *Done*; the
+   agent writes one lesson to `/memories/rtems/lessons.md`.
+
+### Stuck detection and handoff (demonstrable)
+
+The runtime, not the model, decides the agent is stuck when any of these hold:
+step budget hit, cost budget hit, same command failing 3 times with the same error signature,
+no change to the diff in the last N tool calls, CI red after 3 rounds. Then it forces the
+`handoff` path: commit WIP to `anvil/<key>-wip`, write a handoff note (goal, what was tried,
+evidence, current hypothesis, suggested next step) to Jira, move the issue to *Needs human*, and
+keep the sandbox for 24 h so the engineer can attach to it. The model can also call `handoff`
+itself.
+
+### Safety rails
+
+* Credentials live in the API process only; sandbox containers get none and run as non-root.
+* `interrupt_on` gates: `github_open_pr`, `github_push`, `jira_transition`, `confluence_write`.
+  Policy per run mode: *interactive* asks for each; *autonomous* auto-approves PR and comments,
+  never merges. Merge is always human.
+* The agent never edits `.github/workflows` (path deny in the file permissions).
+* Budgets per run (tokens, USD, wall time) enforced in the runtime and in the gateway.
+
+## Environments ("where does the agent run")
+
+The UI offers an environment picker like Claude Code's:
+
+| Environment | Meaning | Milestone |
+|---|---|---|
+| Local sandbox | Docker container on this laptop | M1 |
+| Cloud (GitHub Actions) | Same image on an Actions runner; the run is dispatched with `workflow_dispatch`, events posted back to the API | Stretch (M4) |
+
+## Contracts (so workstreams can build in parallel)
+
+### Event stream (API -> UI, SSE `GET /api/runs/{id}/events`)
+
+Every event: `{"run_id", "seq", "ts", "type", "agent", "data"}`. Types:
+
+| type | data |
+|---|---|
+| `run.status` | `{status: queued|running|waiting_approval|handoff|succeeded|failed}` |
+| `message.delta` / `message` | `{role, text}` |
+| `plan` | `{todos: [{content, status}]}` |
+| `tool.call` | `{call_id, name, args}` |
+| `tool.result` | `{call_id, ok, output (truncated), duration_ms}` |
+| `sandbox.exec` | `{cmd, exit_code, output_tail}` |
+| `diff` | `{files: [{path, patch}]}` |
+| `approval.request` | `{approval_id, action, args, reason}` |
+| `subagent` | `{name, phase: start|end, summary}` |
+| `usage` | `{model_alias, input_tokens, output_tokens, usd}` |
+| `artifact` | `{kind: pr|jira_comment|confluence_page|sbom|report, url, title}` |
+
+### REST
+
+`POST /api/sessions` {repo, environment, mode, model_profile, title?} ->
+`POST /api/sessions/{id}/messages` {text} (starts or continues a run) ->
+`GET /api/runs/{id}/events` (SSE) · `POST /api/approvals/{id}` {decision, comment} ·
+`GET /api/runs/{id}` (run record) · `POST /api/intake/jira/poll` (manual trigger) ·
+`POST /api/webhooks/github`.
+
+### Run record (reproducibility)
+
+`run_id, session_id, trigger (ui|jira:<key>), repo, base_sha, branch, sandbox_image_digest,
+model_aliases + resolved model ids, skill versions (git sha of skills/), prompt hash,
+budgets, started/ended, status, usd, tokens, human_touches, artifacts[]`.
+LangGraph checkpoints give step-level replay and rewind; the git branch gives code rollback.
+
+## Tech pins
+
+Python 3.12, `uv`; `deepagents` 0.7.x, `langgraph` 1.2.x, `langgraph-checkpoint-postgres` 3.x,
+FastAPI, `docker` SDK, `litellm` proxy image; Node 24, React 19, Vite; Postgres 17 + pgvector.

@@ -1,0 +1,3 @@
+CREATE DATABASE litellm OWNER anvil;
+\c anvil
+CREATE EXTENSION IF NOT EXISTS vector;

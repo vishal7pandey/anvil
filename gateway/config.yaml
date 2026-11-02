@@ -1,0 +1,24 @@
+# LiteLLM model gateway. Agent code only knows the aliases on the left; swap models here.
+model_list:
+  - model_name: anvil-main            # planning, coding, review
+    litellm_params:
+      model: os.environ/ANVIL_MAIN_MODEL
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: anvil-fast            # subagents, summaries, triage
+    litellm_params:
+      model: os.environ/ANVIL_FAST_MODEL
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: anvil-embed
+    litellm_params:
+      model: openai/text-embedding-3-small
+      api_key: os.environ/OPENAI_API_KEY
+
+router_settings:
+  fallbacks: [{"anvil-main": ["anvil-fast"]}]
+
+litellm_settings:
+  drop_params: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/LITELLM_DATABASE_URL   # spend logs per request (metadata.run_id)

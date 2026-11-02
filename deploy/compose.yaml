@@ -1,0 +1,28 @@
+name: anvil
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: anvil
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-anvil}
+      POSTGRES_DB: anvil
+    ports: ["5433:5432"]          # 5432 is taken by the host's own PostgreSQL
+    volumes: [pgdata:/var/lib/postgresql/data, ./initdb:/docker-entrypoint-initdb.d:ro]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U anvil"]
+      interval: 5s
+      retries: 20
+
+  gateway:
+    image: ghcr.io/berriai/litellm:main-stable
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    env_file: ../.env
+    environment:
+      LITELLM_DATABASE_URL: postgresql://anvil:${POSTGRES_PASSWORD:-anvil}@postgres:5432/litellm
+    volumes: [../gateway/config.yaml:/app/config.yaml:ro]
+    ports: ["4000:4000"]
+    depends_on:
+      postgres: {condition: service_healthy}
+
+volumes:
+  pgdata:

@@ -1,0 +1,122 @@
+# CRA Annex I essential-requirements checklist for the cra-review skill.
+# Paraphrased from Regulation (EU) 2024/2847, Article 6 + Annex I. Paraphrase, not the legal text.
+# The agent fills `status` (pass|gap|n/a|unknown), `evidence`, `note` and `story_key` per item;
+# it never edits `id`, `cite` or `requirement`. Part I applies "based on the risk" (Annex I preamble).
+
+meta:
+  regulation: "Regulation (EU) 2024/2847 - Cyber Resilience Act"
+  regulation_url: "https://eur-lex.europa.eu/eli/reg/2024/2847/oj/eng"
+  scope_note: "Reference device (RefDev): RTEMS 7 + rtems-lwip + shell, SPARC/LEON3. Demo checklist."
+  status_enum: [pass, gap, n/a, unknown]
+
+items:
+  - id: AI-1
+    cite: "Annex I, Part I (1)"
+    requirement: "Designed, developed and produced to ensure an appropriate level of cybersecurity based on the risks."
+    inputs: [code, docs, threat_model]
+    evidence_hint: "The risk assessment / STRIDE threat model evidences this: risks are named and controls map to them."
+  - id: AI-1a
+    cite: "Annex I, Part I (2)(a)"
+    requirement: "Made available without known exploitable vulnerabilities."
+    inputs: [sbom, code_scanning, sonar, code]
+    evidence_hint: "SBOM CVE deltas + CodeQL/Sonar findings on the ref tree vs upstream advisories."
+  - id: AI-1b
+    cite: "Annex I, Part I (2)(b)"
+    requirement: "Secure-by-default configuration, with user reset to original state."
+    inputs: [code, docs]
+    evidence_hint: "Default config (enabled services, auth, firewalling) shipped vs documented secure defaults."
+  - id: AI-1c
+    cite: "Annex I, Part I (2)(c)"
+    requirement: "Vulnerabilities addressable via security updates (ideally automatic, opt-out)."
+    inputs: [code, docs]
+    evidence_hint: "Update path (TFTP handler) supports receiving, verifying and applying patches."
+  - id: AI-1d
+    cite: "Annex I, Part I (2)(d)"
+    requirement: "Protection from unauthorised access via appropriate controls (authentication, IAM)."
+    inputs: [code, code_scanning]
+    evidence_hint: "Management shell / telemetry listeners have authentication; not open to the network."
+  - id: AI-1e
+    cite: "Annex I, Part I (2)(e)"
+    requirement: "Confidentiality of stored/transmitted data via state-of-the-art mechanisms (encryption)."
+    inputs: [code, docs]
+    evidence_hint: "Telnet/UDP paths are plaintext by design in the ref image - expected gap on a networked device."
+  - id: AI-1f
+    cite: "Annex I, Part I (2)(f)"
+    requirement: "Integrity of data, commands, programs and configuration; report corruptions."
+    inputs: [code, code_scanning]
+    evidence_hint: "Update images and remote commands are integrity-checked and logged on corruption."
+  - id: AI-1g
+    cite: "Annex I, Part I (2)(g)"
+    requirement: "Process only data necessary for the intended purpose (data minimisation)."
+    inputs: [code, docs]
+    evidence_hint: "Telemetry/management channels carry only what the function needs."
+  - id: AI-1h
+    cite: "Annex I, Part I (2)(h)"
+    requirement: "Availability of essential functions; resilience to denial-of-service."
+    inputs: [code, code_scanning, docs]
+    evidence_hint: "lwIP/conn handling on flood input; no unbounded resource use on malformed traffic."
+  - id: AI-1i
+    cite: "Annex I, Part I (2)(i)"
+    requirement: "Minimise negative impact on availability of other devices or networks."
+    inputs: [code, docs]
+    evidence_hint: "No flood-by-default paths (broadcast storms, retry storms) in network services."
+  - id: AI-1j
+    cite: "Annex I, Part I (2)(j)"
+    requirement: "Limit attack surfaces, including external interfaces."
+    inputs: [code, docs, code_scanning]
+    evidence_hint: "Only needed listeners/services enabled; debug paths off in the product image."
+  - id: AI-1k
+    cite: "Annex I, Part I (2)(k)"
+    requirement: "Mitigate impact of an incident with appropriate mechanisms and techniques."
+    inputs: [code, docs]
+    evidence_hint: "Watchdog/safe-state on fault; failure of a network service cannot take down control tasks."
+  - id: AI-1l
+    cite: "Annex I, Part I (2)(l)"
+    requirement: "Record/monitor relevant internal activity (access to / modification of data, services), with opt-out."
+    inputs: [code, docs]
+    evidence_hint: "Management commands and update attempts are logged with an opt-out path."
+  - id: AI-1m
+    cite: "Annex I, Part I (2)(m)"
+    requirement: "Users can securely remove/transfer data and settings."
+    inputs: [docs, code]
+    evidence_hint: "Factory reset / wipe path exists for stored config."
+  - id: AI-2a
+    cite: "Annex I, Part II (1)"
+    requirement: "Identify and document components and vulnerabilities (incl. via an SBOM)."
+    inputs: [sbom, docs]
+    evidence_hint: "An SBOM for the image exists and components with known vulns are listed."
+  - id: AI-2b
+    cite: "Annex I, Part II (2)"
+    requirement: "Address and remediate vulnerabilities without delay; distribute patches."
+    inputs: [docs, code]
+    evidence_hint: "A documented patch/update channel exists end to end."
+  - id: AI-2c
+    cite: "Annex I, Part II (3)"
+    requirement: "Regularly test and review the security of the product."
+    inputs: [docs, code_scanning, sonar]
+    evidence_hint: "Security-relevant tests / scans run on the build (CodeQL, Sonar, sandbox tests)."
+  - id: AI-2d
+    cite: "Annex I, Part II (4)"
+    requirement: "Secure distribution: updates and instructions for secure installation and use."
+    inputs: [docs]
+    evidence_hint: "Secure install/use guidance exists; update delivery is protected."
+  - id: AI-2e
+    cite: "Annex I, Part II (5)"
+    requirement: "Provide contact / process for reporting vulnerabilities (coordinated disclosure)."
+    inputs: [docs]
+    evidence_hint: "A vulnerability-report channel is documented for the device vendor."
+  - id: AI-2f
+    cite: "Annex I, Part II (6)"
+    requirement: "Support period: security updates made available for the support lifecycle."
+    inputs: [docs]
+    evidence_hint: "Stated support window with patch commitments."
+  - id: AI-2g
+    cite: "Annex I, Part II (7)"
+    requirement: "Mechanisms to securely distribute updates, including automatic updates where applicable."
+    inputs: [code, docs]
+    evidence_hint: "Update delivery path is integrity/authenticity protected end to end, with automatic update where the risk warrants it."
+  - id: AI-2h
+    cite: "Annex I, Part II (8)"
+    requirement: "Security updates disseminated without delay and free of charge, with advisory messages to users."
+    inputs: [docs]
+    evidence_hint: "Patch delivery is free, timely, and users get an advisory note with each security update."

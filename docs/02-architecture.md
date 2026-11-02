@@ -108,7 +108,7 @@ Every event: `{"run_id", "seq", "ts", "type", "agent", "data"}`. Types:
 
 | type | data |
 |---|---|
-| `run.status` | `{status: queued|running|waiting_approval|handoff|succeeded|failed}` |
+| `run.status` | `{status: queued|running|waiting_approval|handoff|succeeded|failed|cancelled}` (`cancelled` = stopped by a human via `POST /api/runs/{id}/cancel`; terminal, distinct from `failed`) |
 | `message.delta` / `message` | `{role, text}` |
 | `plan` | `{todos: [{content, status}]}` |
 | `tool.call` | `{call_id, name, args}` |

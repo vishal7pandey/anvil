@@ -6,11 +6,9 @@ from typing import Any
 import httpx
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from anvil.tools.errors import ToolError
+
 REPO_ENV = Path(__file__).resolve().parents[3] / ".env"
-
-
-class ToolError(RuntimeError):
-    """An outward action failed; the message is safe to show the model (no secrets)."""
 
 
 class AtlassianSettings(BaseSettings):

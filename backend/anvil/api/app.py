@@ -37,6 +37,7 @@ from anvil.api.schemas import (
     RunResponse,
     SessionCreate,
     SessionResponse,
+    normalize_repository,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,7 @@ RUN_STATUSES = {
 }
 TERMINAL_RUN_STATUSES = {"handoff", "succeeded", "failed", "cancelled"}
 POLL_INTERVAL_SECONDS = 60
+CANCEL_TIMEOUT_SECONDS = 5
 
 JiraCandidates = Callable[..., list[dict[str, Any]]]
 JiraTransition = Callable[[str, str], Any]
@@ -150,6 +152,7 @@ def _run_payload(run: Run) -> dict[str, Any]:
         "jira_key": run.jira_key,
         "model_profile": run.session.model_profile,
         "last_event_seq": run.last_event_seq,
+        "last_seq": run.last_event_seq,
         "base_sha": run.base_sha,
         "sandbox_image_digest": run.sandbox_image_digest,
         "model_aliases": run.model_aliases,
@@ -238,6 +241,7 @@ def _persist_executor_event(
                 "branch",
                 "sandbox_image_digest",
                 "prompt_hash",
+                "skills_hash",
             }
             object_fields = {"model_aliases", "skill_versions", "budgets"}
             for field in string_fields:
@@ -248,8 +252,10 @@ def _persist_executor_event(
                     raise ValueError(f"Run record field {field} must be an object")
             run.run_record = {**run.run_record, **data}
             for field in string_fields | object_fields:
-                if field in data:
+                if field in data and field != "skills_hash":
                     setattr(run, field, data[field])
+            if "skills_hash" in data and "skill_versions" not in data:
+                run.skill_versions = {"hash": data["skills_hash"]}
         elif event_type == "approval.request":
             try:
                 approval_id = UUID(str(data["approval_id"]))
@@ -314,7 +320,6 @@ def _mark_run_started(session_factory: SessionFactory, run_id: UUID) -> None:
         run.status = "running"
         if run.started_at is None:
             run.started_at = utc_now()
-        _append_event(db, run, "run.status", {"status": "running"}, "api")
         db.commit()
 
 
@@ -467,23 +472,34 @@ async def _resume_after_active_task(
     previous_task: asyncio.Task[Any] | None,
 ) -> None:
     current_task = asyncio.current_task()
-    if previous_task is not None and previous_task is not current_task and not previous_task.done():
-        await previous_task
-    run_status = await run_in_threadpool(
-        _read_run_status,
-        app.state.session_factory,
-        run_id,
-    )
-    if run_status not in TERMINAL_RUN_STATUSES:
-        await run_in_threadpool(
-            _record_approval_responses,
+    try:
+        if (
+            previous_task is not None
+            and previous_task is not current_task
+            and not previous_task.done()
+        ):
+            await previous_task
+        run_status = await run_in_threadpool(
+            _read_run_status,
             app.state.session_factory,
             run_id,
-            approval_responses,
         )
-        await _execute_resume(app, run_id, decisions)
-    elif app.state.run_tasks.get(run_id) is current_task:
-        app.state.run_tasks.pop(run_id, None)
+        if run_status not in TERMINAL_RUN_STATUSES:
+            await run_in_threadpool(
+                _record_approval_responses,
+                app.state.session_factory,
+                run_id,
+                approval_responses,
+            )
+            await _execute_resume(app, run_id, decisions)
+    except asyncio.CancelledError:
+        await asyncio.shield(
+            run_in_threadpool(_mark_run_interrupted, app.state.session_factory, run_id)
+        )
+        raise
+    finally:
+        if app.state.run_tasks.get(run_id) is current_task:
+            app.state.run_tasks.pop(run_id, None)
 
 
 def _record_approval_responses(
@@ -601,7 +617,7 @@ def _get_or_create_intake_run(
 
         session = Session(
             user_id=user_id,
-            repo=issue.get("repo") or "github.com/vishal7pandey/rtems",
+            repo=normalize_repository(issue.get("repo") or "vishal7pandey/rtems"),
             environment="local",
             mode="autonomous",
             merge_policy="human",
@@ -1022,7 +1038,14 @@ def create_app(
             run.id,
         )
         try:
-            await executor.cancel(run_payload)
+            await asyncio.wait_for(
+                executor.cancel(run_payload),
+                timeout=CANCEL_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("RunExecutor cancellation timed out for run %s", run.id)
+            if task is not None and not task.done():
+                task.cancel()
         except Exception as exc:
             logger.error(
                 "RunExecutor cancellation failed for run %s (%s)",

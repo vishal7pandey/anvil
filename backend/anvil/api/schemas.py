@@ -1,14 +1,47 @@
 from datetime import datetime
+import re
 from typing import Annotated, Any, Literal
+from urllib.parse import urlsplit
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 MergePolicy = Literal["human", "agent-after-approval", "agent"]
 
 
+def normalize_repository(value: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError("Repository must be a GitHub owner/repository")
+    repository = value.strip()
+    if "://" in repository:
+        parsed = urlsplit(repository)
+        if (
+            parsed.scheme != "https"
+            or parsed.netloc.casefold() != "github.com"
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("Repository URL must use https://github.com")
+        repository = parsed.path.strip("/")
+    elif repository.casefold().startswith("github.com/"):
+        repository = repository[len("github.com/") :]
+    if repository.endswith(".git"):
+        repository = repository[:-4]
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise ValueError("Repository must be a GitHub owner/repository")
+    return repository
+
+
 class SessionCreate(BaseModel):
-    repo: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=512)]
+    repo: Annotated[
+        str,
+        StringConstraints(
+            strip_whitespace=True,
+            min_length=3,
+            max_length=512,
+            pattern=r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+        ),
+    ]
     environment: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
     ]
@@ -18,6 +51,11 @@ class SessionCreate(BaseModel):
     ]
     merge_policy: MergePolicy = "human"
     title: str | None = Field(default=None, max_length=512)
+
+    @field_validator("repo", mode="before")
+    @classmethod
+    def normalize_repo(cls, value: str) -> str:
+        return normalize_repository(value)
 
 
 class SessionResponse(BaseModel):

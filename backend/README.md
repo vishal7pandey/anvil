@@ -17,7 +17,8 @@ lock and re-run `uv lock`. Tests: `uv run python -m pytest` (pytest.exe is block
 The API is created by `anvil.api.app:app`; it exposes OpenAPI at `/docs`. Configure the single
 demo user's bearer credential with `ANVIL_DEMO_TOKEN` in `.env` or the process environment.
 Database settings use `ANVIL_DATABASE_URL` when supplied, otherwise the local Postgres default
-from `POSTGRES_PASSWORD`.
+from `POSTGRES_PASSWORD`. Session repositories are canonicalized to GitHub's `owner/repository`
+slug form for runtime checkouts.
 
 From the repository root, apply the schema and run the API with:
 
@@ -32,7 +33,8 @@ return an explicit `503` rather than pretending to execute work.
 
 The executor contract includes `start`, `resume`, and `cancel`. Executor events include the run ID
 and the next contiguous event sequence; the API persists that sequence as-is. The run payload also
-includes `last_event_seq` so runtime events can continue after API-generated events.
+includes `last_seq` (and the `last_event_seq` alias) so runtime events can continue after
+API-generated events.
 Runs default to `network=offline`; Jira intake permits `network=online` only when the issue has
 the `anvil-online` label. The `run.record` event is retained as JSON and updates the run's
 reproducibility fields.

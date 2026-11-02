@@ -18,10 +18,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ARG RSB_REPO=https://github.com/vishal7pandey/rtems-source-builder.git
 ARG RSB_REF=74fffa09a3df68b7e6cacabbde243ea7828edb34
 ARG JOBS=6
-RUN git clone ${RSB_REPO} /src/rsb && cd /src/rsb && git checkout ${RSB_REF}
-WORKDIR /src/rsb/rtems
-RUN ../source-builder/sb-set-builder --prefix=/opt/rtems/7 --jobs=${JOBS} --log=/tmp/rsb.log 7/rtems-sparc \
-    || (tail -200 /tmp/rsb.log; exit 1)
+RUN set -eux; \
+    git clone ${RSB_REPO} /src/rsb; \
+    cd /src/rsb && git checkout ${RSB_REF}; \
+    cd /src/rsb/rtems; \
+    ../source-builder/sb-set-builder --prefix=/opt/rtems/7 --jobs=${JOBS} --log=/tmp/rsb.log 7/rtems-sparc \
+      || { tail -200 /tmp/rsb.log; exit 1; }; \
+    rm -rf /src/rsb /tmp/* /root/.cache/*
 
 FROM ubuntu:24.04
 ARG DEBIAN_FRONTEND=noninteractive

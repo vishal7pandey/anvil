@@ -27,15 +27,31 @@ FROM ubuntu:24.04
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential python3 python-is-python3 git curl ca-certificates ripgrep jq \
-      less vim-tiny patch diffutils file cppcheck clang-format \
+      less vim-tiny patch diffutils file cppcheck clang-format bear \
+      openjdk-17-jre-headless pre-commit \
     && rm -rf /var/lib/apt/lists/*
+
+# Pin standalone CI scanners and verify the published release asset digests.
+ARG SYFT_VERSION=1.55.0
+ARG SYFT_SHA256=bb65249542db5fedeeb4d3f9b018b75e7264dbfbbb10486f044581a92f90490d
+ARG OSV_SCANNER_VERSION=2.7.0
+ARG OSV_SCANNER_SHA256=160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b
+RUN set -eux; \
+    curl -fsSL "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz" -o /tmp/syft.tar.gz; \
+    echo "${SYFT_SHA256}  /tmp/syft.tar.gz" | sha256sum -c -; \
+    tar -xzf /tmp/syft.tar.gz -C /usr/local/bin syft; \
+    curl -fsSL "https://github.com/google/osv-scanner/releases/download/v${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64" -o /usr/local/bin/osv-scanner; \
+    echo "${OSV_SCANNER_SHA256}  /usr/local/bin/osv-scanner" | sha256sum -c -; \
+    chmod +x /usr/local/bin/osv-scanner; \
+    rm -f /tmp/syft.tar.gz
 COPY --from=toolchain /opt/rtems /opt/rtems
 ENV PATH=/opt/rtems/7/bin:$PATH \
     RTEMS_PREFIX=/opt/rtems/7
 # Non-root agent user; the workspace is bind-mounted or cloned into /workspace.
 RUN useradd -m -u 1001 agent && mkdir -p /workspace && chown agent /workspace
 COPY smoke.sh /usr/local/bin/anvil-smoke
-RUN chmod +x /usr/local/bin/anvil-smoke
+COPY clang_format_staged.py /usr/local/bin/anvil-clang-format-staged
+RUN chmod +x /usr/local/bin/anvil-smoke /usr/local/bin/anvil-clang-format-staged
 USER agent
 WORKDIR /workspace
 CMD ["sleep", "infinity"]

@@ -91,7 +91,7 @@ async def test_runtime_forces_handoff_and_calls_hooks():
     pushed, reported = [], []
     ex = StuckExecutor(agent_factory=factory_for(failing_exec_items(10)),
                        push_hook=lambda sb, run, wip: pushed.append(wip) or f"https://example/{wip}",
-                       report_hook=lambda run, md: reported.append(md))
+                       report_hook=lambda run, h: reported.append(h))
     events = await collect(ex.start(RUN, "fix it"))
     types = [e["type"] for e in events]
     assert events[-1]["data"]["status"] == "handoff"
@@ -101,7 +101,9 @@ async def test_runtime_forces_handoff_and_calls_hooks():
     art = next(e for e in events if e["type"] == "artifact")
     assert art["data"]["url"] == "https://example/anvil/rtems-1-wip"
     assert "failed 3 times" in art["data"]["note"]["hypothesis"]
-    assert reported and "undefined reference" in reported[0] and "Sandbox kept" in reported[0]
+    h = reported[0]
+    assert h["wip_branch"] == "anvil/rtems-1-wip" and h["url"].endswith("anvil/rtems-1-wip")
+    assert "undefined reference" in h["note"]["evidence"] and "Sandbox kept" in h["markdown"]
 
 
 async def test_push_failure_does_not_block_handoff():

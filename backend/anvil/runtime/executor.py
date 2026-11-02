@@ -47,7 +47,9 @@ def skills_hash(files: list[tuple[str, bytes]]) -> str:
 ToolsFactory = Callable[[DockerSandbox, dict[str, Any]], list[Any]]
 # push(sandbox, run, wip_branch) -> url | None ; report(run, note_markdown) -> None. Host-side, optional.
 PushHook = Callable[[DockerSandbox, dict[str, Any], str], str | None]
-ReportHook = Callable[[dict[str, Any], str], None]
+# report(run, handoff) where handoff = {note, wip_branch, url, sandbox, markdown}. The host side
+# formats its own Jira text (devin's evidence.handoff_note); markdown is a ready-made fallback.
+ReportHook = Callable[[dict[str, Any], dict[str, Any]], None]
 PROGRESS_TOOLS = {"write_file", "edit_file", "execute"}
 AgentFactory = Callable[..., Any]
 
@@ -329,7 +331,8 @@ class DeepAgentExecutor:
         ])
         if self.report_hook:
             try:
-                await asyncio.to_thread(self.report_hook, run, markdown)
+                handoff = {"note": note, "wip_branch": wip, "url": url, "sandbox": sandbox.id, "markdown": markdown}
+                await asyncio.to_thread(self.report_hook, run, handoff)
             except Exception as exc:  # noqa: BLE001
                 yield mapper.event("message", {"role": "system", "text": f"Handoff report failed: {exc}"})
         yield mapper.event("artifact", {"kind": "handoff", "url": url, "title": f"Handoff note ({wip})",

@@ -26,7 +26,9 @@ class Budgets:
     max_tokens: int = field(default_factory=lambda: _env_int("ANVIL_MAX_TOKENS", 3_000_000))
     max_seconds: int = field(default_factory=lambda: _env_int("ANVIL_MAX_SECONDS", 45 * 60))
     same_failure_limit: int = 3
-    no_progress_tool_calls: int = 30
+    # Reading a large C code base legitimately takes many calls before the first edit (TC1 dry run:
+    # 30 tripped mid-investigation), so this is generous.
+    no_progress_tool_calls: int = field(default_factory=lambda: _env_int("ANVIL_NO_PROGRESS_CALLS", 80))
     ci_red_rounds: int = 3
 
 

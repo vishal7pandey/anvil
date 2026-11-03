@@ -61,6 +61,11 @@ class StuckDetector:
         self._calls_since_progress = 0
         self.reason: str | None = None
 
+    @property
+    def deadline(self) -> float:
+        """The clock value the time budget ends at (same clock as the detector)."""
+        return self._started + self.b.max_seconds
+
     def note_diff_state(self, state: str) -> None:
         """Executor reports a hash of `git diff` + untracked files after editing/executing tools."""
         if state != self._diff_state:

@@ -249,6 +249,9 @@ class DeepAgentExecutor:
                                    skills=[SANDBOX_SKILLS])
         waiting = False
         detector = StuckDetector(self.budgets)
+        # The detector checks the time budget between events; the deadline makes the sandbox enforce
+        # it inside a long command too (ANVIL-41). Cleared in `finally` so the handoff can still run.
+        sandbox.deadline = detector.deadline
         path = repo_path(run["repo"])
         recent: list[dict[str, Any]] = []
         stuck: str | None = None
@@ -278,6 +281,7 @@ class DeepAgentExecutor:
             return
         finally:
             self._cancel.pop(run["run_id"], None)
+            sandbox.deadline = None
         if stuck or handoffs:
             note = handoffs[-1] if handoffs else self.auto_note(run, stuck or "", recent)
             async for ev in self._handoff(run, sandbox, mapper, path, note, stuck):

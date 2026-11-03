@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import posixpath
+import re
 import shlex
 import tarfile
 import time
@@ -27,6 +28,34 @@ from deepagents.backends.sandbox import MAX_OUTPUT_BYTES, BaseSandbox
 
 DEFAULT_IMAGE = "anvil-sandbox-rtems:7.1"  # :7 + installed sparc/leon3 BSP (Dockerfile.leon3)
 TIMEOUT_EXIT_CODE = 124  # coreutils `timeout`
+REFUSED_EXIT_CODE = 126
+
+# Commands that cost a whole run budget for no benefit. TC1 runs 2 and 3 (ANVIL-41) each spent
+# 20-30 min in `pre-commit run --all-files` over the RTEMS tree after the fix was already done; the
+# skill says `--files`, so refusing with the right command costs the agent one tool call.
+_REFUSED = [
+    (re.compile(r"\bpre-commit\s+run\b[^;&|\n]*\s(--all-files|-a)(?=\s|$|[;&|)'\"])"),
+     "refused: `pre-commit run --all-files` checks the whole repository and takes longer than the run "
+     "budget. Run it on the files you changed: `pre-commit run --files <changed files>`."),
+]
+
+
+def refusal(command: str) -> str | None:
+    """The reason `command` is refused in the sandbox, or None."""
+    for pattern, reason in _REFUSED:
+        if pattern.search(command):
+            return reason
+    return None
+
+
+def budget_timeout(requested: int, deadline: float | None, now: float) -> int | None:
+    """Clamp a command timeout to the run's time budget; None when the budget is already used up."""
+    if deadline is None:
+        return requested
+    remaining = int(deadline - now)
+    if remaining <= 0:
+        return None
+    return remaining if requested == 0 else min(requested, remaining)
 
 
 @dataclass
@@ -59,6 +88,10 @@ class DockerSandbox(BaseSandbox):
         self._workdir = workdir
         self._uid = uid
         self._default_timeout = default_timeout
+        # time.monotonic() value the run's time budget ends at: set by the executor while the agent
+        # runs, cleared for the handoff. Without it one long command overran the 45-min budget by
+        # 16 min (ANVIL-41), because the budget was only checked between tool calls.
+        self.deadline: float | None = None
 
     # -- lifecycle -------------------------------------------------------------------------
 
@@ -116,7 +149,14 @@ class DockerSandbox(BaseSandbox):
     # -- core primitives -------------------------------------------------------------------
 
     def execute(self, command: str, *, timeout: int | None = None) -> ExecuteResponse:
-        effective = timeout if timeout is not None else self._default_timeout
+        requested = timeout if timeout is not None else self._default_timeout
+        reason = refusal(command)
+        if reason:
+            return ExecuteResponse(output=f"[anvil] {reason}", exit_code=REFUSED_EXIT_CODE)
+        effective = budget_timeout(requested, self.deadline, time.monotonic())
+        if effective is None:
+            return ExecuteResponse(output="[anvil] refused: the run's time budget is used up",
+                                   exit_code=REFUSED_EXIT_CODE)
         wrapped = command if effective == 0 else (
             f"timeout --kill-after=10 {int(effective)} bash -lc {shlex.quote(command)}"
         )
@@ -134,6 +174,8 @@ class DockerSandbox(BaseSandbox):
         output = raw.decode("utf-8", errors="replace")
         if result.exit_code == TIMEOUT_EXIT_CODE and effective and time.monotonic() - started >= effective:
             output += f"\n[anvil] command timed out after {effective}s"
+            if effective != requested:
+                output += " (the run's time budget ended)"
         return ExecuteResponse(output=output, exit_code=result.exit_code, truncated=truncated)
 
     def upload_files(self, files: list[tuple[str, bytes]]) -> list[FileUploadResponse]:

@@ -4,11 +4,21 @@ Reads credentials from the repo .env. Writes (creates, then updates) one page ti
 "Anvil smoke test" in space ANVIL, reads it back and searches for it. Prints ids and URLs only.
 """
 
-from anvil.tools import confluence
+import os
+import time
+
+os.environ["ANVIL_CONFLUENCE_WRITE_SPACES"] = "ANVIL"  # smoke page lives in ANVIL so it never pollutes the RTKB knowledge base
+
+from anvil.tools import confluence  # noqa: E402
 
 page = confluence.confluence_write("ANVIL", "Anvil smoke test", "# Smoke\nWritten by `scripts/smoke_confluence.py`.\n\n- create")
 print("create/update ok:", page["url"], "v", page["version"])
 page = confluence.confluence_write("ANVIL", "Anvil smoke test", "# Smoke\nUpdated.\n\n```c\nint x;\n```")
 print("update ok: v", page["version"])
 print("get ok:", confluence.confluence_get(page["id"])["body"][:80])
-print("search ok:", [r["title"] for r in confluence.confluence_search('space = ANVIL AND title = "Anvil smoke test"')])
+for _ in range(6):  # CQL search indexes new pages with a few seconds' lag
+    hits = [r["title"] for r in confluence.confluence_search('space = ANVIL AND title = "Anvil smoke test"')]
+    if hits:
+        break
+    time.sleep(5)
+print("search ok:" if hits else "search EMPTY after 30 s:", hits)

@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Anvil sandbox image for RTEMS work: SPARC cross toolchain + SIS simulator + rtems-tools.
 # One image serves the local sandbox (docker run per session) and the cloud environment
 # (GitHub Actions `container:`), so "works in the sandbox" means "works in CI".
@@ -10,7 +11,7 @@
 FROM ubuntu:24.04 AS toolchain
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      build-essential g++ gcc python3 python3-dev python-is-python3 git bison flex texinfo \
+      build-essential g++ gcc python3 python3-dev python-is-python3 git bison flex texinfo install-info \
       unzip pax bzip2 xz-utils zlib1g-dev libncurses-dev curl ca-certificates file \
     && rm -rf /var/lib/apt/lists/*
 
@@ -20,7 +21,13 @@ ARG RSB_REF=74fffa09a3df68b7e6cacabbde243ea7828edb34
 ARG JOBS=6
 RUN git clone ${RSB_REPO} /src/rsb && cd /src/rsb && git checkout ${RSB_REF}
 WORKDIR /src/rsb/rtems
-RUN ../source-builder/sb-set-builder --prefix=/opt/rtems/7 --jobs=${JOBS} --log=/tmp/rsb.log 7/rtems-sparc \
+# Fail in seconds, not hours: every host tool RSB calls must exist before the long build starts.
+# (install-info was missing once and failed the very last package after 4 h.)
+RUN for t in gcc g++ make bison flex makeinfo install-info unzip pax bzip2 xz python3 git; do \
+      command -v "$t" >/dev/null || { echo "missing host tool: $t"; exit 1; }; done
+# Downloads live in BuildKit cache mounts, so a failed or repeated build doesn't fetch them again.
+RUN --mount=type=cache,target=/src/rsb/rtems/sources --mount=type=cache,target=/src/rsb/rtems/patches \
+    ../source-builder/sb-set-builder --prefix=/opt/rtems/7 --jobs=${JOBS} --log=/tmp/rsb.log 7/rtems-sparc \
     || (tail -200 /tmp/rsb.log; exit 1)
 
 FROM ubuntu:24.04

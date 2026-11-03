@@ -1,4 +1,4 @@
-import { type StreamEvent, type Run } from '../types';
+import { type StreamEvent, type Run, type ApprovalRequest } from '../types';
 import PlanPanel from './PlanPanel';
 import DiffViewer from './DiffViewer';
 import ApprovalsInbox from './ApprovalsInbox';
@@ -8,7 +8,7 @@ import HandoffView from './HandoffView';
 interface RightPanelProps {
   run: Run | null;
   events: StreamEvent[];
-  approvals: Array<{ approval_id: string; [key: string]: unknown }>;
+  approvals: ApprovalRequest[];
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
   onCancel?: () => void;

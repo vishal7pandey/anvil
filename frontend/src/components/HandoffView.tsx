@@ -14,14 +14,12 @@ export default function HandoffView({ run }: HandoffViewProps) {
         Handoff — human action needed
       </h3>
       <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
-        <p className="text-sm text-amber-900 mb-3">
-          The agent run has entered a handoff state. The sandbox is preserved for 24 hours.
-          Review the handoff note in Jira and decide whether to resume or cancel.
+        <p className="text-sm text-amber-900">
+          The agent stopped and handed this task to a human. Its work is on the WIP branch below and
+          the sandbox is kept for 24 hours; the handoff note (goal, what was tried, evidence, next
+          step) is on the Jira ticket. To continue, send a message in this session: the next run
+          picks up from the same sandbox.
         </p>
-        <div className="flex gap-2">
-          <button className="btn-primary text-xs py-1.5">Resume Run</button>
-          <button className="btn-danger text-xs py-1.5">Cancel Run</button>
-        </div>
       </div>
       <div className="space-y-2 text-sm">
         <div className="flex justify-between">
@@ -35,6 +33,10 @@ export default function HandoffView({ run }: HandoffViewProps) {
         <div className="flex justify-between">
           <span className="text-slate-600">Branch</span>
           <span className="font-mono text-slate-700">{run.branch ?? '—'}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-slate-600">WIP branch</span>
+          <span className="font-mono text-slate-700">{run.branch ? `${run.branch}-wip` : '—'}</span>
         </div>
       </div>
     </section>

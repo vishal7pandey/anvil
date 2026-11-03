@@ -145,3 +145,12 @@ export interface ApprovalDecision {
   decision: 'approve' | 'reject';
   comment?: string;
 }
+
+/** An `approval.request` event as the UI shows it: the event payload plus the emitting agent. */
+export interface ApprovalRequest {
+  approval_id: string;
+  action: string;
+  args: Record<string, unknown>;
+  reason: string | null;
+  agent: string;
+}

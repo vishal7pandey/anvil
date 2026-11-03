@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { StreamEvent, Session, Run, NewSessionForm } from './types';
+import type { StreamEvent, Session, Run, NewSessionForm, ApprovalRequest } from './types';
 import {
   createSession,
   listSessions,
@@ -9,14 +9,6 @@ import {
   cancelRun,
 } from './lib/api';
 
-/** Payload of an `approval.request` event (see the API's event contract). */
-interface ApprovalRequestData {
-  approval_id: string;
-  action: string;
-  args: Record<string, unknown>;
-  reason?: string | null;
-  [key: string]: unknown;
-}
 import SessionList from './components/SessionList';
 import ChatStream from './components/ChatStream';
 import NewSessionDialog from './components/NewSessionDialog';
@@ -28,9 +20,7 @@ export default function App() {
   const [currentRun, setCurrentRun] = useState<Run | null>(null);
   const [events, setEvents] = useState<StreamEvent[]>([]);
   const [openDialog, setOpenDialog] = useState(false);
-  const [approvals, setApprovals] = useState<
-    Array<{ approval_id: string; [key: string]: unknown }>
-  >([]);
+  const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const eventSourceRef = useRef<(() => void) | null>(null);
 
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -62,6 +52,21 @@ export default function App() {
     [],
   );
 
+  // A run belongs to its session: switching sessions must drop the old run's stream and state,
+  // or the panels would show (and approve) another session's run.
+  const handleSelectSession = useCallback((session: Session) => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current();
+      eventSourceRef.current = null;
+    }
+    setCurrentRun(null);
+    setEvents([]);
+    setApprovals([]);
+    setSelectedSession(session);
+  }, []);
+
+  useEffect(() => () => eventSourceRef.current?.(), []);
+
   const handleSendMessage = useCallback(
     async (text: string) => {
       if (!selectedSession) return;
@@ -80,7 +85,14 @@ export default function App() {
 
         // Track approval requests
         if (event.type === 'approval.request') {
-          const request = event.data as ApprovalRequestData;
+          const data = event.data as Partial<ApprovalRequest>;
+          const request: ApprovalRequest = {
+            approval_id: String(data.approval_id),
+            action: String(data.action ?? ''),
+            args: data.args ?? {},
+            reason: data.reason ?? null,
+            agent: event.agent ?? 'main',
+          };
           setApprovals((prev) =>
             prev.some((a) => a.approval_id === request.approval_id) ? prev : [...prev, request],
           );
@@ -172,7 +184,7 @@ export default function App() {
         <SessionList
           sessions={sessions}
           selected={selectedSession}
-          onSelect={setSelectedSession}
+          onSelect={handleSelectSession}
         />
         <div className="flex-1 flex flex-col min-w-0">
           <ChatStream

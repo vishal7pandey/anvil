@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import App from '../App';
 
@@ -12,6 +12,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
   vi.restoreAllMocks();
 });
 
@@ -28,7 +29,7 @@ const session = {
 };
 
 function mockSessions(list: unknown[]) {
-  (globalThis.fetch as ReturnType<typeof vi.spyOn>).mockResolvedValueOnce({
+  vi.mocked(globalThis.fetch).mockResolvedValueOnce({
     ok: true,
     json: async () => list,
   } as Response);
@@ -54,11 +55,58 @@ describe('App', () => {
   });
 
   it('shows the error when sessions cannot be loaded', async () => {
-    (globalThis.fetch as ReturnType<typeof vi.spyOn>).mockResolvedValueOnce({
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
       ok: false,
       statusText: 'Unauthorized',
     } as Response);
     render(<App />);
     expect(await screen.findByText('Could not load sessions: Failed to list sessions: Unauthorized')).toBeInTheDocument();
+  });
+
+  it('shows approvals with their agent, and switching sessions drops the old run', async () => {
+    const other = { ...session, id: '6f0c1a52-0000-4000-8000-000000000002', title: 'RTEMS-2 lwIP upgrade' };
+    const approval = JSON.stringify({
+      run_id: 'r1', seq: 3, ts: '2026-11-03T08:00:00Z', type: 'approval.request', agent: 'main',
+      data: { approval_id: 'a-1', action: 'git_push', args: { branch: 'anvil/rtems-1' } },
+    });
+    const encoder = new TextEncoder();
+    let sent = false;
+    const fetchMock = vi.mocked(globalThis.fetch);
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, json: async () => [session, other] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'r1', status: 'running' }) } as Response)
+      .mockImplementationOnce(async (_url, init) => ({
+        ok: true,
+        body: {
+          getReader: () => ({
+            read: async () => {
+              if (!sent) {
+                sent = true;
+                return { done: false, value: encoder.encode(`id: 3\nevent: approval.request\ndata: ${approval}\n\n`) };
+              }
+              // Stay open until the UI aborts the stream.
+              return new Promise((_resolve, reject) =>
+                init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))),
+              );
+            },
+          }),
+        },
+      }) as unknown as Response);
+
+    render(<App />);
+    await screen.findAllByText('RTEMS-1 mutex defect');
+    fireEvent.change(screen.getByPlaceholderText('Ask the agent to build, fix, or upgrade…'), {
+      target: { value: 'fix RTEMS-1' },
+    });
+    fireEvent.submit(screen.getByPlaceholderText('Ask the agent to build, fix, or upgrade…').closest('form')!);
+
+    expect(await screen.findByText('a-1')).toBeInTheDocument();
+    expect(screen.getByText('No reason given')).toBeInTheDocument();
+    expect(screen.getAllByText('main').length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getAllByText('RTEMS-2 lwIP upgrade')[0]);
+    expect(screen.queryByText('a-1')).not.toBeInTheDocument();
+    const streamInit = fetchMock.mock.calls[2][1];
+    expect(streamInit?.signal?.aborted).toBe(true);
   });
 });

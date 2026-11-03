@@ -1,13 +1,8 @@
-interface ApprovalItem {
-  approval_id: string;
-  action: string;
-  args: Record<string, unknown>;
-  reason: string;
-  agent: string;
-}
+import type { ApprovalRequest } from '../types';
+
 
 interface ApprovalsInboxProps {
-  approvals: ApprovalItem[];
+  approvals: ApprovalRequest[];
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
 }
@@ -34,7 +29,7 @@ export default function ApprovalsInbox({
               </span>
               <span className="text-xs text-amber-600">{approval.agent}</span>
             </div>
-            <div className="text-sm text-slate-800 mb-2">{approval.reason}</div>
+            <div className="text-sm text-slate-800 mb-2">{approval.reason ?? 'No reason given'}</div>
             <div className="text-xs text-slate-600 font-mono mb-3">
               {approval.action} {JSON.stringify(approval.args).slice(0, 80)}
             </div>

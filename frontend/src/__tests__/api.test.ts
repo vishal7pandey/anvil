@@ -36,7 +36,7 @@ describe('createSession', () => {
       created_at: '2026-11-02T20:00:00Z',
       updated_at: '2026-11-02T20:00:00Z',
     };
-    (globalThis.fetch as ReturnType<typeof vi.spyOn>).mockResolvedValueOnce({
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => mockSession,
     } as Response);
@@ -63,7 +63,7 @@ describe('createSession', () => {
   });
 
   it('throws when response is not ok', async () => {
-    (globalThis.fetch as ReturnType<typeof vi.spyOn>).mockResolvedValueOnce({
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
       ok: false,
       statusText: 'Internal Server Error',
     } as Response);
@@ -109,7 +109,7 @@ describe('sendMessage', () => {
       error: null,
       created_at: '2026-11-02T20:00:00Z',
     };
-    (globalThis.fetch as ReturnType<typeof vi.spyOn>).mockResolvedValueOnce({
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => mockRun,
     } as Response);
@@ -130,7 +130,7 @@ describe('sendMessage', () => {
 
 describe('decideApproval', () => {
   it('posts approve decision with bearer auth', async () => {
-    (globalThis.fetch as ReturnType<typeof vi.spyOn>).mockResolvedValueOnce({
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
       ok: true,
     } as Response);
 
@@ -147,7 +147,7 @@ describe('decideApproval', () => {
   });
 
   it('posts reject decision with bearer auth', async () => {
-    (globalThis.fetch as ReturnType<typeof vi.spyOn>).mockResolvedValueOnce({
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
       ok: true,
     } as Response);
 
@@ -166,7 +166,7 @@ describe('decideApproval', () => {
 
 describe('cancelRun', () => {
   it('posts to /runs/{id}/cancel with bearer auth', async () => {
-    (globalThis.fetch as ReturnType<typeof vi.spyOn>).mockResolvedValueOnce({
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
       ok: true,
     } as Response);
 
@@ -222,16 +222,16 @@ describe('subscribeToEvents', () => {
   it('streams with a Bearer header and delivers named events split across chunks', async () => {
     const first = sse(1, 'message', { text: 'hi' });
     const second = sse(2, 'run.status', { status: 'succeeded' });
-    (globalThis.fetch as ReturnType<typeof vi.spyOn>).mockResolvedValueOnce(
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       streamResponse([first.slice(0, 20), first.slice(20) + second]),
     );
     const onEvent = vi.fn();
     subscribeToEvents('r1', onEvent, { reconnectDelayMs: 1 });
     await vi.waitFor(() => expect(onEvent).toHaveBeenCalledTimes(2));
 
-    const [url, init] = (globalThis.fetch as ReturnType<typeof vi.spyOn>).mock.calls[0];
+    const [url, init] = vi.mocked(globalThis.fetch).mock.calls[0];
     expect(url).toBe(`${baseUrl}/runs/r1/events`);
-    expect(new Headers(init.headers).get('Authorization')).toBe(`Bearer ${demoToken}`);
+    expect(new Headers(init?.headers).get('Authorization')).toBe(`Bearer ${demoToken}`);
     expect(onEvent.mock.calls.map((c) => c[0].type)).toEqual(['message', 'run.status']);
     // A final status ends the subscription: no reconnect.
     await new Promise((r) => setTimeout(r, 20));
@@ -239,22 +239,22 @@ describe('subscribeToEvents', () => {
   });
 
   it('resumes with Last-Event-ID when the stream drops before a final status', async () => {
-    const fetchMock = globalThis.fetch as ReturnType<typeof vi.spyOn>;
+    const fetchMock = vi.mocked(globalThis.fetch);
     fetchMock
       .mockResolvedValueOnce(streamResponse([sse(7, 'tool.call', { name: 'execute' })]))
       .mockResolvedValueOnce(streamResponse([sse(8, 'run.status', { status: 'failed' })]));
     const onEvent = vi.fn();
     subscribeToEvents('r1', onEvent, { reconnectDelayMs: 1 });
     await vi.waitFor(() => expect(onEvent).toHaveBeenCalledTimes(2));
-    expect(new Headers(fetchMock.mock.calls[1][1].headers).get('Last-Event-ID')).toBe('7');
+    expect(new Headers(fetchMock.mock.calls[1][1]?.headers).get('Last-Event-ID')).toBe('7');
   });
 
   it('stops when unsubscribed', async () => {
     let signal: AbortSignal | undefined;
-    (globalThis.fetch as ReturnType<typeof vi.spyOn>).mockImplementationOnce(
-      (_url: unknown, init: RequestInit) => {
-        signal = init.signal ?? undefined;
-        return new Promise(() => {});
+    vi.mocked(globalThis.fetch).mockImplementationOnce(
+      (_url, init) => {
+        signal = init?.signal ?? undefined;
+        return new Promise<Response>(() => {});
       },
     );
     const unsubscribe = subscribeToEvents('r1', vi.fn());
@@ -265,7 +265,7 @@ describe('subscribeToEvents', () => {
 
 describe('listSessions', () => {
   it('gets /sessions with bearer auth', async () => {
-    (globalThis.fetch as ReturnType<typeof vi.spyOn>).mockResolvedValueOnce({
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => [],
     } as Response);

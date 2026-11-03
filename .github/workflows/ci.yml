@@ -106,6 +106,10 @@ jobs:
         if: steps.frontend.outputs.present == 'true'
         run: npm ci --prefix frontend
 
+      - name: Type-check frontend
+        if: steps.frontend.outputs.present == 'true'
+        run: npm run typecheck --prefix frontend
+
       - name: Run frontend tests
         if: steps.frontend.outputs.present == 'true'
         run: npm test --prefix frontend

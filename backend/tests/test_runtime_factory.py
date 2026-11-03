@@ -153,7 +153,7 @@ def test_deepagent_executor_receives_host_tools_and_hooks(
     assert ui_tools[5] == "web_search_tool"
     assert websearch_calls == [
         (("blocked.example",), "jira-run"),
-        ((), "ui-run"),
+        (("blocked.example",), "ui-run"),
     ]
     assert created["push_hook"](sandbox, {"repo": "owner/repo"}, "anvil/rtems-1-wip") == (
         "https://example.test/anvil/rtems-1-wip"

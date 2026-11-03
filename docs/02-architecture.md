@@ -35,7 +35,7 @@ flowchart LR
 | C1 | Web UI | React + Vite + Tailwind, SSE | Session list; new task (repo, environment, mode, model profile); chat stream with plan (todos), collapsible tool calls, terminal output, diffs; approvals inbox; run record (replay info, cost, tokens, human touches) |
 | C2 | Control API | FastAPI, SQLAlchemy, Postgres | Users (one demo user + bearer token), sessions, runs, events (SSE), approvals, intake (Jira poller) |
 | C3 | Agent runtime | `deepagents` 0.7.x on LangGraph 1.x | `create_deep_agent` with sandbox backend, subagents, skills, memory, `interrupt_on` for approvals, Postgres checkpointer |
-| C4 | Model gateway | LiteLLM proxy (docker) | Aliases (`anvil-main`, `anvil-fast`, `anvil-embed`), spend log per run (`metadata.run_id`), budget per run, provider swap without code change |
+| C4 | Model gateway | LiteLLM proxy (docker) | Aliases (`anvil-main`, `anvil-fast`, `anvil-embed`), per-run spend-log tags (`metadata.spend_logs_metadata.run_id`), budget per run, provider swap without code change |
 | C5 | Sandbox manager | Docker SDK for Python | One container per session from `anvil-sandbox-rtems:7.1` (`:7` + installed sparc/leon3 BSP, `sandbox/rtems/Dockerfile.leon3`); workspace volume; CPU/memory limits; no credentials inside; destroyed or kept on handoff |
 | C6 | Knowledge + memory | Postgres + pgvector | KB index (RTEMS GitLab issues, rtems-docs, Confluence KB space); LangGraph store for `/memories/`; code search stays agentic (ripgrep in the sandbox) |
 | C7 | Quality gates | GitHub Actions on the mirrors | Same sandbox image (GHCR) builds the BSP and runs tests on SIS; CodeQL (C/C++, manual build); SonarQube; cppcheck; Syft SBOM + OSV-Scanner; Dependabot where an ecosystem exists |
@@ -127,10 +127,22 @@ Every event: `{"run_id", "seq", "ts", "type", "agent", "data"}`. Types:
 ### REST
 
 `POST /api/sessions` {repo, environment, mode, model_profile, title?} ->
-`POST /api/sessions/{id}/messages` {text} (starts or continues a run) ->
+`POST /api/sessions/{id}/messages` {text, scenario?} (starts a run; an optional scenario is stored in `run_record.scenario`) ->
 `GET /api/runs/{id}/events` (SSE) · `POST /api/approvals/{id}` {decision, comment} ·
-`GET /api/runs/{id}` (run record) · `POST /api/runs/{id}/cancel` · `POST /api/intake/jira/poll`
+`GET /api/runs/{id}` (run record and metrics) · `GET /api/metrics?from&to&scenario` ·
+`POST /api/runs/{id}/cancel` · `POST /api/intake/jira/poll`
 (manual trigger). No webhooks: a laptop has no public URL, so PR and check state are polled.
+
+Metrics time bounds are timezone-aware timestamps over run creation time. A scenario filter
+matches `run_record.scenario` exactly. Cost and model-call counts come from LiteLLM spend logs
+tagged with `metadata.spend_logs_metadata.run_id`. Chat Completions requests send that custom
+tag under `metadata`; the Responses API uses `litellm_metadata`. Token counts and human/CI
+activity come from the API event log. If token usage exists before its spend row is available,
+the metrics endpoints return `503` with `Retry-After` while spend data is pending (up to five
+minutes after the latest usage event). After that grace period, they return `cost_usd: null`
+and `cost_status: "missing"` rather than reporting false zero cost. `GET /api/metrics` sums cost
+over the runs that have spend rows and reports the rest as `runs_missing_cost`; its `cost_status`
+is `available`, `partial`, or `missing` (no run in the range priced).
 
 ### Run record (reproducibility)
 

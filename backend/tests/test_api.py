@@ -1,7 +1,9 @@
 import asyncio
+from datetime import timedelta
 from threading import Event
+from decimal import Decimal
 from time import sleep
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,7 +12,8 @@ from sqlalchemy import select
 
 from anvil.api.app import create_app
 from anvil.api.config import Settings
-from anvil.api.models import Approval, Base, Run, Session, User
+from anvil.api.metrics import SpendTotals
+from anvil.api.models import Approval, Base, Run, RunEvent, Session, User, utc_now
 
 
 AUTH = {"Authorization": "Bearer test-token"}
@@ -143,6 +146,12 @@ def api_factory(tmp_path):
             ),
             database_url=database_url,
             executor=executor,
+            spend_log_provider=kwargs.pop(
+                "spend_log_provider",
+                lambda run_ids: {
+                    str(run_id): SpendTotals(0, Decimal("0")) for run_id in run_ids
+                },
+            ),
             start_intake_loop=kwargs.pop("start_intake_loop", False),
             **kwargs,
         )
@@ -156,6 +165,8 @@ def api_factory(tmp_path):
             if not task.done():
                 task.cancel()
         app.state.engine.dispose()
+        if app.state.litellm_engine is not None:
+            app.state.litellm_engine.dispose()
 
 
 @pytest.fixture
@@ -235,18 +246,28 @@ def test_authentication_requires_configured_demo_token(client_factory):
 
 
 def test_message_run_and_sse_resume(api_factory, client_factory):
-    app = api_factory(executor=SuccessfulExecutor())
+    def spend_log_provider(run_ids):
+        return {
+            str(run_id): SpendTotals(1, Decimal("0.023456"))
+            for run_id in run_ids
+        }
+
+    app = api_factory(
+        executor=SuccessfulExecutor(),
+        spend_log_provider=spend_log_provider,
+    )
     client = client_factory(app)
     session_id = create_session(client)
 
     response = client.post(
         f"/api/sessions/{session_id}/messages",
         headers=AUTH,
-        json={"text": "hello"},
+        json={"text": "hello", "scenario": "TC1"},
     )
     assert response.status_code == 202
     run_id = response.json()["id"]
     assert response.json()["trigger"] == "ui"
+    assert response.json()["run_record"]["scenario"] == "TC1"
 
     full_stream = client.get(f"/api/runs/{run_id}/events", headers=AUTH)
     assert full_stream.status_code == 200
@@ -275,18 +296,170 @@ def test_message_run_and_sse_resume(api_factory, client_factory):
     ]
     assert ids == [str(sequence) for sequence in range(1, 8)]
 
+    with app.state.session_factory() as db:
+        run = db.get(Run, UUID(run_id))
+        run.last_event_seq += 1
+        db.add(
+            RunEvent(
+                run_id=run.id,
+                seq=run.last_event_seq,
+                type="tool.result",
+                agent="main",
+                data={"name": "github_checks", "output": "build-test: failure"},
+            )
+        )
+        db.commit()
+
     run = client.get(f"/api/runs/{run_id}", headers=AUTH)
     assert run.status_code == 200
     assert run.json()["status"] == "succeeded"
     assert run.json()["repo"] == "example/repo"
     assert run.json()["input_tokens"] == 10
     assert run.json()["output_tokens"] == 4
-    assert run.json()["usd"] == pytest.approx(0.012345)
+    assert run.json()["usd"] == pytest.approx(0.023456)
+    assert run.json()["cost_usd"] == pytest.approx(0.023456)
+    assert run.json()["cost_status"] == "available"
+    assert run.json()["wall_time_seconds"] is not None
+    assert run.json()["model_calls"] == 1
+    assert run.json()["human_touches"] == 1
+    assert run.json()["ci_rounds"] == 1
+    assert run.json()["outcome"] == "succeeded"
     assert run.json()["network"] == "offline"
     assert run.json()["run_record"]["branch"] == "anvil/test"
     assert run.json()["run_record"]["skills_hash"] == "skills-hash"
     assert run.json()["skill_versions"] == {"hash": "skills-hash"}
     assert run.json()["branch"] == "anvil/test"
+
+    metrics = client.get(
+        "/api/metrics",
+        headers=AUTH,
+        params={"scenario": "TC1"},
+    )
+    assert metrics.status_code == 200
+    assert metrics.json()["run_count"] == 1
+    assert metrics.json()["model_calls"] == 1
+    assert metrics.json()["input_tokens"] == 10
+    assert metrics.json()["output_tokens"] == 4
+    assert metrics.json()["usd"] == pytest.approx(0.023456)
+    assert metrics.json()["cost_usd"] == pytest.approx(0.023456)
+    assert metrics.json()["cost_status"] == "available"
+    assert metrics.json()["human_touches"] == 1
+    assert metrics.json()["ci_rounds"] == 1
+    assert metrics.json()["outcomes"] == {"succeeded": 1}
+
+    no_matching_scenario = client.get(
+        "/api/metrics",
+        headers=AUTH,
+        params={"scenario": "TC2"},
+    )
+    assert no_matching_scenario.status_code == 200
+    assert no_matching_scenario.json()["run_count"] == 0
+
+
+def test_run_metrics_fail_explicitly_when_spend_logs_are_missing(
+    api_factory, client_factory
+):
+    app = api_factory(
+        executor=SuccessfulExecutor(),
+        spend_log_provider=lambda _run_ids: {},
+    )
+    client = client_factory(app)
+    session_id = create_session(client)
+
+    start = client.post(
+        f"/api/sessions/{session_id}/messages",
+        headers=AUTH,
+        json={"text": "hello"},
+    )
+    run_id = start.json()["id"]
+    client.get(f"/api/runs/{run_id}/events", headers=AUTH)
+
+    response = client.get(f"/api/runs/{run_id}", headers=AUTH)
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == (
+        "LiteLLM spend logs are not yet available for runs with token usage"
+    )
+    assert response.headers["retry-after"] == "1"
+
+
+def test_stale_missing_spend_logs_return_unknown_cost(api_factory, client_factory):
+    app = api_factory(
+        executor=SuccessfulExecutor(),
+        spend_log_provider=lambda _run_ids: {},
+    )
+    client = client_factory(app)
+    session_id = create_session(client)
+    start = client.post(
+        f"/api/sessions/{session_id}/messages",
+        headers=AUTH,
+        json={"text": "hello"},
+    )
+    run_id = UUID(start.json()["id"])
+    client.get(f"/api/runs/{run_id}/events", headers=AUTH)
+
+    with app.state.session_factory() as db:
+        usage_event = db.scalar(
+            select(RunEvent).where(
+                RunEvent.run_id == run_id,
+                RunEvent.type == "usage",
+            )
+        )
+        assert usage_event is not None
+        usage_event.ts = utc_now() - timedelta(minutes=6)
+        db.commit()
+
+    run = client.get(f"/api/runs/{run_id}", headers=AUTH)
+    assert run.status_code == 200
+    assert run.json()["model_calls"] is None
+    assert run.json()["usd"] is None
+    assert run.json()["cost_usd"] is None
+    assert run.json()["cost_status"] == "missing"
+
+    metrics = client.get("/api/metrics", headers=AUTH)
+    assert metrics.status_code == 200
+    assert metrics.json()["model_calls"] is None
+    assert metrics.json()["usd"] is None
+    assert metrics.json()["cost_usd"] is None
+    assert metrics.json()["cost_status"] == "missing"
+
+
+def test_aggregate_cost_sums_priced_runs_and_counts_the_rest(api_factory, client_factory):
+    priced: set[str] = set()
+    app = api_factory(
+        executor=SuccessfulExecutor(),
+        spend_log_provider=lambda run_ids: {
+            str(run_id): SpendTotals(1, Decimal("0.5"))
+            for run_id in run_ids
+            if str(run_id) in priced
+        },
+    )
+    client = client_factory(app)
+    session_id = create_session(client)
+    run_ids = []
+    for _ in range(2):
+        start = client.post(
+            f"/api/sessions/{session_id}/messages", headers=AUTH, json={"text": "hello"}
+        )
+        run_ids.append(start.json()["id"])
+        client.get(f"/api/runs/{run_ids[-1]}/events", headers=AUTH)
+    priced.add(run_ids[0])
+
+    with app.state.session_factory() as db:
+        for event in db.scalars(
+            select(RunEvent).where(RunEvent.run_id == UUID(run_ids[1]), RunEvent.type == "usage")
+        ):
+            event.ts = utc_now() - timedelta(minutes=6)
+        db.commit()
+
+    metrics = client.get("/api/metrics", headers=AUTH)
+    assert metrics.status_code == 200
+    body = metrics.json()
+    assert body["run_count"] == 2
+    assert body["cost_status"] == "partial"
+    assert body["runs_missing_cost"] == 1
+    assert body["usd"] == pytest.approx(0.5)
+    assert body["model_calls"] == 1
 
 
 def test_message_rejected_without_executor(api_factory, client_factory):

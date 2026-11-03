@@ -87,7 +87,7 @@ def subagent_specs(fast_model: Any) -> list[dict[str, Any]]:
 
 def _model(config: RunConfig, alias: str) -> ChatOpenAI:
     return ChatOpenAI(model=alias, base_url=config.gateway_url, api_key=config.gateway_key, stream_usage=True,
-                      extra_body={"metadata": {"run_id": config.run_id}})
+                      extra_body={"metadata": {"spend_logs_metadata": {"run_id": config.run_id}}})
 
 
 def build_agent(config: RunConfig, sandbox: DockerSandbox, *, tools: Sequence[Any] = (),

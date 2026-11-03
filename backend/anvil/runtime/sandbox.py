@@ -65,6 +65,8 @@ class DockerSandbox(BaseSandbox):
     @classmethod
     def start(cls, spec: SandboxSpec, client: docker.DockerClient | None = None) -> DockerSandbox:
         client = client or docker.from_env()
+        # Docker rejects a CPU limit above the host's count (CI runners have 2): cap it there.
+        cpus = min(spec.limits.cpus, float(client.info().get("NCPU") or spec.limits.cpus))
         container = client.containers.run(
             spec.image,
             command=["sleep", "infinity"],
@@ -74,7 +76,7 @@ class DockerSandbox(BaseSandbox):
             working_dir=spec.workdir,
             environment={},  # deliberately empty: no tokens in the sandbox
             labels={"anvil.sandbox": "1", **spec.labels},
-            nano_cpus=int(spec.limits.cpus * 1e9),
+            nano_cpus=int(cpus * 1e9),
             mem_limit=spec.limits.memory,
             pids_limit=spec.limits.pids,
             network=spec.network,

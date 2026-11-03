@@ -99,7 +99,7 @@ If the live upgrade encounters complex driver porting obstacles, toolchain regre
   - Submodule and release tag baseline (`STABLE-2_2_1_RELEASE`).
   - Completed milestones (Waf configure flags, compiled object count).
   - Unresolved compilation/linking hurdles with root-cause hypotheses for human maintainers.
-- **Compliance Artifacts Preserved:** The Syft SBOM delta (SPDX/CycloneDX) and the OSV vulnerability report (flagging target CVE-2026-112062, CVE-2026-119053, and CVE-2026-8836 for follow-up tracking) are fully generated and attached to the run record.
+- **Draft PR & Compliance Artifacts:** Because OSV requires network access and the sandbox environment is strictly offline, the agent opens a draft pull request from `anvil/rtems-2-wip` against `tc2/upgrade-base-leon3`. This triggers `rtems-lwip` hosted CI, where the `sbom` job computes the before/after Syft SBOM delta (SPDX/CycloneDX) and queries the OSV API (flagging target CVE-2026-112062, CVE-2026-119053, and CVE-2026-8836 for follow-up tracking). Alternatively, if demonstrating in an offline venue, the presenter pre-generates these reports on the host using `sandbox/rtems/sbom.sh`.
 - **Presenter Speaking Points:** *"Notice how Anvil fails safely. When an embedded upgrade requires deep domain intervention, the agent doesn't guess or emit broken code. It persists a clean WIP branch, produces complete compliance SBOM and OSV artifacts, and hands off a precise diagnostic brief to human maintainers."*
 
 ---
@@ -188,4 +188,4 @@ If network interruptions or unexpected rate limits occur during a live evaluatio
    .\scripts\reset-demo.ps1 -Containers -Jira -Mirrors
    ```
 4. **TC2 Partial Upgrade Demonstration:**
-   - If live upgrade compilation exceeds demo time constraints or encounters complex porting hurdles, seamlessly pivot to the fallback track: navigate to WIP branch `origin/anvil/rtems-2-wip`, display the diagnostic handoff comment on `RTEMS-2`, and inspect the generated Syft SBOM and OSV delta artifacts in the run record.
+   - If live upgrade compilation exceeds demo time constraints or encounters complex porting hurdles, seamlessly pivot to the fallback track: navigate to WIP branch `origin/anvil/rtems-2-wip` (or its draft PR), display the diagnostic handoff comment on `RTEMS-2`, and inspect the generated Syft SBOM and OSV delta artifacts produced by CI (or pre-generated with `sbom.sh` on the host).

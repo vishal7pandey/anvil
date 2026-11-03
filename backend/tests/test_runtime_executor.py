@@ -4,7 +4,7 @@ import uuid
 import pytest
 from langchain_core.messages import AIMessage
 
-from anvil.runtime.executor import DeepAgentExecutor, sandbox_name, work_branch
+from anvil.runtime.executor import DeepAgentExecutor, sandbox_name, skill_files, skills_hash, work_branch
 
 RUN = {"run_id": "r-123456789", "session_id": "s-1", "repo": "vishal7pandey/rtems-examples",
        "base_ref": "main", "mode": "autonomous", "merge_policy": "human", "jira_key": "RTEMS-1"}
@@ -33,7 +33,15 @@ class OfflineExecutor(DeepAgentExecutor):
         self.received = None
 
     def sandbox_for(self, run):
-        return object()
+        from deepagents.backends.protocol import ExecuteResponse
+
+        class _Sandbox:
+            id = "anvil-sbx-offline"
+
+            def execute(self, command, timeout=None):
+                return ExecuteResponse(output="0" * 40, exit_code=0)
+
+        return _Sandbox()
 
     def checkout(self, sandbox, run):
         return {"repo": run["repo"], "path": "/workspace/x", "base_ref": "main", "branch": work_branch(run),
@@ -47,7 +55,7 @@ class OfflineExecutor(DeepAgentExecutor):
 
 
 def factory_for(items, **kw):
-    def factory(config, sandbox, *, tools, on_handoff, checkpointer, store):
+    def factory(config, sandbox, *, tools, on_handoff, checkpointer, store, skills):
         return FakeAgent(items, on_handoff=on_handoff if kw.get("handoff") else None,
                          fail=kw.get("fail", False), delay=kw.get("delay", 0.0))
     return factory
@@ -55,6 +63,12 @@ def factory_for(items, **kw):
 
 async def collect(gen):
     return [ev async for ev in gen]
+
+
+def test_skill_files_and_hash_are_stable():
+    files = skill_files()
+    assert any(p.endswith("defect-fix/SKILL.md") for p, _ in files)
+    assert skills_hash(files) == skills_hash(list(files))
 
 
 def test_names():
@@ -136,6 +150,8 @@ def test_checkout_is_single_branch_and_creates_work_branch():
         leak = sb.execute(f"git -C {info['path']} fetch origin refs/heads/main:refs/remotes/origin/leak", timeout=60)
         assert leak.exit_code != 0
         assert info["network"] == "offline"
+        assert "/workspace/.anvil/skills/defect-fix/SKILL.md" in info["skills"] and len(info["skills_hash"]) == 16
+        assert "name: defect-fix" in sb.execute("cat /workspace/.anvil/skills/defect-fix/SKILL.md").output
         again = ex.checkout(sb, run)  # idempotent on a second message in the same session
         assert again["branch"] == "anvil/rtems-1"
     finally:

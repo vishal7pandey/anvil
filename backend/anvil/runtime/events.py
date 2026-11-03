@@ -102,7 +102,7 @@ class EventMapper:
             call = self._calls.get(msg.tool_call_id, {"name": msg.name or "?", "args": {}})
             output = _text(msg.content)
             ok = msg.status != "error"
-            out.append(self.event("tool.result", {"call_id": msg.tool_call_id, "ok": ok,
+            out.append(self.event("tool.result", {"call_id": msg.tool_call_id, "name": call["name"], "ok": ok,
                                                   "output": output[:MAX_TOOL_OUTPUT]}, agent))
             if call["name"] == "execute":
                 artifact = msg.artifact if isinstance(msg.artifact, dict) else {}

@@ -13,6 +13,7 @@ import os
 import re
 import shlex
 from collections.abc import AsyncIterator, Callable
+from pathlib import Path
 from typing import Any
 
 import docker
@@ -23,11 +24,33 @@ from anvil.runtime import prompts
 from anvil.runtime.agent import RunConfig, build_agent
 from anvil.runtime.events import EventMapper
 from anvil.runtime.sandbox import DEFAULT_IMAGE, DockerSandbox, SandboxSpec
+from anvil.runtime.stuck import Budgets, StuckDetector
 
 GITHUB_BASE = os.environ.get("ANVIL_GIT_BASE", "https://github.com")
 RECURSION_LIMIT = int(os.environ.get("ANVIL_RECURSION_LIMIT", "400"))
+SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
+SANDBOX_SKILLS = "/workspace/.anvil/skills/"
+
+
+def skill_files(root: Path = SKILLS_DIR) -> list[tuple[str, bytes]]:
+    """(sandbox path, content) for every file under backend/anvil/skills/."""
+    return [(SANDBOX_SKILLS + p.relative_to(root).as_posix(), p.read_bytes())
+            for p in sorted(root.rglob("*")) if p.is_file() and "__pycache__" not in p.parts]
+
+
+def skills_hash(files: list[tuple[str, bytes]]) -> str:
+    h = hashlib.sha256()
+    for path, content in files:
+        h.update(path.encode() + b"\0" + content)
+    return h.hexdigest()[:16]
 
 ToolsFactory = Callable[[DockerSandbox, dict[str, Any]], list[Any]]
+# push(sandbox, run, wip_branch) -> url | None ; report(run, note_markdown) -> None. Host-side, optional.
+PushHook = Callable[[DockerSandbox, dict[str, Any], str], str | None]
+# report(run, handoff) where handoff = {note, wip_branch, url, sandbox, markdown}. The host side
+# formats its own Jira text (devin's evidence.handoff_note); markdown is a ready-made fallback.
+ReportHook = Callable[[dict[str, Any], dict[str, Any]], None]
+PROGRESS_TOOLS = {"write_file", "edit_file", "execute"}
 AgentFactory = Callable[..., Any]
 
 
@@ -76,7 +99,11 @@ class DeepAgentExecutor:
 
     def __init__(self, *, image: str | None = None, db_url: str | None = None,
                  tools_factory: ToolsFactory | None = None, agent_factory: AgentFactory = build_agent,
-                 docker_client: docker.DockerClient | None = None) -> None:
+                 docker_client: docker.DockerClient | None = None, budgets: Budgets | None = None,
+                 push_hook: PushHook | None = None, report_hook: ReportHook | None = None) -> None:
+        self.budgets = budgets
+        self.push_hook = push_hook
+        self.report_hook = report_hook
         self.image = image or os.environ.get("ANVIL_SANDBOX_IMAGE", DEFAULT_IMAGE)
         self.db_url = db_url or os.environ.get("ANVIL_DATABASE_URL", "postgresql://anvil:anvil@localhost:5433/anvil")
         self.tools_factory = tools_factory or (lambda _sb, _run: [])
@@ -144,9 +171,15 @@ class DeepAgentExecutor:
         # Answer-leak control: --single-branch only limits the *default* fetch; with network the agent
         # could still `git fetch origin main` and read a withheld fix. Offline runs (the default) lose
         # the network after checkout. Builds and simulator tests don't need it; push runs on the host.
+        files = skill_files()
+        uploaded = sandbox.upload_files(files)
+        failed = [r.path for r in uploaded if r.error]
+        if failed:
+            raise RuntimeError(f"could not upload skills: {failed}")
         network = run.get("network", "offline")
         sandbox.set_network("bridge" if network == "online" else None)
         return {"repo": repo, "path": path, "base_ref": base, "branch": branch, "network": network,
+                "skills": [p for p, _ in files if p.endswith("SKILL.md")], "skills_hash": skills_hash(files),
                 "base_sha": found.get("BASE_SHA"), "head_sha": found.get("HEAD_SHA")}
 
     def run_record(self, run: dict[str, Any], checkout: dict[str, Any]) -> dict[str, Any]:
@@ -206,8 +239,13 @@ class DeepAgentExecutor:
         config = RunConfig(run_id=run["run_id"], repo=run["repo"], mode=run.get("mode", "interactive"),
                            merge_policy=run.get("merge_policy", "human"))
         agent = self.agent_factory(config, sandbox, tools=self.tools_factory(sandbox, run),
-                                   on_handoff=handoffs.append, checkpointer=checkpointer, store=store)
+                                   on_handoff=handoffs.append, checkpointer=checkpointer, store=store,
+                                   skills=[SANDBOX_SKILLS])
         waiting = False
+        detector = StuckDetector(self.budgets)
+        path = repo_path(run["repo"])
+        recent: list[dict[str, Any]] = []
+        stuck: str | None = None
         try:
             async for item in agent.astream(graph_input, config={"configurable": {"thread_id": str(run["session_id"])},
                                                                   "recursion_limit": RECURSION_LIMIT},
@@ -217,16 +255,86 @@ class DeepAgentExecutor:
                     return
                 for ev in mapper.map(item):
                     waiting = waiting or ev["type"] == "approval.request"
+                    if ev["type"] in ("tool.call", "sandbox.exec"):
+                        recent = (recent + [ev])[-12:]
+                    if ev["type"] == "tool.result" and ev["data"].get("name") in PROGRESS_TOOLS:
+                        detector.note_diff_state(await asyncio.to_thread(self.diff_state, sandbox, path))
+                    stuck = stuck or detector.observe(ev)
                     yield ev
+                if stuck:
+                    break
         except Exception as exc:  # noqa: BLE001
             yield mapper.event("message", {"role": "system", "text": f"Run failed: {type(exc).__name__}: {exc}"})
             yield mapper.event("run.status", {"status": "failed"})
             return
         finally:
             self._cancel.pop(run["run_id"], None)
-        if handoffs:
-            yield mapper.event("artifact", {"kind": "handoff", "url": None, "title": "Handoff note",
-                                            "note": handoffs[-1]})
-            yield mapper.event("run.status", {"status": "handoff"})
+        if stuck or handoffs:
+            note = handoffs[-1] if handoffs else self.auto_note(run, stuck or "", recent)
+            async for ev in self._handoff(run, sandbox, mapper, path, note, stuck):
+                yield ev
         elif not waiting:
             yield mapper.event("run.status", {"status": "succeeded"})
+
+    # -- handoff ---------------------------------------------------------------------------
+
+    @staticmethod
+    def diff_state(sandbox: DockerSandbox, path: str) -> str:
+        res = sandbox.execute(f"cd {shlex.quote(path)} 2>/dev/null && (git diff HEAD; git status --porcelain) | sha1sum", timeout=60)
+        return res.output.strip()[:40]
+
+    @staticmethod
+    def auto_note(run: dict[str, Any], reason: str, recent: list[dict[str, Any]]) -> dict[str, str]:
+        lines = []
+        for e in recent[-8:]:
+            what = e["data"].get("cmd") or e["data"].get("name")
+            exit_part = f" -> exit {e['data'].get('exit_code')}" if e["type"] == "sandbox.exec" else ""
+            lines.append(f"- `{what}`{exit_part}")
+        last_fail = next((e for e in reversed(recent) if e["type"] == "sandbox.exec"
+                          and e["data"].get("exit_code") not in (0, None)), None)
+        if last_fail:
+            tail = last_fail["data"]["output_tail"][-1200:]
+            evidence = f"`{last_fail['data']['cmd']}`:\n```\n{tail}\n```"
+        else:
+            evidence = "(no failing command recorded)"
+        return {"goal": run.get("jira_key") or "see the run's first message",
+                "tried": "\n".join(lines) or "(none)",
+                "evidence": evidence, "hypothesis": f"The runtime stopped the agent: {reason}.",
+                "next_step": "Read the evidence, attach to the kept sandbox if needed, and decide whether to "
+                             "re-run with more guidance or take over on the WIP branch."}
+
+    async def _handoff(self, run: dict[str, Any], sandbox: DockerSandbox, mapper: EventMapper, path: str,
+                       note: dict[str, str], reason: str | None) -> AsyncIterator[dict[str, Any]]:
+        if reason:
+            yield mapper.event("message", {"role": "system", "text": f"Stopping and handing off: {reason}."})
+        wip = f"{work_branch(run)}-wip"
+        key = run.get("jira_key") or "ANVIL"
+        message = f"{key}: WIP handoff (Anvil run {run['run_id']})"
+        commit = await asyncio.to_thread(sandbox.execute, (
+            f"cd {shlex.quote(path)} && git add -A && git commit -q --no-verify --allow-empty -m {shlex.quote(message)} "
+            f"&& git branch -f {shlex.quote(wip)} HEAD && git rev-parse HEAD"), 120)
+        url = None
+        if commit.exit_code == 0 and self.push_hook:
+            try:
+                url = await asyncio.to_thread(self.push_hook, sandbox, run, wip)
+            except Exception as exc:  # noqa: BLE001 - handoff must still complete
+                yield mapper.event("message", {"role": "system", "text": f"WIP push failed: {exc}"})
+        branch_line = f"WIP branch: `{wip}`" + (f" ({url})" if url else " (not pushed)")
+        markdown = "\n\n".join([
+            "**Anvil handed this task back to a human.**",
+            f"**Goal:** {note.get('goal')}",
+            f"**Tried:**\n{note.get('tried')}",
+            f"**Evidence:**\n{note.get('evidence')}",
+            f"**Hypothesis:** {note.get('hypothesis')}",
+            f"**Next step:** {note.get('next_step')}",
+            f"{branch_line}\nSandbox kept: `{sandbox.id}`",
+        ])
+        if self.report_hook:
+            try:
+                handoff = {"note": note, "wip_branch": wip, "url": url, "sandbox": sandbox.id, "markdown": markdown}
+                await asyncio.to_thread(self.report_hook, run, handoff)
+            except Exception as exc:  # noqa: BLE001
+                yield mapper.event("message", {"role": "system", "text": f"Handoff report failed: {exc}"})
+        yield mapper.event("artifact", {"kind": "handoff", "url": url, "title": f"Handoff note ({wip})",
+                                        "note": note, "markdown": markdown})
+        yield mapper.event("run.status", {"status": "handoff"})

@@ -140,7 +140,9 @@ tag under `metadata`; the Responses API uses `litellm_metadata`. Token counts an
 activity come from the API event log. If token usage exists before its spend row is available,
 the metrics endpoints return `503` with `Retry-After` while spend data is pending (up to five
 minutes after the latest usage event). After that grace period, they return `cost_usd: null`
-and `cost_status: "missing"` rather than reporting false zero cost.
+and `cost_status: "missing"` rather than reporting false zero cost. `GET /api/metrics` sums cost
+over the runs that have spend rows and reports the rest as `runs_missing_cost`; its `cost_status`
+is `available`, `partial`, or `missing` (no run in the range priced).
 
 ### Run record (reproducibility)
 

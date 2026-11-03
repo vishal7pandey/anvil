@@ -36,18 +36,21 @@ rtems-test --rtems-bsp=erc32-sis build/sparc/erc32/testsuites/psxtests/psx05.exe
 
 ## Generate SBOM and OSV reports
 
-Run the pinned Syft and OSV-Scanner tools from the sandbox image. The output
-directory must be outside the scanned source directories:
+Run the pinned Syft and OSV-Scanner tools from the sandbox image in CI, or on a
+host where the OSV API is reachable. The agent sandbox can be offline after
+checkout, so its environment is not suitable for the OSV commit queries. The
+source must be a Git checkout with its submodule metadata; submodules do not
+need to be initialized. Keep the output directory outside the scanned sources:
 
 ```sh
 bash /workspace/sandbox/rtems/sbom.sh /workspace/project /workspace/reports
 ```
 
-This writes `spdx.json`, `cyclonedx.json`, and `osv.json`. OSV vulnerability
-findings are reported in the JSON file without failing the scan command;
-scanner or infrastructure errors fail it. If OSV-Scanner finds no supported
-package sources, the report records `scan_status: no_packages` rather than
-claiming a clean scan.
+This writes `spdx.json`, `cyclonedx.json`, and `osv.json`. OSV-Scanner findings
+and OSV API results for each Git submodule commit are recorded in the report;
+vulnerability findings do not fail the scan command, while scanner or API
+errors do. If neither package sources nor Git submodules can be scanned, the
+report records `scan_status: no_packages` rather than claiming a clean scan.
 
 To compare a current checkout with a baseline directory, add `--before`:
 
@@ -57,8 +60,10 @@ bash /workspace/sandbox/rtems/sbom.sh /workspace/current /workspace/reports --be
 
 This also writes `before-spdx.json`, `before-cyclonedx.json`,
 `osv-before.json`, and `osv-delta.json`. The delta reports introduced and
-resolved package vulnerabilities; its comparison status is marked incomplete
-if either scan found no supported package sources.
+resolved package or Git-source vulnerabilities by ID; Git-source findings are
+compared by repository and vulnerability ID across commit changes. Its
+comparison status is marked incomplete only if either source had no supported
+package sources or Git submodules to scan.
 
 ## Published image
 

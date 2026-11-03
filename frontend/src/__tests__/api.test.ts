@@ -5,6 +5,8 @@ import {
   decideApproval,
   cancelRun,
   subscribeToEvents,
+  parseSse,
+  listSessions,
 } from '../lib/api';
 import type { NewSessionForm, Session, Run } from '../types';
 
@@ -180,28 +182,96 @@ describe('cancelRun', () => {
   });
 });
 
+function streamResponse(chunks: string[]): Response {
+  const encoder = new TextEncoder();
+  let i = 0;
+  return {
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    body: {
+      getReader: () => ({
+        read: async () =>
+          i < chunks.length
+            ? { done: false, value: encoder.encode(chunks[i++]) }
+            : { done: true, value: undefined },
+      }),
+    },
+  } as unknown as Response;
+}
+
+function sse(seq: number, type: string, data: Record<string, unknown>): string {
+  const payload = JSON.stringify({ run_id: 'r1', seq, ts: '2026-11-03T08:00:00Z', type, agent: 'main', data });
+  return `id: ${seq}\nevent: ${type}\ndata: ${payload}\n\n`;
+}
+
+describe('parseSse', () => {
+  it('keeps named events and returns the unfinished tail', () => {
+    const { messages, rest } = parseSse('id: 1\nevent: tool.call\ndata: {"a":1}\n\nid: 2\ndata: {"b"');
+    expect(messages).toEqual([{ id: '1', event: 'tool.call', data: '{"a":1}' }]);
+    expect(rest).toBe('id: 2\ndata: {"b"');
+  });
+
+  it('handles CRLF, comments and multi-line data', () => {
+    const { messages } = parseSse(': ping\r\n\r\ndata: x\r\ndata: y\r\n\r\n');
+    expect(messages).toEqual([{ data: 'x\ny' }]);
+  });
+});
+
 describe('subscribeToEvents', () => {
-  it('creates EventSource with correct URL and returns unsubscribe that closes it', () => {
+  it('streams with a Bearer header and delivers named events split across chunks', async () => {
+    const first = sse(1, 'message', { text: 'hi' });
+    const second = sse(2, 'run.status', { status: 'succeeded' });
+    (globalThis.fetch as ReturnType<typeof vi.spyOn>).mockResolvedValueOnce(
+      streamResponse([first.slice(0, 20), first.slice(20) + second]),
+    );
     const onEvent = vi.fn();
-    let closeCalled = false;
-    let createdUrl: string | null = null;
+    subscribeToEvents('r1', onEvent, { reconnectDelayMs: 1 });
+    await vi.waitFor(() => expect(onEvent).toHaveBeenCalledTimes(2));
 
-    (globalThis as any).EventSource = class {
-      onmessage: ((e: MessageEvent) => void) | null = null;
-      onerror: ((e: Event) => void) | null = null;
-      constructor(url: string) {
-        createdUrl = url;
-      }
-      close() {
-        closeCalled = true;
-      }
-    };
+    const [url, init] = (globalThis.fetch as ReturnType<typeof vi.spyOn>).mock.calls[0];
+    expect(url).toBe(`${baseUrl}/runs/r1/events`);
+    expect(new Headers(init.headers).get('Authorization')).toBe(`Bearer ${demoToken}`);
+    expect(onEvent.mock.calls.map((c) => c[0].type)).toEqual(['message', 'run.status']);
+    // A final status ends the subscription: no reconnect.
+    await new Promise((r) => setTimeout(r, 20));
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
 
-    const unsubscribe = subscribeToEvents('r1', onEvent);
+  it('resumes with Last-Event-ID when the stream drops before a final status', async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.spyOn>;
+    fetchMock
+      .mockResolvedValueOnce(streamResponse([sse(7, 'tool.call', { name: 'execute' })]))
+      .mockResolvedValueOnce(streamResponse([sse(8, 'run.status', { status: 'failed' })]));
+    const onEvent = vi.fn();
+    subscribeToEvents('r1', onEvent, { reconnectDelayMs: 1 });
+    await vi.waitFor(() => expect(onEvent).toHaveBeenCalledTimes(2));
+    expect(new Headers(fetchMock.mock.calls[1][1].headers).get('Last-Event-ID')).toBe('7');
+  });
 
-    expect(createdUrl).toBe(`${baseUrl}/runs/r1/events?token=${encodeURIComponent(demoToken)}`);
-
+  it('stops when unsubscribed', async () => {
+    let signal: AbortSignal | undefined;
+    (globalThis.fetch as ReturnType<typeof vi.spyOn>).mockImplementationOnce(
+      (_url: unknown, init: RequestInit) => {
+        signal = init.signal ?? undefined;
+        return new Promise(() => {});
+      },
+    );
+    const unsubscribe = subscribeToEvents('r1', vi.fn());
     unsubscribe();
-    expect(closeCalled).toBe(true);
+    expect(signal?.aborted).toBe(true);
+  });
+});
+
+describe('listSessions', () => {
+  it('gets /sessions with bearer auth', async () => {
+    (globalThis.fetch as ReturnType<typeof vi.spyOn>).mockResolvedValueOnce({
+      ok: true,
+      json: async () => [],
+    } as Response);
+    await expect(listSessions()).resolves.toEqual([]);
+    expect(globalThis.fetch).toHaveBeenCalledWith(`${baseUrl}/sessions`, {
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${demoToken}` },
+    });
   });
 });

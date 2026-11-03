@@ -2,12 +2,21 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { StreamEvent, Session, Run, NewSessionForm } from './types';
 import {
   createSession,
+  listSessions,
   sendMessage,
   subscribeToEvents,
   decideApproval,
   cancelRun,
-  type ApprovalDecision,
 } from './lib/api';
+
+/** Payload of an `approval.request` event (see the API's event contract). */
+interface ApprovalRequestData {
+  approval_id: string;
+  action: string;
+  args: Record<string, unknown>;
+  reason?: string | null;
+  [key: string]: unknown;
+}
 import SessionList from './components/SessionList';
 import ChatStream from './components/ChatStream';
 import NewSessionDialog from './components/NewSessionDialog';
@@ -24,21 +33,23 @@ export default function App() {
   >([]);
   const eventSourceRef = useRef<(() => void) | null>(null);
 
-  // Seed with a demo session so the UI isn't empty on first load
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Only sessions the API returned can be selected: a made-up id would 404 on the first message.
   useEffect(() => {
-    const demo: Session = {
-      id: 'demo-1',
-      repo: 'vishal7pandey/rtems',
-      environment: 'local',
-      mode: 'autonomous',
-      merge_policy: 'human',
-      model_profile: 'anvil-main',
-      title: 'RTEMS pthread_mutex_init defect fix',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+    let cancelled = false;
+    listSessions()
+      .then((found) => {
+        if (cancelled) return;
+        setSessions(found);
+        setSelectedSession(found[0] ?? null);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      cancelled = true;
     };
-    setSessions([demo]);
-    setSelectedSession(demo);
   }, []);
 
   const handleNewSession = useCallback(
@@ -69,13 +80,10 @@ export default function App() {
 
         // Track approval requests
         if (event.type === 'approval.request') {
-          const approval = event.data as ApprovalDecision['data'] & {
-            approval_id: string;
-          };
-          setApprovals((prev) => [
-            ...prev,
-            { ...event.data, approval_id: event.data.approval_id as string },
-          ]);
+          const request = event.data as ApprovalRequestData;
+          setApprovals((prev) =>
+            prev.some((a) => a.approval_id === request.approval_id) ? prev : [...prev, request],
+          );
         }
 
         // Update run status
@@ -125,7 +133,9 @@ export default function App() {
         </header>
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <p className="text-slate-500">No sessions yet. Click "+" to create one.</p>
+            <p className="text-slate-500">
+              {loadError ? `Could not load sessions: ${loadError}` : 'No sessions yet.'}
+            </p>
             <button
               onClick={() => setOpenDialog(true)}
               className="mt-4 btn-primary"
@@ -134,6 +144,9 @@ export default function App() {
             </button>
           </div>
         </div>
+        {openDialog && (
+          <NewSessionDialog onSubmit={handleNewSession} onClose={() => setOpenDialog(false)} />
+        )}
       </div>
     );
   }

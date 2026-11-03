@@ -1,5 +1,5 @@
 import asyncio
-from datetime import timedelta
+from datetime import datetime, timedelta
 from threading import Event
 from decimal import Decimal
 from time import sleep
@@ -560,6 +560,125 @@ def test_approval_decision_persists_without_resuming_terminal_run(api_factory, c
     assert response.status_code == 409
     events = client.get(f"/api/runs/{run_id}/events", headers=AUTH)
     assert "event: approval.response" not in events.text
+
+
+def test_approval_inbox_and_run_timeline_are_owner_scoped(api_factory, client_factory):
+    app = api_factory()
+    client = client_factory(app)
+    session_id = UUID(create_session(client))
+    approval_id = uuid4()
+    other_user_run_id = uuid4()
+    run_id = uuid4()
+
+    with app.state.session_factory() as db:
+        user = db.get(User, "test-user")
+        session = db.get(Session, session_id)
+        run = Run(
+            id=run_id,
+            session_id=session.id,
+            trigger="ui",
+            repo=session.repo,
+            status="waiting_approval",
+            mode=session.mode,
+            input_text="approve this",
+        )
+        approval = Approval(
+            id=approval_id,
+            run_id=run.id,
+            action="git_push",
+            args={"branch": "anvil/example"},
+            reason="Push the reviewed branch",
+        )
+        db.add_all(
+            [
+                run,
+                approval,
+                RunEvent(
+                    run_id=run.id,
+                    seq=1,
+                    type="approval.request",
+                    agent="main",
+                    data={
+                        "approval_id": str(approval_id),
+                        "action": "git_push",
+                        "args": {"branch": "anvil/example"},
+                        "reason": "Push the reviewed branch",
+                    },
+                ),
+                RunEvent(
+                    run_id=run.id,
+                    seq=2,
+                    type="run.status",
+                    agent="api",
+                    data={"status": "waiting_approval"},
+                ),
+            ]
+        )
+
+        foreign_user = User(id="other-user", email="other@example.invalid")
+        foreign_session = Session(
+            user_id=foreign_user.id,
+            repo="other/repo",
+            environment="local",
+            mode="interactive",
+            model_profile="anvil-main",
+        )
+        db.add(foreign_user)
+        db.add(foreign_session)
+        db.flush()
+        db.add(
+            Run(
+                id=other_user_run_id,
+                session_id=foreign_session.id,
+                trigger="ui",
+                repo=foreign_session.repo,
+                status="waiting_approval",
+                mode=foreign_session.mode,
+                input_text="private",
+            )
+        )
+        db.flush()
+        db.add(
+            Approval(
+                id=uuid4(),
+                run_id=other_user_run_id,
+                action="git_push",
+                args={},
+            )
+        )
+        db.commit()
+
+    inbox = client.get("/api/approvals", headers=AUTH)
+    assert inbox.status_code == 200
+    assert len(inbox.json()) == 1
+    approval_item = inbox.json()[0]
+    assert datetime.fromisoformat(approval_item["requested_at"])
+    assert {key: value for key, value in approval_item.items() if key != "requested_at"} == {
+        "approval_id": str(approval_id),
+        "run_id": str(run_id),
+        "session_id": str(session_id),
+        "session_title": "test run",
+        "repo": "example/repo",
+        "run_status": "waiting_approval",
+        "action": "git_push",
+        "args": {"branch": "anvil/example"},
+        "reason": "Push the reviewed branch",
+        "agent": "main",
+    }
+
+    runs = client.get("/api/runs", headers=AUTH)
+    assert runs.status_code == 200
+    assert [item["id"] for item in runs.json()] == [str(run_id)]
+
+    timeline = client.get(f"/api/runs/{run_id}/timeline", headers=AUTH)
+    assert timeline.status_code == 200
+    assert [event["seq"] for event in timeline.json()] == [1, 2]
+    assert timeline.json()[0]["data"]["approval_id"] == str(approval_id)
+
+    assert client.get(
+        f"/api/runs/{other_user_run_id}/timeline",
+        headers=AUTH,
+    ).status_code == 404
 
 
 def test_manual_jira_intake_creates_and_starts_run(api_factory, client_factory):

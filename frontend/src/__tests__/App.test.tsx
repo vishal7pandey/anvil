@@ -33,6 +33,10 @@ function mockSessions(list: unknown[]) {
     ok: true,
     json: async () => list,
   } as Response);
+  vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+    ok: true,
+    json: async () => [],
+  } as Response);
 }
 
 describe('App', () => {
@@ -63,7 +67,7 @@ describe('App', () => {
     expect(await screen.findByText('Could not load sessions: Failed to list sessions: Unauthorized')).toBeInTheDocument();
   });
 
-  it('shows approvals with their agent, and switching sessions drops the old run', async () => {
+  it('keeps approvals in the inbox while switching sessions', async () => {
     const other = { ...session, id: '6f0c1a52-0000-4000-8000-000000000002', title: 'RTEMS-2 lwIP upgrade' };
     const approval = JSON.stringify({
       run_id: 'r1', seq: 3, ts: '2026-11-03T08:00:00Z', type: 'approval.request', agent: 'main',
@@ -74,6 +78,7 @@ describe('App', () => {
     const fetchMock = vi.mocked(globalThis.fetch);
     fetchMock
       .mockResolvedValueOnce({ ok: true, json: async () => [session, other] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
       .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'r1', status: 'running' }) } as Response)
       .mockImplementationOnce(async (_url, init) => ({
         ok: true,
@@ -106,7 +111,18 @@ describe('App', () => {
 
     fireEvent.click(screen.getAllByText('RTEMS-2 lwIP upgrade')[0]);
     expect(screen.queryByText('a-1')).not.toBeInTheDocument();
-    const streamInit = fetchMock.mock.calls[2][1];
+    const streamInit = fetchMock.mock.calls[3][1];
     expect(streamInit?.signal?.aborted).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: /Approvals/ }));
+    expect(await screen.findByText('a-1')).toBeInTheDocument();
+  });
+
+  it('navigates to the approvals inbox without requiring a selected session', async () => {
+    mockSessions([]);
+    render(<App />);
+    expect(await screen.findAllByText('No sessions yet.')).toHaveLength(1);
+    fireEvent.click(screen.getAllByRole('button', { name: /Approvals/ })[0]);
+    expect(await screen.findByRole('heading', { name: 'Approvals inbox' })).toBeInTheDocument();
+    expect(screen.getByText('No pending approvals.')).toBeInTheDocument();
   });
 });

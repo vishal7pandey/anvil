@@ -1,5 +1,7 @@
 import type {
   NewSessionForm,
+  ApprovalInboxItem,
+  Metrics,
   Run,
   Session,
   StreamEvent,
@@ -41,6 +43,33 @@ export async function getRun(runId: string): Promise<Run> {
     headers: authHeaders(),
   });
   if (!res.ok) throw new Error(`Failed to get run: ${res.statusText}`);
+  return res.json();
+}
+
+export async function listRuns(): Promise<Run[]> {
+  const res = await fetch(`${API_BASE}/runs`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`Failed to list runs: ${res.statusText}`);
+  return res.json();
+}
+
+export async function getRunTimeline(runId: string): Promise<StreamEvent[]> {
+  const res = await fetch(`${API_BASE}/runs/${runId}/timeline`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`Failed to get run timeline: ${res.statusText}`);
+  return res.json();
+}
+
+export async function getMetrics(scenario?: string): Promise<Metrics> {
+  const params = new URLSearchParams();
+  if (scenario?.trim()) params.set('scenario', scenario.trim());
+  const query = params.size ? `?${params}` : '';
+  const res = await fetch(`${API_BASE}/metrics${query}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`Failed to get metrics: ${res.statusText}`);
+  return res.json();
+}
+
+export async function listApprovals(): Promise<ApprovalInboxItem[]> {
+  const res = await fetch(`${API_BASE}/approvals`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`Failed to list approvals: ${res.statusText}`);
   return res.json();
 }
 

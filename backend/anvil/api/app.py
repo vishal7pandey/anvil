@@ -40,7 +40,9 @@ from anvil.api.runtime_factory import create_executor_from_environment
 from anvil.api.models import Approval, Run, RunEvent, Session, User, utc_now
 from anvil.api.schemas import (
     ApprovalDecision,
+    ApprovalInboxResponse,
     ApprovalResponse,
+    EventResponse,
     IntakeResponse,
     MetricsResponse,
     MessageCreate,
@@ -1043,6 +1045,87 @@ def create_app(
             "ci_rounds": sum(item["ci_rounds"] for item in run_metrics),
             "outcomes": dict(outcomes),
         }
+
+    @app.get("/api/runs", response_model=list[RunResponse])
+    def list_runs(
+        limit: int = Query(default=50, ge=1, le=100),
+        db: DBSession = Depends(get_db),
+        user: User = Depends(_authenticated_user),
+    ) -> list[Run]:
+        return list(
+            db.scalars(
+                select(Run)
+                .join(Session, Run.session_id == Session.id)
+                .where(Session.user_id == user.id)
+                .order_by(Run.created_at.desc())
+                .limit(limit)
+            )
+        )
+
+    @app.get("/api/approvals", response_model=list[ApprovalInboxResponse])
+    def list_pending_approvals(
+        limit: int = Query(default=50, ge=1, le=100),
+        db: DBSession = Depends(get_db),
+        user: User = Depends(_authenticated_user),
+    ) -> list[dict[str, Any]]:
+        rows = db.execute(
+            select(Approval, Run, Session)
+            .join(Run, Approval.run_id == Run.id)
+            .join(Session, Run.session_id == Session.id)
+            .where(
+                Session.user_id == user.id,
+                Approval.status == "pending",
+                Run.status.not_in(TERMINAL_RUN_STATUSES),
+            )
+            .order_by(Approval.requested_at.desc(), Approval.id)
+            .limit(limit)
+        ).all()
+        if not rows:
+            return []
+
+        run_ids = {run.id for _, run, _ in rows}
+        approval_agents: dict[str, str | None] = {}
+        for event in db.scalars(
+            select(RunEvent).where(
+                RunEvent.run_id.in_(run_ids),
+                RunEvent.type == "approval.request",
+            )
+        ):
+            approval_id = event.data.get("approval_id")
+            if approval_id is not None:
+                approval_agents[str(approval_id)] = event.agent
+
+        return [
+            {
+                "approval_id": approval.id,
+                "run_id": run.id,
+                "session_id": session.id,
+                "session_title": session.title,
+                "repo": run.repo,
+                "run_status": run.status,
+                "action": approval.action,
+                "args": approval.args,
+                "reason": approval.reason,
+                "agent": approval_agents.get(str(approval.id)),
+                "requested_at": approval.requested_at,
+            }
+            for approval, run, session in rows
+        ]
+
+    @app.get("/api/runs/{run_id}/timeline", response_model=list[EventResponse])
+    def get_run_timeline(
+        run_id: UUID,
+        db: DBSession = Depends(get_db),
+        user: User = Depends(_authenticated_user),
+    ) -> list[RunEvent]:
+        _load_run(db, run_id, user.id)
+        return list(
+            db.scalars(
+                select(RunEvent)
+                .where(RunEvent.run_id == run_id)
+                .order_by(RunEvent.seq)
+            )
+        )
 
     @app.get("/api/runs/{run_id}", response_model=RunResponse)
     def get_run(

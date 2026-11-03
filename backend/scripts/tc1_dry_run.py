@@ -68,7 +68,13 @@ async def main() -> int:
     diff = sandbox.execute(f"cd {path} && git diff {base}", timeout=60).output
     (out / "agent.diff").write_text(diff, encoding="utf-8")
 
+    from scripts.score_tc1 import fetch_upstream_diff, score_tc1_diff
+
     touched = set(files)
+    try:
+        hunk_overlap = score_tc1_diff(diff, fetch_upstream_diff())
+    except Exception as exc:  # noqa: BLE001
+        hunk_overlap = {"error": str(exc)}
     score = {
         "run_id": run_id, "session": run["session_id"], "final_status": status,
         "seconds": round(elapsed), "event_counts": counts,
@@ -77,6 +83,7 @@ async def main() -> int:
         "upstream_files_hit": sorted(touched & upstream_files),
         "root_cause_file_hit": bool(touched & root_cause_files),
         "extra_files": sorted(touched - upstream_files),
+        "hunk_overlap": hunk_overlap,  # still a62e60b5-only; PR #49 makes it case-driven
         "root_cause_score_0_2": None,  # filled in by a human reviewer
     }
     (out / "score.json").write_text(json.dumps(score, indent=2), encoding="utf-8")

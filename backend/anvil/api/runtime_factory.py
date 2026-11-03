@@ -1,7 +1,34 @@
+import asyncio
 import os
+import sys
 from typing import Any
 
+from sqlalchemy.engine import make_url
+
+from anvil.api.config import get_settings, normalize_database_url
 from anvil.api.executor import RunExecutor
+
+
+def _runtime_database_url(database_url: str) -> str:
+    normalized_url = normalize_database_url(database_url)
+    url = make_url(normalized_url)
+    if url.drivername == "postgresql+psycopg":
+        return url.set(drivername="postgresql").render_as_string(hide_password=False)
+    return normalized_url
+
+
+def _validate_async_postgres_event_loop() -> None:
+    if sys.platform != "win32":
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    if isinstance(loop, asyncio.ProactorEventLoop):
+        raise RuntimeError(
+            "ANVIL_EXECUTOR=deepagent requires a Windows SelectorEventLoop for Psycopg; "
+            "start the API with `python -m anvil.api.serve`"
+        )
 
 
 def create_executor_from_environment() -> RunExecutor | None:
@@ -10,6 +37,8 @@ def create_executor_from_environment() -> RunExecutor | None:
         return None
     if executor_name != "deepagent":
         raise ValueError(f"Unsupported ANVIL_EXECUTOR value: {executor_name}")
+
+    _validate_async_postgres_event_loop()
 
     from anvil.runtime.executor import DeepAgentExecutor
     from anvil.runtime.websearch import TC_BLOCKLIST, make_web_search
@@ -62,6 +91,7 @@ def create_executor_from_environment() -> RunExecutor | None:
         jira_set_labels(jira_key, add=["anvil-needs-human"])
 
     return DeepAgentExecutor(
+        db_url=_runtime_database_url(get_settings().database_dsn),
         tools_factory=tools_factory,
         push_hook=push_hook,
         report_hook=report_hook,

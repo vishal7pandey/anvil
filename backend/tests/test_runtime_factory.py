@@ -1,3 +1,4 @@
+import asyncio
 import sys
 import types
 from collections.abc import Callable
@@ -5,7 +6,55 @@ from typing import Any
 
 import pytest
 
+from anvil.api import runtime_factory
+from anvil.api import serve
+from anvil.api.config import Settings
+from anvil.api.database import create_session_factory
 from anvil.api.runtime_factory import create_executor_from_environment
+
+
+def test_windows_executor_rejects_proactor_event_loop_for_async_postgres(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if not hasattr(asyncio, "ProactorEventLoop"):
+        pytest.skip("Windows event-loop policies are unavailable")
+
+    proactor_loop = asyncio.ProactorEventLoop()
+    monkeypatch.setattr(runtime_factory.sys, "platform", "win32")
+    monkeypatch.setattr(
+        runtime_factory.asyncio,
+        "get_running_loop",
+        lambda: proactor_loop,
+    )
+
+    try:
+        with pytest.raises(RuntimeError, match="python -m anvil.api.serve"):
+            runtime_factory._validate_async_postgres_event_loop()
+    finally:
+        proactor_loop.close()
+
+
+def test_windows_api_loop_factory_uses_selector_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(serve.sys, "platform", "win32")
+
+    loop = serve.api_loop_factory()
+    try:
+        assert isinstance(loop, asyncio.SelectorEventLoop)
+    finally:
+        loop.close()
+
+
+def test_windows_database_engine_rewrites_localhost_to_ipv4(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(runtime_factory.sys, "platform", "win32")
+    engine, _ = create_session_factory(
+        "postgresql+psycopg://anvil@localhost:5433/anvil_copilot"
+    )
+    try:
+        assert engine.url.host == "127.0.0.1"
+    finally:
+        engine.dispose()
 
 
 def test_executor_is_disabled_when_environment_setting_is_empty(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -25,6 +74,15 @@ def test_deepagent_executor_receives_host_tools_and_hooks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ANVIL_EXECUTOR", "deepagent")
+    monkeypatch.setattr(runtime_factory.sys, "platform", "win32")
+    monkeypatch.setattr(runtime_factory, "_validate_async_postgres_event_loop", lambda: None)
+    monkeypatch.setattr(
+        runtime_factory,
+        "get_settings",
+        lambda: Settings(
+            database_url="postgresql+psycopg://anvil:test%40password@localhost:5433/anvil_copilot"
+        ),
+    )
     created: dict[str, Any] = {}
     executor_module = types.ModuleType("anvil.runtime.executor")
 
@@ -32,10 +90,12 @@ def test_deepagent_executor_receives_host_tools_and_hooks(
         def __init__(
             self,
             *,
+            db_url: str,
             tools_factory: Callable[..., list[Any]],
             push_hook: Callable[..., str],
             report_hook: Callable[..., None],
         ) -> None:
+            created["db_url"] = db_url
             created["tools_factory"] = tools_factory
             created["push_hook"] = push_hook
             created["report_hook"] = report_hook
@@ -72,6 +132,8 @@ def test_deepagent_executor_receives_host_tools_and_hooks(
 
     executor = create_executor_from_environment()
     assert isinstance(executor, FakeExecutor)
+    assert created["db_url"].startswith("postgresql://anvil:")
+    assert created["db_url"].endswith("@127.0.0.1:5433/anvil_copilot")
 
     sandbox = object()
     jira_tools = created["tools_factory"](

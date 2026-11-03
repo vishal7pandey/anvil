@@ -76,10 +76,10 @@ flowchart LR
 ---
 
 ### Scenario 2: TC2 Open-Source Component Upgrade (RTEMS-2)
-*Demonstrates: Autonomous dependency management, C port layer adaptation, cross-compilation, and compliance artifact generation (SBOM, CVE, API impact).*
+*Demonstrates: Autonomous dependency management, C port layer adaptation, cross-compilation, and compliance artifact generation (SBOM, OSV CVE analysis & follow-ups, API impact).*
 
 - **Target Ticket:** `RTEMS-2` (`Upgrade vendored lwIP to 2.2.1 in rtems-lwip`).
-- **Codebase:** `vishal7pandey/rtems-lwip` on branch `tc2/upgrade-base`.
+- **Codebase:** `vishal7pandey/rtems-lwip` on branch `tc2/upgrade-base-leon3` (constructed baseline: backports SPARC/LEON3 GRETH support to lwIP 2.1.3 so the demo builds under the SPARC sandbox while keeping the vendored lwIP tree untouched).
 - **Target Architecture:** SPARC / LEON3 (`sparc/leon3`) via SIS simulator.
 - **Estimated Duration:** ~6–8 minutes.
 
@@ -89,8 +89,8 @@ flowchart LR
 | **0:00 - 1:00** | Label `anvil` added to `RTEMS-2`. Agent checks baseline (`lwIP 2.1.3`), fetches upstream tag `STABLE-2_2_1_RELEASE`, and drafts upgrade plan. | *"In TC2, Anvil acts as a dependency maintenance engineer. It compares vendored sources against the upstream lwIP release tag to identify added files and changed signatures."* |
 | **1:00 - 3:00** | Agent advances submodule, updates in-tree `lwip/` tree according to `file-import.json`, imports newly mandatory Address Conflict Detection (`acd.c`), and adjusts `lwipopts.h`. | *"Notice how the agent updates the Waf build files and handles API shifts like Address Conflict Detection without human guidance."* |
 | **3:00 - 5:30** | Agent configures Waf (`--prefix=/opt/rtems/7 --rtems-tools=/opt/rtems/7 --rtems-bsps=sparc/leon3`) and compiles `networking01.exe` in ~2 minutes. Runs SIS simulation (0.28s). | *"The stack is cross-compiled for SPARC/LEON3 using RTEMS Waf. The agent executes `networking01.exe` on SIS—zero host network tap or root permissions required."* |
-| **5:30 - 7:00** | Agent generates Syft SBOM delta (SPDX), OSV-Scanner CVE remediation report, API impact summary, and publishes release documentation to Confluence space `RTKB`. | *"Beyond code, Anvil generates complete compliance artifacts: before/after SBOMs, patched CVE lists, and structured release notes published to Confluence."* |
-| **7:00 - 8:00** | **Human Gate: Upgrade Approval.** Reviewer inspects SBOM and PR. Ticket transitioned to **Done**. | *"We inspect the CVE delta showing patched vulnerabilities, verify simulator test passage, and approve the upgrade PR."* |
+| **5:30 - 7:00** | Agent generates Syft SBOM delta (SPDX), OSV-Scanner CVE analysis report, API impact summary, and publishes release documentation to Confluence space `RTKB`. | *"Beyond code, Anvil generates complete compliance artifacts: before/after SBOMs, API impact notes, and OSV vulnerability analysis. Notice that OSV records lwIP 2.1.3 (commit 6ca936f) with 0 known vulns and 2.2.1 (commit 77dcd25) with 3 (CVE-2026-112062, CVE-2026-119053, CVE-2026-8836). Rather than falsely claiming CVEs were remediated, Anvil flags the 3 newly surfaced CVEs in the target version and drafts follow-up tickets."* |
+| **7:00 - 8:00** | **Human Gate: Upgrade Approval.** Reviewer inspects SBOM, CVE flags, and PR. Ticket transitioned to **Done**. | *"We inspect the SBOM diff and the CVE report flagging the 3 new target-version CVEs for follow-up, verify simulator test passage, and approve the upgrade PR."* |
 
 ---
 
@@ -152,7 +152,7 @@ flowchart LR
 | Gate | Scenario | Agent Prompt / State | Operator Action | Speaking Points |
 |---|---|---|---|---|
 | **Gate 1: Code Diff Review** | TC1 | Agent opens PR #X, requests review | Open GitHub PR link in browser, inspect `mutexinit.c` diff, click **Approve** and **Squash and Merge**. | *"We verify that the mutex initialization flags are written only after parameter validation. Clean diff, zero warnings, tests green. Merging."* |
-| **Gate 2: Upgrade Acceptance** | TC2 | Agent posts SBOM & CVE delta to PR | Review Syft SBOM comparison, verify CVE remediation, approve PR. | *"Notice the automated vulnerability delta: 2 CVEs resolved in the lwIP 2.2.1 upgrade. Clean simulation on LEON3. Approved."* |
+| **Gate 2: Upgrade Acceptance** | TC2 | Agent posts SBOM & CVE delta to PR | Review Syft SBOM comparison, verify target-version CVE flags and follow-ups, approve PR. | *"Notice the automated vulnerability assessment: OSV identifies 3 known CVEs in the target 2.2.1 release (CVE-2026-112062, -119053, -8836). Anvil flags them and creates follow-up tracking issues. Clean simulation on LEON3. Approved."* |
 | **Gate 3: CRA Compliance Gate** | TC3 | Agent presents Annex I gap list | In UI / Jira, mark 1 gap as **Accepted** and 1 gap as **Rejected (Acceptable operational risk)**. | *"Human governance is built into the workflow. We approve the remote shell gap, but reject the telemetry gap because RefDev uses an isolated optical bus."* |
 | **Gate 4: Hypothesis Validation** | TC4 | Agent requests SME confirmation of root cause | Click **Confirm Hypothesis** in Anvil UI. | *"Anvil presents the top hypothesis with supporting citations from past mission post-mortems before touching design specifications."* |
 | **Gate 5: Stuck Handoff** | Forced-Stuck | Agent posts handoff note & label | Inspect `RTEMS-4` Jira comment, view WIP branch. | *"The agent gracefully stopped and provided an actionable brief for our laboratory hardware testbed."* |

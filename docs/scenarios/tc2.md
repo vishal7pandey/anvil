@@ -43,8 +43,8 @@ Upstream RTEMS executed this exact upgrade in late 2025 (`a30180a462`, `0302d22c
 * **Baseline State:** `STABLE-2_1_3_RELEASE` (commit `6ca936f6b588cee702c638eee75c2436e6cf75de`).
 * **Target State:** `STABLE-2_2_1_RELEASE` (commit `77dcd25a72509eb83f72b033d219b1d40cd8eb95`).
 * **Why this is optimal for the demo:**
-  - **Bounded Execution Time:** Full rebuild of `rtems-lwip` with Waf is expected to take ~1–2 minutes in the container (*[UNVERIFIED: to be confirmed in Step 2 sandbox baseline]*), fitting comfortably within demo constraints.
-  - **Deterministic Testability:** The test application `networking01.exe` is intended to run directly under SIS without needing external host TAP/TUN network interfaces (*[UNVERIFIED: to be confirmed in Step 2 sandbox baseline; see Fallback Test Strategy below]*).
+  - **Bounded Execution Time:** Full clean rebuild of `rtems-lwip` with Waf takes ~2m 04s (configure 26.1s, compile 124.2s, total clean cycle 170.3s / 2.8 minutes; incremental ~10–15s) in the container on a standard developer laptop, fitting comfortably within demo constraints.
+  - **Deterministic Testability:** The test application `networking01.exe` runs directly under SIS in 0.28s (`rtems-test --rtems-bsp=leon3-sis` in 0.75s, 100% pass) without requiring host TAP/TUN network interfaces or root network privileges.
   - **Rich Artifact Surface:** Moves across a minor version boundary (2.1.x to 2.2.x), introducing measurable API changes (Address Conflict Detection / ACD, updated socket options) and tangible CVE remediation points.
 
 ### Fallback Options (Evaluated & Kept in Reserve)
@@ -102,23 +102,24 @@ flowchart TD
    - Verify `rtemslwip/greth` driver compiles against new lwIP netif signatures.
    - Adjust `lwipopts.h` if upstream default macro behaviors shifted (e.g. ACD defaults).
 4. **Compilation:**
-   - Configure Waf using standard `rtems_waf` arguments (*exact flags to be confirmed in Step 2 sandbox baseline*):
+   - Configure Waf using `rtems_waf` arguments (note `--rtems-tools` points to `/opt/rtems/7`, NOT `/opt/rtems/7/bin`):
      ```bash
-     ./waf configure --prefix=/opt/rtems/7 --rtems-tools=/opt/rtems/7/bin --rtems-bsps=sparc/leon3
+     ./waf configure --prefix=/opt/rtems/7 --rtems-tools=/opt/rtems/7 --rtems-bsps=sparc/leon3
      ```
-   - Build:
+   - Build the network test binary (clean build ~2m 04s, incremental ~10-15s):
      ```bash
-     ./waf
+     ./waf --targets=networking01.exe -j8
      ```
 5. **Simulator Verification:**
-   - Run the networking test executable on the SIS simulator (*subject to confirmation in Step 2*):
+   - Run the networking test executable on the SIS simulator (completes in 0.28s; does not require external host network interfaces):
      ```bash
-     sis -leon3 -m 32 build/sparc-rtems7-leon3/networking01.exe
+     sparc-rtems7-sis -leon3 -r -tlim 10 s build/sparc-rtems7-leon3/networking01.exe
+     ```
+     Or via `rtems-test` (completes in 0.75s):
+     ```bash
+     rtems-test --rtems-bsp=leon3-sis build/sparc-rtems7-leon3/networking01.exe
      ```
    - Verify output ends with expected test success markers (`*** END OF TEST NETWORKING 1 ***`).
-   - **Fallback Test Strategy:** If SIS does not emulate the GRETH hardware without an active host TAP network interface, the test plan falls back to:
-     1. Running a loopback interface test (`loopif`) configured in `rtemslwip/test/`.
-     2. Alternatively, compiling and running a unit test harness exercising the core TCP/IP stack routines.
 6. **Artifact Generation:**
    - **SBOM Delta:** Generate Syft SBOM (SPDX JSON) before and after upgrade.
    - **CVE Delta:** Run OSV-Scanner against baseline vs. upgraded tree to document patched vulnerabilities.

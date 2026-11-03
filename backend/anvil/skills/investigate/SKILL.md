@@ -7,7 +7,7 @@ description: Investigate an incident or symptom against the knowledge base (kb_s
 
 ## When to use
 A ticket reports ambiguous symptoms (timeouts, dropped buffers, degraded timing, weird status
-codes) and asks "why", not "fix". See `docs/scenarios/tc4.md` for the TC4 scenario.
+codes) and asks "why", not "fix".
 
 ## Ground rules
 - Cite everything: every hypothesis and every claim needs a source (KB chunk, doc URL,

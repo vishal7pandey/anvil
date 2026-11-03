@@ -19,55 +19,17 @@ from pathlib import Path
 
 from anvil.runtime.executor import DeepAgentExecutor, repo_path
 
-# Upstream fix a62e60b5 (rtems #5776). Only file paths here: the harness runs on the host, the
-# agent never sees this file.
-UPSTREAM_FILES = {"cpukit/posix/src/mutexinit.c", "testsuites/psxtests/psx05/init.c"}
-ROOT_CAUSE_FILE = "cpukit/posix/src/mutexinit.c"
+from anvil.cases import get_case
 
-TICKET = """RTEMS-1: Mutex reports EBUSY / crashes after a failed pthread_mutex_init with an invalid priority ceiling
-
-## Observed
-
-After `pthread_mutex_init()` fails with `EINVAL` for a priority-ceiling mutex whose ceiling is out of
-range, the same mutex object is still accepted by later calls: `pthread_mutex_trylock()` and
-`pthread_mutex_destroy()` return `EBUSY` instead of `EINVAL`, and `pthread_mutex_lock()` ends in a fatal
-data abort inside the thread queue code. With a zero-filled object the lock instead succeeds and the
-caller ends up at priority 0.
-
-## Steps to reproduce
-
-```c
-pthread_mutexattr_t attr;
-pthread_mutex_t     mtx;
-
-memset( &mtx, 0xa5, sizeof( mtx ) );
-pthread_mutexattr_init( &attr );
-pthread_mutexattr_setprotocol( &attr, PTHREAD_PRIO_PROTECT );
-pthread_mutexattr_setprioceiling( &attr, sched_get_priority_max( SCHED_FIFO ) + 1 );
-
-pthread_mutex_init( &mtx, &attr ); /* EINVAL, as expected */
-pthread_mutex_trylock( &mtx );     /* expected EINVAL, got EBUSY */
-pthread_mutex_destroy( &mtx );     /* expected EINVAL, got EBUSY */
-```
-
-## Expected
-
-A failed `pthread_mutex_init()` leaves `*mutex` unmodified, and later calls reject the object with `EINVAL`.
-
-## Environment
-
-Uniprocessor, RTEMS_DEBUG off. Reproduce on `sparc/erc32` (SIS).
-
-## Done when
-
-Root cause identified, fix on a branch, a regression test in the POSIX test suite passes on the
-simulator. (Dry run: commit locally, do not push.)
-"""
+# The case (ANVIL-38) holds the ticket, base branch, repo and scored files: this script knows no bug.
+# It runs on the host; the agent never sees the case file.
+DRY_RUN_NOTE = "\n\n(Dry run: commit locally, do not push.)\n"
 
 
 async def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
+    ap.add_argument("--case", default="rtems-5776", help="case id from cases/*.toml")
     ap.add_argument("--image", default="anvil-sandbox-rtems:7.1")
     ap.add_argument("--db", default="postgresql://anvil:anvil@localhost:5433/anvil_claude")
     args = ap.parse_args()
@@ -75,15 +37,19 @@ async def main() -> int:
     out.mkdir(parents=True, exist_ok=True)
 
     run_id = str(uuid.uuid4())
-    run = {"run_id": run_id, "session_id": f"tc1-{run_id[:8]}", "repo": "vishal7pandey/rtems",
-           "base_ref": "tc1/5776-base", "jira_key": "RTEMS-1", "mode": "autonomous",
+    case = get_case(args.case)
+    upstream_files = set(case.target_files) | set(case.test_files)
+    root_cause_files = set(case.target_files)
+    ticket = f"{case.ticket_key or case.id}: {case.ticket_summary}\n\n{case.ticket_text}{DRY_RUN_NOTE}"
+    run = {"run_id": run_id, "session_id": f"{case.id}-{run_id[:8]}", "repo": case.repo,
+           "base_ref": case.base_branch, "jira_key": case.ticket_key, "mode": "autonomous",
            "merge_policy": "human", "network": "offline", "trigger": "tc1-dry-run"}
     ex = DeepAgentExecutor(image=args.image, db_url=args.db)
     started = time.monotonic()
     counts: dict[str, int] = {}
     status = None
     with (out / "events.jsonl").open("w", encoding="utf-8") as log:
-        async for ev in ex.start(run, TICKET):
+        async for ev in ex.start(run, ticket):
             log.write(json.dumps(ev, default=str) + "\n")
             log.flush()
             counts[ev["type"]] = counts.get(ev["type"], 0) + 1
@@ -107,9 +73,10 @@ async def main() -> int:
         "run_id": run_id, "session": run["session_id"], "final_status": status,
         "seconds": round(elapsed), "event_counts": counts,
         "files_touched": sorted(touched),
-        "upstream_files_hit": sorted(touched & UPSTREAM_FILES),
-        "root_cause_file_hit": ROOT_CAUSE_FILE in touched,
-        "extra_files": sorted(touched - UPSTREAM_FILES),
+        "case": case.id,
+        "upstream_files_hit": sorted(touched & upstream_files),
+        "root_cause_file_hit": bool(touched & root_cause_files),
+        "extra_files": sorted(touched - upstream_files),
         "root_cause_score_0_2": None,  # filled in by a human reviewer
     }
     (out / "score.json").write_text(json.dumps(score, indent=2), encoding="utf-8")

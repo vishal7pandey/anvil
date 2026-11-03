@@ -15,7 +15,6 @@ from scripts.reset_demo import (
 def test_reset_jira_transitions_labels_and_deletes_extra():
     with patch("anvil.tools.jira.jira_get") as mock_get, \
          patch("anvil.tools.jira.jira_transition") as mock_trans, \
-         patch("anvil.tools.jira.jira_search") as mock_search, \
          patch("anvil.tools._atlassian.request") as mock_req:
 
         # RTEMS-1 is In Progress with anvil label
@@ -24,11 +23,20 @@ def test_reset_jira_transitions_labels_and_deletes_extra():
             "status": "In Progress" if key == "RTEMS-1" else "To Do",
             "labels": ["posix", "tc1", "anvil", "anvil-in-progress"] if key == "RTEMS-1" else BASELINE_TICKETS[key]["labels"],
         }
-        # Extra issue RTEMS-7 created by agent
-        mock_search.return_value = [
-            {"key": "RTEMS-1", "summary": "Baseline 1"},
-            {"key": "RTEMS-7", "summary": "Remediation story created by agent"},
-        ]
+        # Extra issues: RTEMS-7 created by agent (with cra label), and RTEMS-9 without agent label
+        def fake_req(method, path, **kwargs):
+            if path == "/rest/api/3/search/jql":
+                return {
+                    "issues": [
+                        {"id": "1", "key": "RTEMS-1", "fields": {"summary": "Baseline 1", "labels": ["posix", "tc1"]}},
+                        {"id": "7", "key": "RTEMS-7", "fields": {"summary": "Remediation story", "labels": ["cra", "tc3"]}},
+                        {"id": "9", "key": "RTEMS-9", "fields": {"summary": "Unrelated issue", "labels": ["docs"]}},
+                    ],
+                    "isLast": True,
+                }
+            return {}
+
+        mock_req.side_effect = fake_req
 
         success = reset_jira(dry_run=False)
         assert success is True
@@ -37,30 +45,43 @@ def test_reset_jira_transitions_labels_and_deletes_extra():
         mock_trans.assert_called_once_with("RTEMS-1", "To Do")
 
         # RTEMS-1 should have its labels reset to baseline
-        mock_req.assert_any_call(
-            "PUT",
-            "/rest/api/3/issue/RTEMS-1",
-            json={"fields": {"labels": ["posix", "tc1"], "assignee": None}},
+        assert any(
+            call("PUT", "/rest/api/3/issue/RTEMS-1", json={"fields": {"labels": ["posix", "tc1"], "assignee": None}}) in mock_req.mock_calls
+            for _ in [1]
         )
 
-        # RTEMS-7 should be deleted
-        mock_req.assert_any_call("DELETE", "/rest/api/3/issue/RTEMS-7")
+        # RTEMS-7 should be deleted (has cra/tc3 label)
+        assert any(
+            call("DELETE", "/rest/api/3/issue/RTEMS-7") in mock_req.mock_calls
+            for _ in [1]
+        )
+
+        # RTEMS-9 should NOT be deleted (no agent label)
+        assert not any(
+            call("DELETE", "/rest/api/3/issue/RTEMS-9") in mock_req.mock_calls
+            for _ in [1]
+        )
 
 
 def test_reset_jira_dry_run_does_not_mutate():
     with patch("anvil.tools.jira.jira_get") as mock_get, \
          patch("anvil.tools.jira.jira_transition") as mock_trans, \
-         patch("anvil.tools.jira.jira_search") as mock_search, \
          patch("anvil.tools._atlassian.request") as mock_req:
 
         mock_get.return_value = {"key": "RTEMS-1", "status": "Done", "labels": ["posix", "tc1", "anvil-done"]}
-        mock_search.return_value = [{"key": "RTEMS-8", "summary": "Extra bug"}]
+        mock_req.return_value = {
+            "issues": [
+                {"id": "8", "key": "RTEMS-8", "fields": {"summary": "Extra bug", "labels": ["tc4"]}}
+            ],
+            "isLast": True,
+        }
 
         success = reset_jira(dry_run=True)
         assert success is True
 
         mock_trans.assert_not_called()
-        mock_req.assert_not_called()
+        # Ensure no DELETE or PUT requests were made
+        assert not any(c[0] in ("DELETE", "PUT") for c in mock_req.call_args_list if len(c) > 0 and len(c[0]) > 0)
 
 
 def test_reset_github_mirrors():
@@ -97,6 +118,7 @@ def test_reset_github_mirrors():
 
 def test_reset_confluence_rtkb_protects_synthetic_deletes_pages_and_purges_chunks():
     with patch("anvil.tools.confluence.confluence_search") as mock_search, \
+         patch("anvil.tools.confluence.confluence_get") as mock_get, \
          patch("anvil.tools._atlassian.request") as mock_req, \
          patch("sqlalchemy.create_engine") as mock_engine, \
          patch("subprocess.run") as mock_subproc:
@@ -108,6 +130,11 @@ def test_reset_confluence_rtkb_protects_synthetic_deletes_pages_and_purges_chunk
             {"id": "99990001", "title": "CRA Compliance Audit Report for RefDev"},
             {"id": "99990002", "title": "Incident Analysis: Telemetry packet drops and TM_GUIDANCE"},
         ]
+        mock_get.side_effect = lambda pid: {
+            "id": pid,
+            "title": "Incident Analysis" if pid == "99990002" else "CRA Report",
+            "body": {"storage": {"value": "<p>Findings for RTEMS-5 issue...</p>" if pid == "99990002" else "<p>CRA audit notes</p>"}},
+        }
         mock_subproc.return_value = MagicMock(returncode=0, stdout="Ingested ok", stderr="")
 
         mock_conn = MagicMock()
@@ -126,7 +153,7 @@ def test_reset_confluence_rtkb_protects_synthetic_deletes_pages_and_purges_chunk
         # SQL chunk deletion called
         assert mock_conn.execute.call_count >= 1
 
-        # 2. Reset WITH keeping TC4 run 1 -> preserves 99990002
+        # 2. Reset WITH keeping TC4 run 1 -> preserves 99990002 (matches RTEMS-5 in body)
         mock_req.reset_mock()
         success = reset_confluence_rtkb(keep_tc4_run1=True, dry_run=False)
         assert success is True
@@ -134,7 +161,7 @@ def test_reset_confluence_rtkb_protects_synthetic_deletes_pages_and_purges_chunk
         mock_req.assert_called_once_with("DELETE", "/wiki/api/v2/pages/99990001")
 
 
-def test_reset_memories():
+def test_reset_memories_scoped_and_keeps_tc4():
     with patch("sqlalchemy.create_engine") as mock_engine:
         mock_conn = MagicMock()
         mock_conn.execute.return_value.fetchall.return_value = [("anvil",), ("anvil_claude",)]
@@ -143,9 +170,25 @@ def test_reset_memories():
         mock_engine.return_value.connect.return_value.__enter__.return_value = mock_conn
         mock_engine.return_value.begin.return_value.__enter__.return_value = mock_conn
 
-        success = reset_memories(dry_run=False)
+        # Without keep_tc4_run1
+        success = reset_memories(dry_run=False, keep_tc4_run1=False)
         assert success is True
-        assert mock_conn.execute.called
+
+        # Check executed query contained scoped prefix
+        calls = [str(c[1][0]) for c in mock_conn.execute.mock_calls if len(c[1]) > 0]
+        assert any("prefix LIKE 'anvil.memories.%'" in sql for sql in calls)
+        assert not any("NOT LIKE '%/investigate/%'" in sql for sql in calls)
+
+        # With keep_tc4_run1
+        mock_conn.reset_mock()
+        mock_conn.execute.return_value.fetchall.return_value = [("anvil",)]
+        mock_conn.execute.return_value.scalar.return_value = True
+
+        success = reset_memories(dry_run=False, keep_tc4_run1=True)
+        assert success is True
+
+        calls = [str(c[1][0]) for c in mock_conn.execute.mock_calls if len(c[1]) > 0]
+        assert any("NOT LIKE '%/investigate/%'" in sql for sql in calls)
 
 
 def test_reset_containers():

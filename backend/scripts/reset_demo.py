@@ -1,12 +1,13 @@
-"""Demo reset automation for Anvil live demonstrations.
+#!/usr/bin/env python3
+"""Anvil Demo Reset Automation Script.
 
-Resets Jira tickets (RTEMS-1..6 and deletes RTEMS-7+), cleans up agent branches and PRs on mirror repos,
-purges agent-written pages in Confluence space RTKB and clears orphaned chunks in pgvector,
-clears LangGraph /memories/ lessons in database and disk, re-indexes the vector knowledge base,
-and tears down ephemeral sandbox containers.
+Resets all system components back to their clean baseline state prior to
+running or rehearsing the demo test cases (TC1, TC2, TC3, TC4).
 
 Usage:
-    uv run python scripts/reset_demo.py [--all] [--keep-tc4-run1] [--dry-run]
+    uv run python backend/scripts/reset_demo.py [--dry-run] [--all]
+        [--jira] [--mirrors] [--confluence] [--memories] [--containers]
+        [--keep-tc4-run1]
 """
 
 from __future__ import annotations
@@ -15,22 +16,32 @@ import argparse
 import logging
 import os
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
 
+# Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger("reset_demo")
+logger = logging.getLogger("reset-demo")
 
-BASELINE_TICKETS: dict[str, dict[str, Any]] = {
+BASELINE_TICKETS = {
     "RTEMS-1": {"status": "To Do", "labels": ["posix", "tc1"]},
     "RTEMS-2": {"status": "To Do", "labels": ["component-upgrade", "tc2"]},
     "RTEMS-3": {"status": "To Do", "labels": ["cra", "tc3"]},
     "RTEMS-4": {"status": "To Do", "labels": ["network", "tc2"]},
     "RTEMS-5": {"status": "To Do", "labels": ["incident-investigation", "tc4"]},
     "RTEMS-6": {"status": "To Do", "labels": ["incident-investigation", "tc4-followup"]},
+}
+
+AGENT_SCENARIO_LABELS = {
+    "cra",
+    "tc3",
+    "tc4",
+    "tc4-followup",
+    "anvil",
+    "anvil-in-progress",
+    "anvil-done",
+    "anvil-needs-human",
 }
 
 MIRROR_REPOS = [
@@ -42,6 +53,13 @@ PROTECTED_CONFLUENCE_PAGE_IDS = {
     "28541041",  # RTEMS Engineering KB Home
     "28672001",  # ANVIL-13 evidence: Host tools
 }
+
+
+def _is_agent_scenario_issue(labels: list[str]) -> bool:
+    for l in labels:
+        if l in AGENT_SCENARIO_LABELS or l.startswith("anvil"):
+            return True
+    return False
 
 
 def reset_jira(dry_run: bool = False) -> bool:
@@ -85,23 +103,53 @@ def reset_jira(dry_run: bool = False) -> bool:
             logger.error("Failed to reset Jira ticket %s: %s", key, e)
             success = False
 
-    # 2. Delete agent-created Jira issues (RTEMS-7+)
+    # 2. Delete agent-created Jira issues (RTEMS-7+ carrying agent-scenario labels)
     try:
-        baseline_keys = set(BASELINE_TICKETS.keys())
-        all_rtems = jira.jira_search("project = RTEMS ORDER BY key ASC", max_results=100)
-        extra_issues = [i for i in all_rtems if i["key"] not in baseline_keys]
+        all_rtems: list[dict] = []
+        next_token = None
+        while True:
+            body = {
+                "jql": "project = RTEMS ORDER BY key ASC",
+                "maxResults": 100,
+                "fields": ["summary", "status", "issuetype", "labels", "description", "assignee"],
+            }
+            if next_token:
+                body["nextPageToken"] = next_token
+            resp = request("POST", "/rest/api/3/search/jql", json=body)
+            batch = resp.get("issues", [])
+            all_rtems.extend([jira._summarize(i) for i in batch])
+            next_token = resp.get("nextPageToken")
+            if not next_token or resp.get("isLast", True) or not batch:
+                break
 
-        if extra_issues:
-            logger.info("Found %d agent-created Jira issue(s) to delete: %s", len(extra_issues), [i["key"] for i in extra_issues])
-            for i in extra_issues:
-                ekey = i["key"]
+        for i in all_rtems:
+            ekey = i.get("key", "")
+            match = re.match(r"^RTEMS-(\d+)$", ekey)
+            if not match:
+                continue
+            num = int(match.group(1))
+            if num <= 6:
+                continue
+
+            labels = i.get("labels", [])
+            if _is_agent_scenario_issue(labels):
                 if dry_run:
-                    logger.info("[DRY RUN] Would delete agent-created Jira issue %s: '%s'", ekey, i.get("summary"))
+                    logger.info(
+                        "[DRY RUN] Would delete agent-created Jira issue %s (labels: %s): '%s'",
+                        ekey,
+                        labels,
+                        i.get("summary"),
+                    )
                 else:
                     request("DELETE", f"/rest/api/3/issue/{ekey}")
-                    logger.info("Deleted agent-created Jira issue %s", ekey)
-        else:
-            logger.info("No extra agent-created RTEMS issues found.")
+                    logger.info("Deleted agent-created Jira issue %s (labels: %s)", ekey, labels)
+            else:
+                logger.info(
+                    "Skipping RTEMS-%d without agent-scenario label (labels: %s, summary: '%s')",
+                    num,
+                    labels,
+                    i.get("summary"),
+                )
 
     except Exception as e:
         logger.error("Failed to query or delete extra Jira issues: %s", e)
@@ -118,46 +166,46 @@ def reset_github_mirrors(dry_run: bool = False) -> bool:
     success = True
 
     for repo in MIRROR_REPOS:
-        logger.info("Processing repository %s...", repo)
+        logger.info("Processing repository '%s'...", repo)
         try:
-            # 1. Close open PRs originating from anvil/* branches
-            prs = _gh("GET", f"/repos/{repo}/pulls", params={"state": "open", "per_page": 50})
-            for pr in prs:
-                head_ref = pr["head"]["ref"]
-                pr_num = pr["number"]
+            # 1. Close open PRs created by agent
+            pulls = _gh("GET", f"/repos/{repo}/pulls", params={"state": "open"})
+            for pr in pulls:
+                head_ref = pr.get("head", {}).get("ref", "")
                 if head_ref.startswith("anvil/"):
+                    pr_num = pr["number"]
                     if dry_run:
-                        logger.info("[DRY RUN] Would close PR #%d (%s) on %s", pr_num, head_ref, repo)
+                        logger.info("[DRY RUN] Would close PR #%d on %s (head: %s)", pr_num, repo, head_ref)
                     else:
                         _gh("PATCH", f"/repos/{repo}/pulls/{pr_num}", json={"state": "closed"})
-                        logger.info("Closed PR #%d (%s) on %s", pr_num, head_ref, repo)
+                        logger.info("Closed PR #%d on %s (head: %s)", pr_num, repo, head_ref)
 
-            # 2. Delete remote branches matching anvil/*
-            branches = _gh("GET", f"/repos/{repo}/branches", params={"per_page": 100})
+            # 2. Delete agent remote branches
+            branches = _gh("GET", f"/repos/{repo}/branches")
             for b in branches:
-                bname = b["name"]
+                bname = b.get("name", "")
                 if bname.startswith("anvil/"):
                     if dry_run:
-                        logger.info("[DRY RUN] Would delete branch %s on %s", bname, repo)
+                        logger.info("[DRY RUN] Would delete branch '%s' on %s", bname, repo)
                     else:
                         _gh("DELETE", f"/repos/{repo}/git/refs/heads/{bname}")
-                        logger.info("Deleted branch %s on %s", bname, repo)
+                        logger.info("Deleted branch '%s' on %s", bname, repo)
 
         except Exception as e:
-            logger.error("Error processing repo %s: %s", repo, e)
+            logger.error("Failed to reset GitHub mirror %s: %s", repo, e)
             success = False
 
     return success
 
 
 def reset_confluence_rtkb(keep_tc4_run1: bool = False, dry_run: bool = False) -> bool:
-    """Purge agent-written pages in Confluence RTKB and clear corresponding pgvector chunks."""
-    from anvil.kb.config import KBSettings
+    """Delete agent-created pages in Confluence space RTKB, purge deleted chunks, and re-ingest."""
     from anvil.tools._atlassian import request
-    from anvil.tools.confluence import confluence_search
+    from anvil.tools.confluence import confluence_get, confluence_search
     import sqlalchemy as sa
+    from anvil.kb.config import KBSettings
 
-    logger.info("--- Resetting Confluence Space RTKB & pgvector Chunks ---")
+    logger.info("--- Resetting Confluence Space RTKB (keep_tc4_run1=%s) ---", keep_tc4_run1)
     success = True
 
     try:
@@ -176,8 +224,16 @@ def reset_confluence_rtkb(keep_tc4_run1: bool = False, dry_run: bool = False) ->
 
             # Check if keeping TC4 Run 1 post-mortem for RTEMS-6 follow-up
             if keep_tc4_run1:
-                tc4_markers = ["rtems-5", "tm_guidance", "incident analysis", "telemetry packet drops"]
-                if any(m in title.lower() for m in tc4_markers):
+                is_tc4 = "rtems-5" in title.lower() or "tc4" in title.lower()
+                if not is_tc4:
+                    try:
+                        p_full = confluence_get(pid)
+                        body_text = (p_full.get("body", {}).get("storage", {}).get("value") or "").lower()
+                        if "rtems-5" in body_text:
+                            is_tc4 = True
+                    except Exception:
+                        pass
+                if is_tc4:
                     logger.info("Preserving TC4 Run 1 page: %s (id: %s)", title, pid)
                     valid_page_ids.append(pid)
                     continue
@@ -189,7 +245,7 @@ def reset_confluence_rtkb(keep_tc4_run1: bool = False, dry_run: bool = False) ->
             if title.strip().startswith("[synthetic]"):
                 valid_page_ids.append(pid)
                 continue
-            if "RTEMS Engineering KB" in title or "RTKB" in title or "ANVIL-13" in title:
+            if "RTEMS Engineering KB" in title or "ANVIL-13" in title:
                 valid_page_ids.append(pid)
                 continue
 
@@ -207,7 +263,7 @@ def reset_confluence_rtkb(keep_tc4_run1: bool = False, dry_run: bool = False) ->
                     logger.error("Failed to delete page %s (%s): %s", title, pid, de)
                     success = False
 
-        # 2. Clean up pgvector KB chunks (Item 1: purge chunks of deleted pages)
+        # 2. Clean up pgvector KB chunks (purge chunks of deleted pages)
         try:
             db_url = KBSettings().database_url
             engine = sa.create_engine(db_url)
@@ -253,15 +309,14 @@ def reset_confluence_rtkb(keep_tc4_run1: bool = False, dry_run: bool = False) ->
     return success
 
 
-def reset_memories(dry_run: bool = False) -> bool:
-    """Clear LangGraph /memories/ lessons in database and disk (Item 2)."""
+def reset_memories(dry_run: bool = False, keep_tc4_run1: bool = False) -> bool:
+    """Clear LangGraph /memories/ lessons in database store table."""
     import sqlalchemy as sa
     from anvil.kb.config import KBSettings
 
-    logger.info("--- Clearing /memories/ Lessons ---")
+    logger.info("--- Clearing /memories/ Lessons (keep_tc4_run1=%s) ---", keep_tc4_run1)
     success = True
 
-    # 1. Clean database store tables (LangGraph AsyncPostgresStore)
     try:
         base_db_url = KBSettings().database_url
         admin_engine = sa.create_engine(base_db_url)
@@ -283,36 +338,30 @@ def reset_memories(dry_run: bool = False) -> bool:
                         sa.text("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'store')")
                     ).scalar()
                     if check:
+                        delete_query = "DELETE FROM store WHERE prefix LIKE 'anvil.memories.%'"
+                        if keep_tc4_run1:
+                            delete_query += " AND key NOT LIKE '%/investigate/%'"
+
                         if dry_run:
-                            logger.info("[DRY RUN] Would purge memory lessons from store table in database %s", db_name)
+                            logger.info(
+                                "[DRY RUN] Would execute on database %s: %s",
+                                db_name,
+                                delete_query,
+                            )
                         else:
-                            res = conn.execute(sa.text("DELETE FROM store"))
-                            logger.info("Cleared %d memory store entry/entries in database %s", res.rowcount or 0, db_name)
+                            res = conn.execute(sa.text(delete_query))
+                            logger.info(
+                                "Cleared %d memory store entry/entries in database %s (query: %s)",
+                                res.rowcount or 0,
+                                db_name,
+                                delete_query,
+                            )
             except Exception as dbe:
                 logger.debug("Database %s check skipped or errored: %s", db_name, dbe)
 
     except Exception as e:
         logger.error("Failed to purge database memory store: %s", e)
         success = False
-
-    # 2. Clean disk-based memory directories if present
-    repo_root = Path(__file__).resolve().parents[2]
-    candidate_paths = [
-        repo_root / "memories",
-        Path("C:/Dev/memories"),
-        repo_root / "backend" / "memories",
-    ]
-    for mpath in candidate_paths:
-        if mpath.exists():
-            if dry_run:
-                logger.info("[DRY RUN] Would remove memory directory: %s", mpath)
-            else:
-                try:
-                    shutil.rmtree(mpath)
-                    logger.info("Removed memory directory: %s", mpath)
-                except Exception as de:
-                    logger.error("Failed to remove memory directory %s: %s", mpath, de)
-                    success = False
 
     return success
 
@@ -360,14 +409,14 @@ def reset_containers(dry_run: bool = False) -> bool:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Anvil Demo Environment Reset")
-    parser.add_argument("--jira", action="store_true", help="Reset Jira tickets RTEMS-1..6 and delete RTEMS-7+")
-    parser.add_argument("--mirrors", action="store_true", help="Clean up mirror branches and PRs")
-    parser.add_argument("--confluence", action="store_true", help="Purge agent RTKB pages and clear pgvector chunks")
-    parser.add_argument("--memories", action="store_true", help="Clear LangGraph /memories/ lessons")
+    parser = argparse.ArgumentParser(description="Anvil Demo Environment Reset Tool")
+    parser.add_argument("--all", action="store_true", help="Reset all components (default if no specific component flag is given)")
+    parser.add_argument("--jira", action="store_true", help="Reset Jira RTEMS-1..6 tickets and delete RTEMS-7+")
+    parser.add_argument("--mirrors", action="store_true", help="Reset GitHub mirrors (close PRs and delete anvil/* branches)")
+    parser.add_argument("--confluence", action="store_true", help="Reset Confluence space RTKB (purge agent pages & vector chunks)")
+    parser.add_argument("--memories", action="store_true", help="Reset LangGraph /memories/ lessons")
     parser.add_argument("--containers", action="store_true", help="Remove ephemeral sandbox containers")
-    parser.add_argument("--all", action="store_true", help="Execute all reset operations (default)")
-    parser.add_argument("--keep-tc4-run1", action="store_true", help="Keep TC4 Run 1 post-mortem for RTEMS-6 run")
+    parser.add_argument("--keep-tc4-run1", action="store_true", help="Preserve TC4 Run 1 post-mortem and lessons for RTEMS-6 self-learning demo")
     parser.add_argument("--dry-run", action="store_true", help="Simulate actions without mutating state")
 
     args = parser.parse_args()
@@ -391,7 +440,7 @@ def main() -> None:
             failures.append("confluence")
 
     if run_all or args.memories:
-        if not reset_memories(dry_run=args.dry_run):
+        if not reset_memories(dry_run=args.dry_run, keep_tc4_run1=args.keep_tc4_run1):
             failures.append("memories")
 
     if run_all or args.containers:

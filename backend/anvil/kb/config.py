@@ -13,36 +13,28 @@ from dataclasses import dataclass, field
 DEFAULT_DATABASE_URL = "postgresql+psycopg://anvil:anvil@127.0.0.1:5433/anvil"
 DEFAULT_GATEWAY_URL = "http://127.0.0.1:4000"
 
-# Upstream RTEMS issues used by the TC1 demo. Their records (and the fix
-# discussion / merge requests / fix commit prefixes) must never enter the
-# knowledge base: the eval would leak the answer it is supposed to withhold.
-# Keep this list in sync with docs/03-demo-scenarios.md and the ANVIL-14 ticket.
-TC1_EXCLUDED_ISSUE_IDS: tuple[str, ...] = (
-    "5776",
-    "5806",
-    "5723",
-    "5750",
-    "5749",
-    "5760",
-)
+# Everything an eval case withholds (its upstream issues, merge requests and fix commits) must
+# never enter the knowledge base: the eval would leak the answer it is supposed to withhold.
+# The list is the union over all case files (cases/*.toml, ANVIL-38), not a constant here.
+def _withheld() -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+    from anvil.cases.spec import cases_dir, load_cases, withheld_union
 
-TC1_EXCLUDED_MR_IDS: tuple[str, ...] = (
-    "1493",
-    "1526",
-    "1448",
-    "1468",
-    "1484",
-    "1479",
-)
+    cases = load_cases()
+    if not cases:
+        # Fail loudly: an empty leak guard would let withheld answers into the KB silently.
+        raise RuntimeError(
+            f"no eval cases found in {cases_dir()}; the KB leak guard would be empty. "
+            "Set ANVIL_CASES_DIR to the repo's cases/ directory."
+        )
+    union = withheld_union(cases)
+    return union.issues, union.mrs, union.commits
 
-TC1_EXCLUDED_COMMIT_PREFIXES: tuple[str, ...] = (
-    "a62e60b5",
-    "97cf8529",
-    "f2ad71ee",
-    "af256031",
-    "338bab40",
-    "80b1ba90",
-)
+
+WITHHELD_ISSUE_IDS, WITHHELD_MR_IDS, WITHHELD_COMMIT_PREFIXES = _withheld()
+# Old names, kept for importers.
+TC1_EXCLUDED_ISSUE_IDS = WITHHELD_ISSUE_IDS
+TC1_EXCLUDED_MR_IDS = WITHHELD_MR_IDS
+TC1_EXCLUDED_COMMIT_PREFIXES = WITHHELD_COMMIT_PREFIXES
 
 
 @dataclass(frozen=True)

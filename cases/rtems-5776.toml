@@ -1,0 +1,41 @@
+# TC1: a real upstream RTEMS defect, replayed. The agent gets the pre-fix code and the symptoms;
+# the upstream issue, merge request and fix commit are withheld (KB, web search, checkout).
+id = "rtems-5776"
+kind = "defect-fix"
+repo = "vishal7pandey/rtems"       # mirror the agent works on
+as_of = "2026-09-20"               # a62e60b5 committed; later knowledge is "from the future"
+
+[upstream]
+url = "https://gitlab.rtems.org"
+project = "rtems/rtos/rtems"
+issues = ["5776"]
+mrs = ["1493"]
+fix_commits = ["a62e60b5"]         # oldest first; the base is the parent of the first
+
+[withheld]
+# The rest of the TC1 candidate shortlist (docs/03-demo-scenarios.md). Withheld here until each
+# becomes its own case file, so the KB never learns a candidate's answer.
+issues = ["5806", "5723", "5750", "5749", "5760"]
+mrs = ["1526", "1448", "1468", "1484", "1479"]
+commits = ["97cf8529", "f2ad71ee", "af256031", "338bab40", "80b1ba90"]
+
+[base]
+branch = "tc1/5776-base"
+sha = "dbb32b7b1b3d5b1b712ae056930fbe899dfaf231"   # current tip (infra commits merged since)
+
+[base.overlay]
+# Factory infrastructure added on top of the pre-fix tree: CI, pre-commit, scanners.
+ref = "tc1/5776-base"
+paths = [".github", ".pre-commit-config.yaml", "sonar-project.properties"]
+
+[ticket]
+project = "RTEMS"
+key = "RTEMS-1"
+labels = ["anvil", "posix", "tc1"]
+summary = "Mutex reports EBUSY / crashes after a failed pthread_mutex_init with an invalid priority ceiling"
+body_file = "rtems-5776.ticket.md"
+
+[scoring]
+target_files = ["cpukit/posix/src/mutexinit.c"]
+test_files = ["testsuites/psxtests/psx05/init.c"]
+tolerance = 3

@@ -723,6 +723,28 @@ def test_manual_jira_intake_creates_and_starts_run(api_factory, client_factory):
     assert run["repo"] == "vishal7pandey/rtems"
 
 
+def test_relabelled_ticket_gets_a_new_run_after_the_old_one_finished(api_factory, client_factory):
+    # RTEMS-4, 2026-11-03: the earlier run had failed, the ticket was reset and relabelled, and
+    # intake moved it to In Progress but reused the failed run, so nothing ran.
+    def candidates(*, max_results):
+        return [{"key": "RTEMS-4", "summary": "Retry me", "description": "Code base: main", "labels": ["anvil"]}]
+
+    app = api_factory(
+        executor=SuccessfulExecutor(),
+        jira_candidates=candidates,
+        jira_transition=lambda key, target: None,
+        start_intake_loop=False,
+    )
+    client = client_factory(app)
+
+    first = client.post("/api/intake/jira/poll", headers=AUTH).json()["run_ids"][0]
+    client.get(f"/api/runs/{first}/events", headers=AUTH)  # drain: the run reaches a terminal status
+    assert client.get(f"/api/runs/{first}", headers=AUTH).json()["status"] == "succeeded"
+
+    second = client.post("/api/intake/jira/poll", headers=AUTH).json()
+    assert second["accepted"] == 1 and second["run_ids"][0] != first
+
+
 @pytest.mark.parametrize(
     ("description", "repo", "ref"),
     [

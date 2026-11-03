@@ -724,8 +724,13 @@ def _get_or_create_intake_run(
             user = User(id=user_id, email=user_email)
             db.add(user)
             db.flush()
+        # Reuse only a run that is still going (a poll racing its own To Do -> In Progress transition).
+        # A finished run (failed, handoff, cancelled, succeeded) must not block a new one: a human
+        # putting the ticket back to To Do with the `anvil` label is asking for a retry.
         existing = db.scalar(
-            select(Run).where(Run.trigger == f"jira:{key}").order_by(Run.created_at.desc())
+            select(Run)
+            .where(Run.trigger == f"jira:{key}", Run.status.not_in(TERMINAL_RUN_STATUSES))
+            .order_by(Run.created_at.desc())
         )
         if existing is not None:
             return existing.id, message, existing.status == "queued"

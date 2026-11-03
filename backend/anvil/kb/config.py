@@ -81,7 +81,20 @@ class KBSettings:
         )
     )
     gitlab_project: str = field(
-        default_factory=lambda: os.environ.get("RTEMS_GITLAB_PROJECT", "rtems/rtems")
+        default_factory=lambda: os.environ.get("RTEMS_GITLAB_PROJECT", "rtems/rtos/rtems")
+    )
+    # Projects crawled for issues + MRs (ANVIL-39). Comma-separated. Add a project only when every
+    # eval case on it declares its withheld set: rtems/pkg/rtems-lwip MRs contain the TC2 upgrade.
+    gitlab_projects: tuple[str, ...] = field(
+        default_factory=lambda: tuple(
+            p.strip()
+            for p in os.environ.get("KB_GITLAB_PROJECTS", "rtems/rtos/rtems").split(",")
+            if p.strip()
+        )
+    )
+    # Resume cursors of the GitLab crawl (newest updated_at per project and kind).
+    crawl_state_path: str = field(
+        default_factory=lambda: os.environ.get("KB_CRAWL_STATE", ".cache/kb-crawl-state.json")
     )
     gitlab_token: str | None = field(
         default_factory=lambda: os.environ.get("GITLAB_TOKEN") or None

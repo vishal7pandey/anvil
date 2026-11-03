@@ -26,6 +26,7 @@ from .config import (
 )
 
 GITLAB_ISSUE_SOURCE = "gitlab-issue"
+GITLAB_MR_SOURCE = "gitlab-mr"
 
 
 def _build_leak_pattern(
@@ -67,9 +68,11 @@ class ExclusionGuard:
 
     def is_excluded(self, source: str, external_id: str) -> bool:
         """Return True when an entire document must not be ingested or returned."""
-        if source != GITLAB_ISSUE_SOURCE:
-            return False
-        return _normalise_issue_id(external_id) in self.issue_ids
+        if source == GITLAB_ISSUE_SOURCE:
+            return _normalise_issue_id(external_id) in self.issue_ids
+        if source == GITLAB_MR_SOURCE:
+            return _normalise_mr_id(external_id) in self.mr_ids
+        return False
 
     def allows(self, source: str, external_id: str) -> bool:
         return not self.is_excluded(source, external_id)
@@ -83,5 +86,11 @@ class ExclusionGuard:
 
 
 def _normalise_issue_id(external_id: str) -> str:
-    # GitLab iids arrive as ints, strings and occasionally "#5776".
-    return str(external_id).strip().lstrip("#")
+    # GitLab iids arrive as ints, strings, "#5776" and project-scoped "rtems/rtos/rtems#5776".
+    # The project is ignored: a withheld number is withheld in every project (safe side).
+    return str(external_id).strip().rsplit("#", 1)[-1]
+
+
+def _normalise_mr_id(external_id: str) -> str:
+    # "rtems/rtos/rtems!1493", "!1493" or "1493".
+    return str(external_id).strip().rsplit("!", 1)[-1]

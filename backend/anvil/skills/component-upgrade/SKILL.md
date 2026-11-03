@@ -38,18 +38,23 @@ A ticket asks to move a vendored or submodule-tracked component to a newer upstr
    that existing imported files now depend on, removed or renamed ones), build-spec entries to
    match, port-layer code that uses changed APIs (`grep -rn <symbol> <port dir>`), and
    configuration overrides whose meaning or default changed.
-5. **Advance the submodule and re-import.** `git -C <submodule> checkout <new-tag>`, then the
-   repository's own import tool (it reads the manifest; check its `--help`). Commit this as the
-   mechanical step, with the submodule bump and the manifest change.
-   **Check the import is complete before you build.** Every imported file must be byte-identical
-   to the new tag (`diff -rq` the in-tree copy against the submodule for manifest entries), and
-   every `#include "..."`/`<component/...>` an imported file uses must itself be imported: list
-   the includes of the imported files and compare with the manifest. A header left at the old
-   version produces confusing errors (types "redeclared as a different kind of symbol", missing
-   members) in files you never touched.
+5. **Save the local patches, then re-import.** Vendored copies usually carry local changes
+   (in RTEMS trees typically wrapped in `#ifdef __rtems__`). *Before* touching the submodule,
+   capture them: with the submodule still at the old tag, diff each manifest file's in-tree copy
+   against the submodule's copy and save the result (e.g. `local-patches.diff`); list the files
+   and what each change is for. Then `git -C <submodule> checkout <new-tag>`, run the
+   repository's own import tool (it reads the manifest; check its `--help`), and re-apply every
+   local change to the new files (`git apply --3way`, or by hand where upstream moved the code).
+   A change upstream now makes itself can be dropped: say so in the report. Commit the submodule
+   bump + manifest + re-import + re-applied local patches as the mechanical step.
+   **Check the import before you build:** every manifest file differs from the new tag only by
+   the local patches you re-applied, and every `#include` an imported file uses is itself
+   imported. A header left at the old version, or a lost local patch, produces confusing errors
+   (types "redeclared as a different kind of symbol", conflicting macros) in files you never
+   touched.
 6. **Adapt.** Build; fix one class of error at a time. If errors appear in files you did not
-   change, re-check step 5 before editing anything: they are almost always a mixed-version
-   import, not a port-layer bug. For each fix decide: build spec, port
+   change, re-check step 5 before editing anything: they are almost always a lost local patch or
+   a mixed-version import, not a port-layer bug. For each fix decide: build spec, port
    layer, or configuration. Missing symbols at link time usually mean a new upstream source file
    is not in the manifest or the build spec. For every option whose default changed, decide
    explicitly whether the local configuration keeps the old behaviour or takes the new one, and

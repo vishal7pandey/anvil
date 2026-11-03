@@ -22,7 +22,7 @@ class FakeAgent:
         if self.on_handoff:
             self.on_handoff({"goal": "g", "tried": "t", "evidence": "e", "hypothesis": "h", "next_step": "n"})
         if self.fail:
-            raise ValueError("boom")
+            raise self.fail if isinstance(self.fail, BaseException) else ValueError("boom")
 
 
 class OfflineExecutor(DeepAgentExecutor):
@@ -95,6 +95,15 @@ async def test_handoff_and_failure():
     ex = OfflineExecutor(agent_factory=factory_for([], fail=True))
     events = await collect(ex.start(RUN, "x"))
     assert events[-1]["data"]["status"] == "failed" and "boom" in events[-2]["data"]["text"]
+
+
+async def test_graph_step_limit_hands_off_instead_of_failing():
+    from langgraph.errors import GraphRecursionError
+
+    ex = OfflineExecutor(agent_factory=factory_for([], fail=GraphRecursionError("limit")))
+    events = await collect(ex.start(RUN, "x"))
+    assert events[-1]["data"]["status"] == "handoff"
+    assert any("graph step limit" in str(e["data"].get("text", "")) for e in events)
 
 
 async def test_cancel_stops_stream():

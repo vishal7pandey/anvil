@@ -22,7 +22,7 @@ class FakeAgent:
         if self.on_handoff:
             self.on_handoff({"goal": "g", "tried": "t", "evidence": "e", "hypothesis": "h", "next_step": "n"})
         if self.fail:
-            raise ValueError("boom")
+            raise self.fail if isinstance(self.fail, BaseException) else ValueError("boom")
 
 
 class OfflineExecutor(DeepAgentExecutor):
@@ -97,6 +97,15 @@ async def test_handoff_and_failure():
     assert events[-1]["data"]["status"] == "failed" and "boom" in events[-2]["data"]["text"]
 
 
+async def test_graph_step_limit_hands_off_instead_of_failing():
+    from langgraph.errors import GraphRecursionError
+
+    ex = OfflineExecutor(agent_factory=factory_for([], fail=GraphRecursionError("limit")))
+    events = await collect(ex.start(RUN, "x"))
+    assert events[-1]["data"]["status"] == "handoff"
+    assert any("graph step limit" in str(e["data"].get("text", "")) for e in events)
+
+
 async def test_cancel_stops_stream():
     items = [((), "updates", {"model": {"messages": [AIMessage(content=f"step {i}")]}}) for i in range(50)]
     ex = OfflineExecutor(agent_factory=factory_for(items, delay=0.01))
@@ -112,6 +121,29 @@ async def test_cancel_stops_stream():
     await task
     assert seen[-1]["data"]["status"] == "cancelled"
     assert len(seen) < 50
+
+
+def test_checkout_inits_submodules_before_going_offline():
+    class RecordingSandbox:
+        def __init__(self):
+            self.calls = []
+
+        def set_network(self, network):
+            self.calls.append(("network", network))
+
+        def execute(self, command, *, timeout=None):
+            self.calls.append(("execute", command))
+            return type("R", (), {"exit_code": 0, "output": "BASE_SHA=" + "a" * 40 + "\nHEAD_SHA=" + "a" * 40})()
+
+        def upload_files(self, files):
+            return [type("U", (), {"path": p, "error": None})() for p, _ in files]
+
+    sb = RecordingSandbox()
+    DeepAgentExecutor(image="unused").checkout(sb, RUN)
+    script = next(c for kind, c in sb.calls if kind == "execute")
+    assert "git submodule update --init" in script
+    # Online for the clone and submodules, offline afterwards.
+    assert sb.calls[0] == ("network", "bridge") and sb.calls[-1] == ("network", None)
 
 
 # -- integration: real container, real clone --------------------------------------------------

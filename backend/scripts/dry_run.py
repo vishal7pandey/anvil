@@ -30,7 +30,7 @@ async def main() -> int:
     ap.add_argument("--repo", required=True)
     ap.add_argument("--base", required=True)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--image", default="anvil-sandbox-rtems:7")
+    ap.add_argument("--image", default="anvil-sandbox-rtems:7.1")
     ap.add_argument("--db", default="postgresql://anvil:anvil@localhost:5433/anvil_devin")
     ap.add_argument("--score-files", nargs="*", default=None,
                     help="Optional upstream-answer file paths; host-side scoring only, the agent never sees them")

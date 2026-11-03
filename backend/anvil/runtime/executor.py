@@ -18,6 +18,7 @@ from typing import Any
 
 import docker
 from docker.errors import NotFound
+from langgraph.errors import GraphRecursionError
 from langgraph.types import Command
 
 from anvil.runtime import prompts
@@ -27,7 +28,9 @@ from anvil.runtime.sandbox import DEFAULT_IMAGE, DockerSandbox, SandboxSpec
 from anvil.runtime.stuck import Budgets, StuckDetector
 
 GITHUB_BASE = os.environ.get("ANVIL_GIT_BASE", "https://github.com")
-RECURSION_LIMIT = int(os.environ.get("ANVIL_RECURSION_LIMIT", "400"))
+# Graph supersteps, not tool calls: one tool call costs ~3 (model, tools, middleware) and subagents
+# add their own. The tool-call budget (150) is the real bound, so this must sit well above it.
+RECURSION_LIMIT = int(os.environ.get("ANVIL_RECURSION_LIMIT", "1000"))
 SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
 SANDBOX_SKILLS = "/workspace/.anvil/skills/"
 
@@ -160,6 +163,9 @@ class DeepAgentExecutor:
             f"git clone --quiet --single-branch --branch {shlex.quote(base)} --depth 200 {shlex.quote(url)} {qpath}; fi; "
             f"cd {qpath}; git config user.name anvil-bot; git config user.email anvil-bot@users.noreply.github.com; "
             f"git remote set-url origin {shlex.quote(url)}; "
+            # Submodules come in while the sandbox still has network: vendored-component upgrades
+            # (TC2: lwip-upstream) need the upstream project's tags once the sandbox is offline.
+            f"if [ -f .gitmodules ]; then git submodule update --init --quiet; fi; "
             f"git switch --quiet {shlex.quote(branch)} 2>/dev/null || git switch --quiet -c {shlex.quote(branch)}; "
             f"echo BASE_SHA=$(git rev-parse origin/{shlex.quote(base)}); echo HEAD_SHA=$(git rev-parse HEAD)"
         )
@@ -263,6 +269,9 @@ class DeepAgentExecutor:
                     yield ev
                 if stuck:
                     break
+        except GraphRecursionError:
+            # Out of graph steps is a budget, not a crash: hand off with the WIP like any other budget.
+            stuck = f"graph step limit reached ({RECURSION_LIMIT} steps)"
         except Exception as exc:  # noqa: BLE001
             yield mapper.event("message", {"role": "system", "text": f"Run failed: {type(exc).__name__}: {exc}"})
             yield mapper.event("run.status", {"status": "failed"})

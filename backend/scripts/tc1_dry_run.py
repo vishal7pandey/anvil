@@ -68,7 +68,7 @@ simulator. (Dry run: commit locally, do not push.)
 async def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
-    ap.add_argument("--image", default="anvil-sandbox-rtems:7")
+    ap.add_argument("--image", default="anvil-sandbox-rtems:7.1")
     ap.add_argument("--db", default="postgresql://anvil:anvil@localhost:5433/anvil_claude")
     args = ap.parse_args()
     out = Path(args.out)

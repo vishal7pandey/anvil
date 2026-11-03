@@ -1,0 +1,34 @@
+# anvil-sandbox-rtems:7.1 = the published :7 image + an installed sparc/leon3 BSP.
+#
+# rtems-lwip (TC2) builds against an *installed* BSP in $RTEMS_PREFIX, and the agent sandbox is
+# offline after checkout, so the BSP has to be in the image. It is built from the TC1 base branch
+# (pre-fix), so the installed kernel libraries never contain the withheld TC1 fix.
+#
+#   docker build -f sandbox/rtems/Dockerfile.leon3 -t anvil-sandbox-rtems:7.1 sandbox/rtems
+#
+# Never `docker commit` a working container over a published tag: that is how root-owned
+# /workspace/<repo> directories ended up in a local :7 on 2026-11-03 and broke checkout.
+FROM ghcr.io/vishal7pandey/anvil-sandbox-rtems@sha256:15e3705829d08b8b803bc863ef3b07c7536c9aa5a4f20e88bc8de46635823de1
+
+ARG RTEMS_REPO=https://github.com/vishal7pandey/rtems.git
+ARG RTEMS_BRANCH=tc1/5776-base
+ARG RTEMS_SHA=bfabfac0ec1df928508074a7f4ed2d845b829417
+
+USER root
+RUN set -eux; \
+    git clone --quiet --single-branch --branch "${RTEMS_BRANCH}" --depth 20 "${RTEMS_REPO}" /tmp/rtems; \
+    cd /tmp/rtems; \
+    git checkout --quiet "${RTEMS_SHA}"; \
+    printf '[sparc/leon3]\nBUILD_TESTS = False\nBUILD_SAMPLES = False\n' > config.ini; \
+    ./waf configure --prefix="${RTEMS_PREFIX}"; \
+    ./waf -j"$(nproc)"; \
+    ./waf install; \
+    cd /; rm -rf /tmp/rtems; \
+    test -f "${RTEMS_PREFIX}/lib/pkgconfig/sparc-rtems7-leon3.pc"
+
+LABEL org.opencontainers.image.source="https://github.com/vishal7pandey/anvil" \
+      anvil.rtems.bsp="sparc/leon3" \
+      anvil.rtems.bsp.source="${RTEMS_REPO}@${RTEMS_SHA}"
+USER agent
+WORKDIR /workspace
+CMD ["sleep", "infinity"]

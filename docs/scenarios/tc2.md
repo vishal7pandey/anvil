@@ -83,7 +83,7 @@ In `rtems-lwip`, compilation is driven by `wscript` and `lwip.py`:
 
 ## 4. Upgrade Flow for the Anvil Agent
 
-The autonomous agent executes the following steps inside the session sandbox (`anvil-sandbox-rtems:7`):
+The autonomous agent executes the following steps inside the session sandbox (`anvil-sandbox-rtems:7.1`: the `:7` image plus the installed sparc/leon3 BSP that rtems-lwip builds against):
 
 ```mermaid
 flowchart TD

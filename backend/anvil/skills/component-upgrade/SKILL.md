@@ -41,7 +41,15 @@ A ticket asks to move a vendored or submodule-tracked component to a newer upstr
 5. **Advance the submodule and re-import.** `git -C <submodule> checkout <new-tag>`, then the
    repository's own import tool (it reads the manifest; check its `--help`). Commit this as the
    mechanical step, with the submodule bump and the manifest change.
-6. **Adapt.** Build; fix one class of error at a time. For each fix decide: build spec, port
+   **Check the import is complete before you build.** Every imported file must be byte-identical
+   to the new tag (`diff -rq` the in-tree copy against the submodule for manifest entries), and
+   every `#include "..."`/`<component/...>` an imported file uses must itself be imported: list
+   the includes of the imported files and compare with the manifest. A header left at the old
+   version produces confusing errors (types "redeclared as a different kind of symbol", missing
+   members) in files you never touched.
+6. **Adapt.** Build; fix one class of error at a time. If errors appear in files you did not
+   change, re-check step 5 before editing anything: they are almost always a mixed-version
+   import, not a port-layer bug. For each fix decide: build spec, port
    layer, or configuration. Missing symbols at link time usually mean a new upstream source file
    is not in the manifest or the build spec. For every option whose default changed, decide
    explicitly whether the local configuration keeps the old behaviour or takes the new one, and

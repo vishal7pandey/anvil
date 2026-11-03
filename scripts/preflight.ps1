@@ -6,7 +6,9 @@
 #   .\scripts\preflight.ps1 [-Presenter <agent_or_human>]
 
 param(
-    [string]$Presenter = "antigravity"
+    [string]$Presenter = "antigravity",
+    [string]$ExpectedSandboxImage = "anvil-sandbox-rtems:7.1",
+    [string]$ExpectedSandboxIdPrefix = "bc17ec29"
 )
 
 $ErrorActionPreference = "Continue"
@@ -39,21 +41,17 @@ Write-Host "Presenter target: $Presenter" -ForegroundColor Gray
 Write-Host ""
 
 # -----------------------------------------------------------------------------
-# Check 1: Docker Sandbox Image
+# Check 1: Docker Sandbox Image (RTEMS 7.1)
 # -----------------------------------------------------------------------------
-Write-Host "1. Checking Docker Sandbox Image (RTEMS 7.1)..." -ForegroundColor White
-$has71 = docker images -q anvil-sandbox-rtems:7.1 2>$null
-if (-not $has71) {
-    Write-CheckFail "Sandbox image 7.1" "anvil-sandbox-rtems:7.1 is not present locally" "docker pull ghcr.io/vishal7pandey/anvil-sandbox-rtems:7.1 && docker tag ghcr.io/vishal7pandey/anvil-sandbox-rtems:7.1 anvil-sandbox-rtems:7.1"
+Write-Host "1. Checking Docker Sandbox Image ($ExpectedSandboxImage)..." -ForegroundColor White
+$imageId = docker inspect --format='{{.Id}}' $ExpectedSandboxImage 2>$null
+if (-not $imageId) {
+    Write-CheckFail "Sandbox image" "$ExpectedSandboxImage is not present locally" "docker build -f sandbox/rtems/Dockerfile.leon3 -t $ExpectedSandboxImage sandbox/rtems"
+} elseif (-not ($imageId -match $ExpectedSandboxIdPrefix)) {
+    Write-CheckFail "Sandbox image ID" "$ExpectedSandboxImage ID ($imageId) does not match expected prefix $ExpectedSandboxIdPrefix" "docker build -f sandbox/rtems/Dockerfile.leon3 -t $ExpectedSandboxImage sandbox/rtems"
 } else {
-    $inspect7 = docker inspect --format='{{range .RepoDigests}}{{.}} {{end}}' anvil-sandbox-rtems:7 2>$null
-    if ($inspect7 -match "15e37058") {
-        Write-CheckPass "Sandbox image" "anvil-sandbox-rtems:7.1 present; :7 resolves to digest 15e37058"
-    } elseif ($inspect7) {
-        Write-CheckFail "Sandbox image :7 digest" ":7 does not resolve to 15e37058 ($inspect7)" "docker tag ghcr.io/vishal7pandey/anvil-sandbox-rtems:7.1 anvil-sandbox-rtems:7"
-    } else {
-        Write-CheckPass "Sandbox image" "anvil-sandbox-rtems:7.1 present"
-    }
+    $shortId = if ($imageId -match 'sha256:([0-9a-f]{12})') { $matches[1] } else { $imageId }
+    Write-CheckPass "Sandbox image" "$ExpectedSandboxImage present (ID: $shortId, matches $ExpectedSandboxIdPrefix)"
 }
 
 # -----------------------------------------------------------------------------
@@ -85,10 +83,13 @@ if (-not $conns) {
         $proc = Get-Process -Id $apiPid -ErrorAction SilentlyContinue
         $procStartTime = $proc.StartTime.ToUniversalTime()
 
+        # Best-effort fetch to ensure origin/main ref is fresh
+        git -C $root fetch -q origin 2>$null
+
         $mainCommitDateStr = git -C $root log -1 --format=%cI origin/main
         $mainCommitDate = [DateTimeOffset]::Parse($mainCommitDateStr).UtcDateTime
 
-        # Token discovery across known locations
+        # Token discovery across standard locations (never agent worktrees)
         $tokenCandidates = @()
         if ($env:ANVIL_DEMO_TOKEN) { $tokenCandidates += $env:ANVIL_DEMO_TOKEN }
         if ($env:VITE_DEMO_TOKEN) { $tokenCandidates += $env:VITE_DEMO_TOKEN }
@@ -96,8 +97,7 @@ if (-not $conns) {
             (Join-Path $root ".env"),
             (Join-Path $backend ".env"),
             (Join-Path $frontend ".env"),
-            "C:\Dev\projects\anvil\.env",
-            "C:\Dev\wt\anvil-antigravity-32\.env"
+            "C:\Dev\projects\anvil\.env"
         )
         foreach ($ef in $envFiles) {
             if (Test-Path $ef) {
@@ -112,29 +112,32 @@ if (-not $conns) {
                 }
             }
         }
-        if ($tokenCandidates.Count -eq 0) { $tokenCandidates += "sk-anvil-local-change-me" }
 
-        # Health endpoint check
-        $apiOk = $false
-        foreach ($t in $tokenCandidates) {
-            try {
-                $headers = @{ "Authorization" = "Bearer $t" }
-                $apiResp = Invoke-WebRequest -Uri "http://127.0.0.1:8000/api/sessions" -Headers $headers -Method Get -TimeoutSec 5 -UseBasicParsing
-                if ($apiResp.StatusCode -eq 200) {
-                    $apiOk = $true
-                    break
-                }
-            } catch {
-                # try next candidate
-            }
-        }
-
-        if (-not $apiOk) {
-            Write-CheckFail "Control API Health" "GET /api/sessions returned unauthorized or connection failed with discovered tokens" "Verify ANVIL_DEMO_TOKEN in .env and restart API process"
-        } elseif ($procStartTime -lt $mainCommitDate) {
-            Write-CheckFail "Control API Freshness" "Process PID $apiPid started at $procStartTime, older than latest main ($mainCommitDate)" "Restart API to ensure latest main code is loaded: Stop-Process -Id $apiPid; uv run --no-sync python -m anvil.api.serve"
+        if ($tokenCandidates.Count -eq 0) {
+            Write-CheckFail "Control API Token" "ANVIL_DEMO_TOKEN is missing from environment and .env files" "Set ANVIL_DEMO_TOKEN in .env or environment"
         } else {
-            Write-CheckPass "Control API" "PID $apiPid listening on :8000; started after latest main commit ($procStartTime); GET /api/sessions returns 200"
+            # Health endpoint check
+            $apiOk = $false
+            foreach ($t in $tokenCandidates) {
+                try {
+                    $headers = @{ "Authorization" = "Bearer $t" }
+                    $apiResp = Invoke-WebRequest -Uri "http://127.0.0.1:8000/api/sessions" -Headers $headers -Method Get -TimeoutSec 5 -UseBasicParsing
+                    if ($apiResp.StatusCode -eq 200) {
+                        $apiOk = $true
+                        break
+                    }
+                } catch {
+                    # try next candidate
+                }
+            }
+
+            if (-not $apiOk) {
+                Write-CheckFail "Control API Health" "GET /api/sessions returned unauthorized or connection failed with discovered tokens" "Verify ANVIL_DEMO_TOKEN in .env and restart API process"
+            } elseif ($procStartTime -lt $mainCommitDate) {
+                Write-CheckFail "Control API Freshness" "Process PID $apiPid started at $procStartTime, older than latest main ($mainCommitDate)" "Restart API to ensure latest main code is loaded: Stop-Process -Id $apiPid; uv run --no-sync python -m anvil.api.serve"
+            } else {
+                Write-CheckPass "Control API" "PID $apiPid listening on :8000; started after latest main commit ($procStartTime); GET /api/sessions returns 200"
+            }
         }
     }
 }

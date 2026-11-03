@@ -92,6 +92,16 @@ flowchart LR
 | **5:30 - 7:00** | Agent generates Syft SBOM delta (SPDX), OSV-Scanner CVE analysis report, API impact summary, and publishes release documentation to Confluence space `RTKB`. | *"Beyond code, Anvil generates complete compliance artifacts: before/after SBOMs, API impact notes, and OSV vulnerability analysis. Notice that OSV records lwIP 2.1.3 (commit 6ca936f) with 0 known vulns and 2.2.1 (commit 77dcd25) with 3 (CVE-2026-112062, CVE-2026-119053, CVE-2026-8836). Rather than falsely claiming CVEs were remediated, Anvil flags the 3 newly surfaced CVEs in the target version and drafts follow-up tickets."* |
 | **7:00 - 8:00** | **Human Gate: Upgrade Approval.** Reviewer inspects SBOM, CVE flags, and PR. Ticket transitioned to **Done**. | *"We inspect the SBOM diff and the CVE report flagging the 3 new target-version CVEs for follow-up, verify simulator test passage, and approve the upgrade PR."* |
 
+#### TC2 Fallback Track: Partial Upgrade & Graceful Handoff
+If the live upgrade encounters complex driver porting obstacles, toolchain regressions, or approaches runtime token/time bounds:
+- **WIP Branch Persistence:** The agent commits all synchronized code (submodule advancement, updated `file-import.json`, imported in-tree `lwip/` sources, and partial build adjustments) to `origin/anvil/rtems-2-wip`.
+- **Structured Diagnostic Handoff:** The agent tags `RTEMS-2` with label `anvil-needs-human` and posts an actionable engineering handoff brief:
+  - Submodule and release tag baseline (`STABLE-2_2_1_RELEASE`).
+  - Completed milestones (Waf configure flags, compiled object count).
+  - Unresolved compilation/linking hurdles with root-cause hypotheses for human maintainers.
+- **Compliance Artifacts Preserved:** The Syft SBOM delta (SPDX/CycloneDX) and the OSV vulnerability report (flagging target CVE-2026-112062, CVE-2026-119053, and CVE-2026-8836 for follow-up tracking) are fully generated and attached to the run record.
+- **Presenter Speaking Points:** *"Notice how Anvil fails safely. When an embedded upgrade requires deep domain intervention, the agent doesn't guess or emit broken code. It persists a clean WIP branch, produces complete compliance SBOM and OSV artifacts, and hands off a precise diagnostic brief to human maintainers."*
+
 ---
 
 ### Scenario 3: TC3 Cyber Resilience Act (CRA) Compliance Audit (RTEMS-3)
@@ -177,3 +187,5 @@ If network interruptions or unexpected rate limits occur during a live evaluatio
    ```powershell
    .\scripts\reset-demo.ps1 -Containers -Jira -Mirrors
    ```
+4. **TC2 Partial Upgrade Demonstration:**
+   - If live upgrade compilation exceeds demo time constraints or encounters complex porting hurdles, seamlessly pivot to the fallback track: navigate to WIP branch `origin/anvil/rtems-2-wip`, display the diagnostic handoff comment on `RTEMS-2`, and inspect the generated Syft SBOM and OSV delta artifacts in the run record.

@@ -29,7 +29,7 @@ export default function NewSessionDialog({
         className="fixed inset-0 bg-black/40 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+      <div className="relative z-10 bg-white rounded-lg shadow-xl w-full max-w-md p-6">
         <h2 className="text-lg font-semibold text-slate-900 mb-4">New Session</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

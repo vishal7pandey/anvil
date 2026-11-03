@@ -7,3 +7,5 @@ dist/
 *.log
 .pytest_cache/
 .cache/
+test-results/
+playwright-report/

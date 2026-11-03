@@ -99,6 +99,12 @@ def _spend_totals_for_runs(
         ) from exc
 
 
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def _run_metrics(
     db: DBSession,
     request: Request,
@@ -124,16 +130,14 @@ def _run_metrics(
     waiting_for_spend_logs: list[Run] = []
     for run in missing_spend_logs:
         usage_timestamps = [
-            event.ts for event in events_by_run[run.id] if event.type == "usage"
+            _as_utc(event.ts)
+            for event in events_by_run[run.id]
+            if event.type == "usage"
         ]
         last_usage_at = max(
             usage_timestamps,
-            default=run.ended_at or run.started_at or run.created_at,
+            default=_as_utc(run.ended_at or run.started_at or run.created_at),
         )
-        if last_usage_at.tzinfo is None or last_usage_at.utcoffset() is None:
-            last_usage_at = last_usage_at.replace(tzinfo=timezone.utc)
-        else:
-            last_usage_at = last_usage_at.astimezone(timezone.utc)
         if now - last_usage_at <= SPEND_LOG_GRACE_PERIOD:
             waiting_for_spend_logs.append(run)
 
@@ -155,9 +159,10 @@ def _run_metrics(
         spend_is_missing = run.id in missing_spend_run_ids
         wall_time_seconds = None
         if run.started_at is not None:
+            ended_at = _as_utc(run.ended_at) if run.ended_at is not None else now
             wall_time_seconds = max(
                 0.0,
-                ((run.ended_at or now) - run.started_at).total_seconds(),
+                (ended_at - _as_utc(run.started_at)).total_seconds(),
             )
         human_messages = sum(
             event.type == "message"

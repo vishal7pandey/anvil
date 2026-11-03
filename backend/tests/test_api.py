@@ -838,3 +838,30 @@ def test_cancel_falls_back_to_task_cancellation_after_timeout(
     assert '"status":"cancelled"' in events.text
     run = client.get(f"/api/runs/{run_id}", headers=AUTH).json()
     assert run["status"] == "cancelled"
+
+
+def test_get_running_run_computes_wall_time_with_sqlite_naive_timestamps(
+    api_factory, client_factory
+):
+    executor = WaitingExecutor()
+    app = api_factory(executor=executor)
+    client = client_factory(app)
+    session_id = create_session(client)
+    start = client.post(
+        f"/api/sessions/{session_id}/messages",
+        headers=AUTH,
+        json={"text": "inspect while still running"},
+    )
+    run_id = start.json()["id"]
+    assert executor.started.wait(timeout=5)
+
+    running = client.get(f"/api/runs/{run_id}", headers=AUTH)
+    assert running.status_code == 200
+    assert running.json()["status"] == "running"
+    assert running.json()["ended_at"] is None
+    assert running.json()["wall_time_seconds"] is not None
+    assert running.json()["wall_time_seconds"] >= 0.0
+
+    client.post(f"/api/runs/{run_id}/cancel", headers=AUTH)
+    client.get(f"/api/runs/{run_id}/events", headers=AUTH)
+

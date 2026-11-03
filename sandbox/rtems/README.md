@@ -34,6 +34,32 @@ rtems-test --rtems-bsp=erc32-sis build/sparc/erc32/testsuites/samples/hello.exe
 rtems-test --rtems-bsp=erc32-sis build/sparc/erc32/testsuites/psxtests/psx05.exe
 ```
 
+## Generate SBOM and OSV reports
+
+Run the pinned Syft and OSV-Scanner tools from the sandbox image. The output
+directory must be outside the scanned source directories:
+
+```sh
+bash /workspace/sandbox/rtems/sbom.sh /workspace/project /workspace/reports
+```
+
+This writes `spdx.json`, `cyclonedx.json`, and `osv.json`. OSV vulnerability
+findings are reported in the JSON file without failing the scan command;
+scanner or infrastructure errors fail it. If OSV-Scanner finds no supported
+package sources, the report records `scan_status: no_packages` rather than
+claiming a clean scan.
+
+To compare a current checkout with a baseline directory, add `--before`:
+
+```sh
+bash /workspace/sandbox/rtems/sbom.sh /workspace/current /workspace/reports --before /workspace/baseline
+```
+
+This also writes `before-spdx.json`, `before-cyclonedx.json`,
+`osv-before.json`, and `osv-delta.json`. The delta reports introduced and
+resolved package vulnerabilities; its comparison status is marked incomplete
+if either scan found no supported package sources.
+
 ## Published image
 
 The public `:7` image is built from the main Dockerfile and published at:

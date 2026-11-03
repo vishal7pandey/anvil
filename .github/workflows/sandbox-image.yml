@@ -1,0 +1,26 @@
+name: Verify RTEMS sandbox image
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull published image
+        run: docker pull ghcr.io/vishal7pandey/anvil-sandbox-rtems:7
+
+      - name: Run smoke test
+        run: docker run --rm ghcr.io/vishal7pandey/anvil-sandbox-rtems:7 anvil-smoke

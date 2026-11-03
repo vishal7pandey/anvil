@@ -13,8 +13,7 @@ seed, Jira is the record afterwards.
 | Devin | Integrations engineer | WS-E Jira/Confluence/GitHub tools, intake, webhooks | Long autonomous tasks against external APIs |
 | GitHub Copilot (coding agent) | Backend engineer | WS-C control API | Works from GitHub issues, small well-specified PRs |
 | Cline | Frontend engineer | WS-D web UI | Iterates visually in VS Code with a browser |
-| OpenCode | Data/eval engineer | WS-G knowledge ingestion + kb_search, TC1 eval harness | Self-contained pipelines |
-| Antigravity | Scenario + QA engineer | WS-H TC2 setup, end-to-end browser tests of the UI, demo runbook and rehearsals | Built-in browser agent; can drive and check the UI like a user |
+| Antigravity | Scenario + QA engineer | WS-H TC2 setup, end-to-end browser tests, demo runbook; WS-G knowledge base (TC4) | Built-in browser agent; can drive and check the UI like a user |
 
 Rules of engagement are in [AGENTS.md](../AGENTS.md).
 
@@ -79,7 +78,10 @@ before TC1 loses anything. The Cloud environment option stays a stretch goal.
 * F3 SonarCloud scan on PRs to the public `rtems` mirror (free for public repos; same setup as `ai-software-factory/docs/sonarcloud.md`; owner sets `SONAR_TOKEN`).
 * F4 Syft SBOM (SPDX + CycloneDX) and OSV-Scanner as artifacts; cppcheck + clang-format check.
 
-### WS-G Knowledge + eval (OpenCode)
+### WS-G Knowledge + eval (Antigravity: G1, G3; Claude: G2)
+
+OpenCode was removed from the project on 2026-11-02 (owner decision). Its G1 work (PR #3) is kept
+and adopted by Antigravity.
 * G1 Ingest closed RTEMS GitLab issues + rtems-docs into pgvector; `kb_search` tool.
 * G2 TC1 eval harness: create `tc1/<issue>-base` branches, Jira tickets from upstream text,
   score agent PR vs. upstream fix (diff overlap + human judgement sheet).

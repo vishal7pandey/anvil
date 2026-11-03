@@ -60,7 +60,9 @@ A ticket describes wrong behaviour (crash, wrong return value, leak, hang) in an
     Fix: ...
     Tests: <test> extended; <suite> passed on erc32/SIS (<N> tests).
     ```
-11. **Push and PR** with `git_push`, then `github_open_pr` with the PR body below. Then
+    Write the message to a file and use `git commit -F <file>`: `\n` inside `git commit -m "..."`
+    is not a newline, it ends up as literal text on one line.
+11. **Push and PR** with `git_push(repo="<repo name>", ...)` (e.g. `rtems`, not the checkout path), then `github_open_pr` with the PR body below. Then
     `github_checks`; if CI fails, read the log, fix, commit, push (max 3 rounds), else `handoff`.
 12. **Evidence.** `jira_comment` on the ticket with root cause, fix, tests, PR link and CI
     status; label the ticket `anvil-in-review`.

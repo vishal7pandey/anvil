@@ -23,7 +23,9 @@ def _env_int(name: str, default: int) -> int:
 @dataclass
 class Budgets:
     max_tool_calls: int = field(default_factory=lambda: _env_int("ANVIL_MAX_TOOL_CALLS", 150))
-    max_tokens: int = field(default_factory=lambda: _env_int("ANVIL_MAX_TOKENS", 3_000_000))
+    # Cumulative tokens grow with context (every call resends it): the TC2 dry run hit 3M at call 67
+    # while progressing, for ~$1 thanks to prompt caching. Wall time and tool calls bound real cost.
+    max_tokens: int = field(default_factory=lambda: _env_int("ANVIL_MAX_TOKENS", 12_000_000))
     max_seconds: int = field(default_factory=lambda: _env_int("ANVIL_MAX_SECONDS", 45 * 60))
     same_failure_limit: int = 3
     # Reading a large C code base legitimately takes many calls before the first edit (TC1 dry run:

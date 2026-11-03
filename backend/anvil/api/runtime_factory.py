@@ -46,13 +46,14 @@ def create_executor_from_environment() -> RunExecutor | None:
     from anvil.runtime.executor import DeepAgentExecutor
     from anvil.runtime.websearch import TC_BLOCKLIST, make_web_search
     from anvil.tools.confluence import CONFLUENCE_TOOLS
+    from anvil.tools.errors import returning_errors
     from anvil.tools.evidence import handoff_note, publish_evidence
     from anvil.tools.git_push import make_git_push
     from anvil.tools.github import GITHUB_TOOLS, github_open_pr
     from anvil.tools.jira import JIRA_TOOLS, jira_comment, jira_set_labels
 
     def tools_factory(sandbox: Any, run: dict[str, Any]) -> list[Any]:
-        return [
+        tools = [
             *JIRA_TOOLS,
             *GITHUB_TOOLS,
             *CONFLUENCE_TOOLS,
@@ -60,6 +61,8 @@ def create_executor_from_environment() -> RunExecutor | None:
             make_git_push(sandbox),
             make_web_search(blocklist=TC_BLOCKLIST, run_id=run["run_id"]),
         ]
+        # A ToolError goes back to the model instead of failing the run (ANVIL-19, run c820a577).
+        return [returning_errors(t) if callable(t) else t for t in tools]
 
     def push_hook(sandbox: Any, run: dict[str, Any], wip_branch: str) -> str:
         pushed = make_git_push(sandbox)(run["repo"], wip_branch)

@@ -1,4 +1,4 @@
-import { type StreamEvent, type Run, type ApprovalRequest } from '../types';
+import { type ApprovalInboxItem, type StreamEvent, type Run } from '../types';
 import PlanPanel from './PlanPanel';
 import DiffViewer from './DiffViewer';
 import ApprovalsInbox from './ApprovalsInbox';
@@ -8,9 +8,9 @@ import HandoffView from './HandoffView';
 interface RightPanelProps {
   run: Run | null;
   events: StreamEvent[];
-  approvals: ApprovalRequest[];
-  onApprove: (id: string) => void;
-  onReject: (id: string) => void;
+  approvals: ApprovalInboxItem[];
+  onApprove: (id: string, comment: string) => Promise<void>;
+  onReject: (id: string, comment: string) => Promise<void>;
   onCancel?: () => void;
 }
 
@@ -72,8 +72,8 @@ export default function RightPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
-        {planEvent && <PlanPanel plan={planEvent.data as { todos: Array<{ content: string; status: string }> } } />}
-        {diffEvent && <DiffViewer diff={diffEvent.data as { files: Array<{ path: string; patch: string }> } } />}
+        {planEvent && <PlanPanel plan={planEvent.data as { todos: Array<{ content: string; status: string }> }} />}
+        {diffEvent && <DiffViewer diff={diffEvent.data as { files: Array<{ path: string; patch: string }> }} />}
         <ApprovalsInbox
           approvals={approvals}
           onApprove={onApprove}

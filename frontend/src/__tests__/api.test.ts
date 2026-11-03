@@ -4,6 +4,10 @@ import {
   sendMessage,
   decideApproval,
   cancelRun,
+  getMetrics,
+  getRunTimeline,
+  listApprovals,
+  listRuns,
   subscribeToEvents,
   parseSse,
   listSessions,
@@ -179,7 +183,50 @@ describe('cancelRun', () => {
         Authorization: `Bearer ${demoToken}`,
       },
     });
+
   });
+
+  describe('ANVIL-26 read APIs', () => {
+      it('lists pending approvals with bearer auth', async () => {
+        const approvals = [{ approval_id: 'a1', action: 'git_push' }];
+        vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+          ok: true,
+          json: async () => approvals,
+        } as Response);
+
+        await expect(listApprovals()).resolves.toEqual(approvals);
+        expect(globalThis.fetch).toHaveBeenCalledWith(`${baseUrl}/approvals`, {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${demoToken}`,
+          },
+        });
+      });
+
+      it('lists runs and loads a selected run timeline', async () => {
+        const runs = [{ id: 'r1' }];
+        const timeline = [{ run_id: 'r1', seq: 1 }];
+        vi.mocked(globalThis.fetch)
+          .mockResolvedValueOnce({ ok: true, json: async () => runs } as Response)
+          .mockResolvedValueOnce({ ok: true, json: async () => timeline } as Response);
+
+        await expect(listRuns()).resolves.toEqual(runs);
+        await expect(getRunTimeline('r1')).resolves.toEqual(timeline);
+        expect(globalThis.fetch).toHaveBeenNthCalledWith(1, `${baseUrl}/runs`, expect.anything());
+        expect(globalThis.fetch).toHaveBeenNthCalledWith(2, `${baseUrl}/runs/r1/timeline`, expect.anything());
+      });
+
+      it('filters aggregate metrics by scenario', async () => {
+        const metrics = { run_count: 2 };
+        vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+          ok: true,
+          json: async () => metrics,
+        } as Response);
+
+        await expect(getMetrics(' TC1 ')).resolves.toEqual(metrics);
+        expect(globalThis.fetch).toHaveBeenCalledWith(`${baseUrl}/metrics?scenario=TC1`, expect.anything());
+      });
+    });
 });
 
 function streamResponse(chunks: string[]): Response {

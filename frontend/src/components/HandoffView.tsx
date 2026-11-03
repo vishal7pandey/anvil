@@ -1,4 +1,4 @@
-import { type Run } from '../types';
+import type { Run } from '../types';
 
 interface HandoffViewProps {
   run: Run | null;
@@ -6,6 +6,7 @@ interface HandoffViewProps {
 
 export default function HandoffView({ run }: HandoffViewProps) {
   if (!run || run.status !== 'handoff') return null;
+  const handoff = run.artifacts.find((artifact) => artifact.kind === 'handoff');
 
   return (
     <section className="card space-y-3">
@@ -14,12 +15,22 @@ export default function HandoffView({ run }: HandoffViewProps) {
         Handoff — human action needed
       </h3>
       <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
-        <p className="text-sm text-amber-900">
-          The agent stopped and handed this task to a human. Its work is on the WIP branch below and
-          the sandbox is kept for 24 hours; the handoff note (goal, what was tried, evidence, next
-          step) is on the Jira ticket. To continue, send a message in this session: the next run
-          picks up from the same sandbox.
+        <p className="text-sm text-amber-900 mb-3">
+          The agent run has entered a handoff state. Review the handoff details and WIP branch before taking over.
         </p>
+        {handoff?.markdown && (
+          <pre className="whitespace-pre-wrap text-xs text-amber-950 mb-3">{handoff.markdown}</pre>
+        )}
+        {handoff?.url && (
+          <a
+            href={handoff.url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-sm text-blue-700 underline"
+          >
+            Open WIP branch
+          </a>
+        )}
       </div>
       <div className="space-y-2 text-sm">
         <div className="flex justify-between">

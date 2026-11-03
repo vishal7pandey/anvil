@@ -64,11 +64,13 @@ export interface DiffEvent {
   files: Array<{ path: string; patch: string }>;
 }
 
-export interface ApprovalRequestEvent {
-  approval_id: string;
-  action: string;
-  args: Record<string, unknown>;
-  reason: string;
+export interface ApprovalInboxItem extends ApprovalRequest {
+  run_id: string;
+  session_id: string;
+  session_title: string | null;
+  repo: string;
+  run_status: string;
+  requested_at: string;
 }
 
 export interface SubagentEvent {
@@ -85,9 +87,11 @@ export interface UsageEvent {
 }
 
 export interface ArtifactEvent {
-  kind: 'pr' | 'jira_comment' | 'confluence_page' | 'sbom' | 'report';
-  url: string;
-  title: string;
+  kind: 'pr' | 'jira_comment' | 'confluence_page' | 'sbom' | 'report' | 'handoff';
+  url?: string | null;
+  title?: string;
+  note?: Record<string, string>;
+  markdown?: string;
 }
 
 export interface Session {
@@ -107,7 +111,14 @@ export interface Run {
   session_id: string;
   trigger: string;
   repo: string;
-  status: string;
+  status:
+    | 'queued'
+    | 'running'
+    | 'waiting_approval'
+    | 'handoff'
+    | 'succeeded'
+    | 'failed'
+    | 'cancelled';
   mode: string;
   network: string;
   base_ref: string;
@@ -122,14 +133,39 @@ export interface Run {
   started_at: string | null;
   ended_at: string | null;
   usd: number;
+  cost_usd?: number | null;
+  cost_status?: 'pending' | 'available' | 'missing';
   input_tokens: number;
   output_tokens: number;
   human_touches: number;
-  artifacts: Array<Record<string, unknown>>;
+  wall_time_seconds?: number | null;
+  model_calls?: number | null;
+  ci_rounds?: number;
+  outcome?: string | null;
+  artifacts: ArtifactEvent[];
   run_record: Record<string, unknown>;
   cancel_requested_at: string | null;
   error: string | null;
   created_at: string;
+}
+
+export interface Metrics {
+  from: string | null;
+  to: string | null;
+  scenario: string | null;
+  run_count: number;
+  total_wall_time_seconds: number;
+  average_wall_time_seconds: number | null;
+  model_calls: number | null;
+  input_tokens: number;
+  output_tokens: number;
+  usd: number | null;
+  cost_usd: number | null;
+  cost_status: 'available' | 'partial' | 'missing';
+  runs_missing_cost: number;
+  human_touches: number;
+  ci_rounds: number;
+  outcomes: Record<string, number>;
 }
 
 export interface NewSessionForm {

@@ -166,6 +166,20 @@ class ApprovalResponse(BaseModel):
     decided_at: datetime | None
 
 
+class ApprovalInboxResponse(BaseModel):
+    approval_id: UUID
+    run_id: UUID
+    session_id: UUID
+    session_title: str | None
+    repo: str
+    run_status: str
+    action: str
+    args: dict[str, Any]
+    reason: str | None
+    agent: str | None
+    requested_at: datetime
+
+
 class IntakeResponse(BaseModel):
     accepted: int
     run_ids: list[UUID]

@@ -34,9 +34,19 @@ rtems-test --rtems-bsp=erc32-sis build/sparc/erc32/testsuites/samples/hello.exe
 rtems-test --rtems-bsp=erc32-sis build/sparc/erc32/testsuites/psxtests/psx05.exe
 ```
 
-The first uncached toolchain build is expected to take around 1–2 hours; the
-published GitHub Actions run records its actual duration. The first published
-image digest will be added here after the workflow completes.
+## Published image
+
+The public `:7` image is built from the main Dockerfile and published at:
+
+```text
+ghcr.io/vishal7pandey/anvil-sandbox-rtems:7
+sha256:15e3705829d08b8b803bc863ef3b07c7536c9aa5a4f20e88bc8de46635823de1
+```
+
+The image passed `anvil-smoke` locally: the erc32 BSP built, and `hello.exe` and
+`psx05.exe` passed on SIS. An unauthenticated manifest inspection and `docker pull`
+also succeeded. The [GitHub Actions verification run](https://github.com/vishal7pandey/anvil/actions/runs/41574286616)
+checks the published image with `anvil-smoke`.
 
 ## RTEMS pre-commit hooks
 

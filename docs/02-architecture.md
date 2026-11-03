@@ -36,7 +36,7 @@ flowchart LR
 | C2 | Control API | FastAPI, SQLAlchemy, Postgres | Users (one demo user + bearer token), sessions, runs, events (SSE), approvals, intake (Jira poller) |
 | C3 | Agent runtime | `deepagents` 0.7.x on LangGraph 1.x | `create_deep_agent` with sandbox backend, subagents, skills, memory, `interrupt_on` for approvals, Postgres checkpointer |
 | C4 | Model gateway | LiteLLM proxy (docker) | Aliases (`anvil-main`, `anvil-fast`, `anvil-embed`), spend log per run (`metadata.run_id`), budget per run, provider swap without code change |
-| C5 | Sandbox manager | Docker SDK for Python | One container per session from `anvil-sandbox-rtems:7`; workspace volume; CPU/memory limits; no credentials inside; destroyed or kept on handoff |
+| C5 | Sandbox manager | Docker SDK for Python | One container per session from `anvil-sandbox-rtems:7.1` (`:7` + installed sparc/leon3 BSP, `sandbox/rtems/Dockerfile.leon3`); workspace volume; CPU/memory limits; no credentials inside; destroyed or kept on handoff |
 | C6 | Knowledge + memory | Postgres + pgvector | KB index (RTEMS GitLab issues, rtems-docs, Confluence KB space); LangGraph store for `/memories/`; code search stays agentic (ripgrep in the sandbox) |
 | C7 | Quality gates | GitHub Actions on the mirrors | Same sandbox image (GHCR) builds the BSP and runs tests on SIS; CodeQL (C/C++, manual build); SonarQube; cppcheck; Syft SBOM + OSV-Scanner; Dependabot where an ecosystem exists |
 

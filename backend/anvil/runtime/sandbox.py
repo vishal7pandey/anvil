@@ -25,7 +25,7 @@ from deepagents.backends.protocol import (
 )
 from deepagents.backends.sandbox import MAX_OUTPUT_BYTES, BaseSandbox
 
-DEFAULT_IMAGE = "anvil-sandbox-rtems:7"
+DEFAULT_IMAGE = "anvil-sandbox-rtems:7.1"  # :7 + installed sparc/leon3 BSP (Dockerfile.leon3)
 TIMEOUT_EXIT_CODE = 124  # coreutils `timeout`
 
 

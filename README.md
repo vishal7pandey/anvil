@@ -34,7 +34,8 @@ private/         Gitignored. Material that must not be published.
 
 ```bash
 cp .env.example .env                 # add OPENAI_API_KEY, GitHub and Atlassian tokens
-docker build -t anvil-sandbox-rtems:7 sandbox/rtems   # 1-2 h the first time
+docker build -t anvil-sandbox-rtems:7 sandbox/rtems   # 1-2 h the first time (or docker pull the GHCR :7)
+docker build -f sandbox/rtems/Dockerfile.leon3 -t anvil-sandbox-rtems:7.1 sandbox/rtems   # ~2 min: adds the leon3 BSP TC2 needs
 docker compose -f deploy/compose.yaml up -d           # postgres + gateway + api + ui
 open http://localhost:5173
 ```

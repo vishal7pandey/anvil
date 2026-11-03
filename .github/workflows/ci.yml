@@ -109,3 +109,30 @@ jobs:
       - name: Run frontend tests
         if: steps.frontend.outputs.present == 'true'
         run: npm test --prefix frontend
+
+  sbom:
+    name: SBOM and vulnerability reports
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Generate SBOM and OSV reports
+        run: |
+          mkdir -p "$RUNNER_TEMP/anvil-sbom"
+          docker pull ghcr.io/vishal7pandey/anvil-sandbox-rtems:7
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/workspace:ro" \
+            --volume "$RUNNER_TEMP/anvil-sbom:/reports" \
+            --entrypoint bash \
+            ghcr.io/vishal7pandey/anvil-sandbox-rtems:7 \
+            /workspace/sandbox/rtems/sbom.sh /workspace /reports
+
+      - name: Upload SBOM and OSV reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: sbom-osv-${{ github.run_id }}
+          path: ${{ runner.temp }}/anvil-sbom/
+          if-no-files-found: warn

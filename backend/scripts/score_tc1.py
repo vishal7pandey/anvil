@@ -30,8 +30,8 @@ _DIFF_FILE_RE = re.compile(r"^diff --git a/(\S+) b/(\S+)")
 _HUNK_HEADER_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$")
 
 
-def fetch_upstream_diff(repo: str = UPSTREAM_REPO, commit: str = UPSTREAM_COMMIT) -> str:
-    """Fetch the upstream commit unified diff from GitHub on the host."""
+def fetch_upstream_diff(repo: str = UPSTREAM_REPO, commits: tuple[str, ...] = (UPSTREAM_COMMIT,)) -> str:
+    """Fetch the upstream fix commit diff(s) from GitHub on the host (concatenated when >1)."""
     settings = GitHubSettings()
     headers = {
         "Accept": "application/vnd.github.diff",
@@ -39,11 +39,53 @@ def fetch_upstream_diff(repo: str = UPSTREAM_REPO, commit: str = UPSTREAM_COMMIT
     }
     if settings.github_token:
         headers["Authorization"] = f"Bearer {settings.github_token}"
-    url = f"{settings.github_api.rstrip('/')}/repos/{repo}/commits/{commit}"
+    base = f"{settings.github_api.rstrip('/')}/repos/{repo}/commits/"
     with httpx.Client(timeout=30, follow_redirects=True) as client:
-        resp = client.get(url, headers=headers)
-        resp.raise_for_status()
-        return resp.text
+        parts = []
+        for commit in commits:
+            resp = client.get(f"{base}{commit}", headers=headers)
+            resp.raise_for_status()
+            parts.append(resp.text)
+        return "\n".join(parts)
+
+
+def score_case_diff(agent_diff: str, case: Any) -> dict[str, Any]:
+    """Hunk-overlap score driven by a case spec (ANVIL-38): repo, fix commits, target files,
+    tolerance all come from ``case``; nothing is hardcoded. Note: with multiple fix commits the
+    concatenated diffs' hunk coordinates are each relative to that commit's parent tree — fine
+    for single-commit cases; treat multi-commit scores as approximate."""
+    per_file: dict[str, Any] = {}
+    total = matched = 0
+    upstream_diff = fetch_upstream_diff(repo=case.repo, commits=tuple(case.fix_commits))
+    case_files = set(case.target_files) | set(case.test_files)
+    for target in case.target_files:
+        result = score_tc1_diff(
+            agent_diff,
+            upstream_diff,
+            target_file=target,
+            tolerance=case.tolerance,
+            upstream_commits=tuple(case.fix_commits),
+            upstream_files=case_files,
+        )
+        per_file[target] = result
+        total += result["hunks_total"]
+        matched += result["hunks_matched"]
+    files_touched = sorted(set().union(*(set(r["files_touched"]) for r in per_file.values())) or set())
+    summary = (
+        f"Case {case.id} hunk overlap: {matched}/{total} upstream hunks matched "
+        f"(±{case.tolerance} lines); files touched: {', '.join(files_touched) or 'none'}"
+    )
+    return {
+        "case": case.id,
+        "fix_commits": list(case.fix_commits),
+        "hunks_total": total,
+        "hunks_matched": matched,
+        "hunk_overlap_ratio": (matched / total) if total else 0.0,
+        "all_hunks_matched": total > 0 and matched == total,
+        "files_touched": files_touched,
+        "per_target_file": per_file,
+        "summary": summary,
+    }
 
 
 def parse_unified_diff(diff_text: str) -> dict[str, list[dict[str, Any]]]:
@@ -103,6 +145,8 @@ def score_tc1_diff(
     *,
     target_file: str = TARGET_FILE,
     tolerance: int = LINE_TOLERANCE,
+    upstream_commits: tuple[str, ...] = (UPSTREAM_COMMIT,),
+    upstream_files: tuple[str, ...] | set[str] = UPSTREAM_FILES,
 ) -> dict[str, Any]:
     """Compare agent_diff against upstream_diff for hunk overlap in target_file (±tolerance lines)."""
     upstream_by_file = parse_unified_diff(upstream_diff)
@@ -146,11 +190,11 @@ def score_tc1_diff(
     )
     return {
         "target_file": target_file,
-        "upstream_commit": UPSTREAM_COMMIT,
+        "upstream_commits": list(upstream_commits),
         "tolerance_lines": tolerance,
         "files_touched": sorted(touched_files),
-        "upstream_files_hit": sorted(touched_files & UPSTREAM_FILES),
-        "extra_files": sorted(touched_files - UPSTREAM_FILES),
+        "upstream_files_hit": sorted(touched_files & set(upstream_files)),
+        "extra_files": sorted(touched_files - set(upstream_files)),
         "hunks_total": total_hunks,
         "hunks_matched": matched_count,
         "hunk_overlap_ratio": (matched_count / total_hunks) if total_hunks else 0.0,
@@ -165,6 +209,11 @@ def main(argv: list[str] | None = None) -> int:
         description="Host-side TC1 hunk-overlap scorer against upstream commit a62e60b5."
     )
     parser.add_argument("agent_diff", type=Path, help="Path to the agent's unified diff file")
+    parser.add_argument(
+        "--case",
+        default=None,
+        help="Case id from cases/*.toml: repo, fix commits, target files and tolerance come from the spec (ANVIL-38)",
+    )
     parser.add_argument(
         "--upstream-diff",
         type=Path,
@@ -186,16 +235,21 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     agent_diff_text = args.agent_diff.read_text(encoding="utf-8")
-    upstream_diff_text = (
-        args.upstream_diff.read_text(encoding="utf-8")
-        if args.upstream_diff is not None
-        else fetch_upstream_diff()
-    )
-    result = score_tc1_diff(
-        agent_diff_text,
-        upstream_diff_text,
-        tolerance=args.tolerance,
-    )
+    if args.case:
+        from anvil.cases import get_case
+
+        result = score_case_diff(agent_diff_text, get_case(args.case))
+    else:
+        upstream_diff_text = (
+            args.upstream_diff.read_text(encoding="utf-8")
+            if args.upstream_diff is not None
+            else fetch_upstream_diff()
+        )
+        result = score_tc1_diff(
+            agent_diff_text,
+            upstream_diff_text,
+            tolerance=args.tolerance,
+        )
     if args.out is not None:
         args.out.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(result, indent=2))

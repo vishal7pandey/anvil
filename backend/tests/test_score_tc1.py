@@ -2,11 +2,14 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
+from anvil.cases import load_case
+
 from scripts.score_tc1 import (
     TARGET_FILE,
     fetch_upstream_diff,
     main,
     parse_unified_diff,
+    score_case_diff,
     score_tc1_diff,
 )
 
@@ -154,7 +157,7 @@ index aaa..bbb 100644
 +++ b/cpukit/posix/src/mutexinit.c
 @@ -50,4 +50,4 @@ int pthread_mutex_init(
    ctx_50();
--  --count;
+---count;
 +  x++;
    ctx_52();
 """
@@ -203,3 +206,90 @@ def test_cli_outputs_json_and_summary_line(tmp_path: Path, capsys):
 
     stdout = capsys.readouterr().out.strip().splitlines()
     assert stdout[-1].startswith("TC1 hunk overlap on cpukit/posix/src/mutexinit.c: 3/3")
+
+
+CASE_SPEC = """\
+id = "demo-case"
+repo = "owner/demo"
+as_of = "2026-01-01"
+[upstream]
+issues = ["1"]
+mrs = ["2"]
+fix_commits = ["deadbee1", "deadbee2"]
+[base]
+branch = "case/demo-base"
+[ticket]
+project = "BUG"
+summary = "Crash on startup"
+body = "It crashes."
+[scoring]
+target_files = ["src/core.c", "src/extra.c"]
+test_files = ["tests/t.c"]
+tolerance = 5
+"""
+
+DEMO_UPSTREAM_DIFF = """\
+diff --git a/src/core.c b/src/core.c
+index 111..222 100644
+--- a/src/core.c
++++ b/src/core.c
+@@ -10,3 +10,2 @@ int f(
+   ctx_10();
+-  bad_call();
+   ctx_12();
+diff --git a/src/extra.c b/src/extra.c
+index 333..444 100644
+--- a/src/extra.c
++++ b/src/extra.c
+@@ -20,3 +20,2 @@ int g(
+   ctx_20();
+-  other_bad();
+   ctx_22();
+"""
+
+DEMO_AGENT_DIFF = """\
+diff --git a/src/core.c b/src/core.c
+index 111..aaa 100644
+--- a/src/core.c
++++ b/src/core.c
+@@ -9,4 +9,3 @@ int f(
+   ctx_9();
+   ctx_10();
+-  bad_call();
+   ctx_12();
+diff --git a/tests/t.c b/tests/t.c
+index 555..666 100644
+--- a/tests/t.c
++++ b/tests/t.c
+@@ -1,2 +1,3 @@ void t(
+  x();
++  new_assert();
+"""
+
+
+def test_score_case_diff_uses_case_fields_not_constants(tmp_path):
+    spec = tmp_path / "demo-case.toml"
+    spec.write_text(CASE_SPEC, encoding="utf-8")
+    case = load_case(spec)
+
+    seen: dict = {}
+
+    def fake_fetch(repo, commits):
+        seen["repo"], seen["commits"] = repo, commits
+        return DEMO_UPSTREAM_DIFF
+
+    with patch("scripts.score_tc1.fetch_upstream_diff", side_effect=fake_fetch):
+        result = score_case_diff(DEMO_AGENT_DIFF, case)
+
+    assert seen == {"repo": "owner/demo", "commits": ("deadbee1", "deadbee2")}
+    assert result["case"] == "demo-case"
+    assert result["fix_commits"] == ["deadbee1", "deadbee2"]
+    assert result["hunks_total"] == 2 and result["hunks_matched"] == 1
+    assert result["hunk_overlap_ratio"] == 0.5
+    assert sorted(result["per_target_file"]) == ["src/core.c", "src/extra.c"]
+    core = result["per_target_file"]["src/core.c"]
+    assert core["upstream_commits"] == ["deadbee1", "deadbee2"]
+    assert core["upstream_files_hit"] == ["src/core.c", "tests/t.c"]
+    assert core["extra_files"] == []
+    assert core["tolerance_lines"] == 5
+    assert "a62e60b5" not in json.dumps(result)

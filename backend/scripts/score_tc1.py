@@ -51,12 +51,22 @@ def fetch_upstream_diff(repo: str = UPSTREAM_REPO, commits: tuple[str, ...] = (U
 
 def score_case_diff(agent_diff: str, case: Any) -> dict[str, Any]:
     """Hunk-overlap score driven by a case spec (ANVIL-38): repo, fix commits, target files,
-    tolerance all come from ``case``; nothing is hardcoded."""
+    tolerance all come from ``case``; nothing is hardcoded. Note: with multiple fix commits the
+    concatenated diffs' hunk coordinates are each relative to that commit's parent tree — fine
+    for single-commit cases; treat multi-commit scores as approximate."""
     per_file: dict[str, Any] = {}
     total = matched = 0
     upstream_diff = fetch_upstream_diff(repo=case.repo, commits=tuple(case.fix_commits))
+    case_files = set(case.target_files) | set(case.test_files)
     for target in case.target_files:
-        result = score_tc1_diff(agent_diff, upstream_diff, target_file=target, tolerance=case.tolerance)
+        result = score_tc1_diff(
+            agent_diff,
+            upstream_diff,
+            target_file=target,
+            tolerance=case.tolerance,
+            upstream_commits=tuple(case.fix_commits),
+            upstream_files=case_files,
+        )
         per_file[target] = result
         total += result["hunks_total"]
         matched += result["hunks_matched"]
@@ -135,6 +145,8 @@ def score_tc1_diff(
     *,
     target_file: str = TARGET_FILE,
     tolerance: int = LINE_TOLERANCE,
+    upstream_commits: tuple[str, ...] = (UPSTREAM_COMMIT,),
+    upstream_files: tuple[str, ...] | set[str] = UPSTREAM_FILES,
 ) -> dict[str, Any]:
     """Compare agent_diff against upstream_diff for hunk overlap in target_file (±tolerance lines)."""
     upstream_by_file = parse_unified_diff(upstream_diff)
@@ -178,11 +190,11 @@ def score_tc1_diff(
     )
     return {
         "target_file": target_file,
-        "upstream_commit": UPSTREAM_COMMIT,
+        "upstream_commits": list(upstream_commits),
         "tolerance_lines": tolerance,
         "files_touched": sorted(touched_files),
-        "upstream_files_hit": sorted(touched_files & UPSTREAM_FILES),
-        "extra_files": sorted(touched_files - UPSTREAM_FILES),
+        "upstream_files_hit": sorted(touched_files & set(upstream_files)),
+        "extra_files": sorted(touched_files - set(upstream_files)),
         "hunks_total": total_hunks,
         "hunks_matched": matched_count,
         "hunk_overlap_ratio": (matched_count / total_hunks) if total_hunks else 0.0,

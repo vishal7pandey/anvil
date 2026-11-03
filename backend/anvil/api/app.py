@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from threading import Lock
 from typing import Any
 from uuid import UUID
 
@@ -53,6 +54,15 @@ from anvil.api.schemas import (
 )
 
 logger = logging.getLogger(__name__)
+# One lock per run serialises every write that allocates an event seq (executor events, status
+# changes, cancel requests): two writers in the same process must not read the same last_seq.
+_RUN_WRITE_LOCKS: dict[UUID, Lock] = {}
+
+
+def _run_write_lock(run_id: UUID) -> Lock:
+    # dict.setdefault is atomic under the GIL; defaultdict's __missing__ is not, and two threads
+    # creating the first lock for a run at once would each get their own.
+    return _RUN_WRITE_LOCKS.setdefault(run_id, Lock())
 bearer_scheme = HTTPBearer(auto_error=False)
 RUN_STATUSES = {
     "queued",
@@ -232,7 +242,16 @@ def _append_event(
     data: dict[str, Any],
     agent: str | None = None,
 ) -> RunEvent:
-    locked_run = db.scalar(select(Run).where(Run.id == run.id).with_for_update())
+    # populate_existing: re-read the row even though `run` is already in this session's identity
+    # map. Without it a request that loaded the run earlier (cancel_run) allocated seq from a stale
+    # last_event_seq after another thread had committed events (ANVIL-36). Autoflush writes this
+    # session's pending changes first, so they are not lost by the refresh.
+    locked_run = db.scalar(
+        select(Run)
+        .where(Run.id == run.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     if locked_run is None:
         raise ValueError("Cannot append an event to a missing run")
     locked_run.last_event_seq += 1
@@ -328,151 +347,156 @@ def _persist_executor_event(
     if agent is not None and not isinstance(agent, str):
         raise ValueError("Executor event agent must be a string or null")
 
-    with session_factory() as db:
-        run = db.scalar(select(Run).where(Run.id == run_id).with_for_update())
-        if run is None:
-            raise ValueError("Executor event references a missing run")
-        if run.status in TERMINAL_RUN_STATUSES:
-            raise ValueError("Executor emitted an event after the run finished")
-        if event_type == "run.status":
-            new_status = data.get("status")
-            if new_status not in RUN_STATUSES:
-                raise ValueError(f"Executor reported an unsupported run status: {new_status}")
-            run.status = new_status
-            if new_status == "running" and run.started_at is None:
-                run.started_at = utc_now()
-            if new_status in TERMINAL_RUN_STATUSES:
-                run.ended_at = utc_now()
-            if new_status == "failed":
-                run.error = "Run failed"
-        elif event_type == "usage":
-            input_tokens = data.get("input_tokens", 0)
-            output_tokens = data.get("output_tokens", 0)
-            usd = Decimal(str(data.get("usd", 0)))
-            if (
-                type(input_tokens) is not int
-                or type(output_tokens) is not int
-                or input_tokens < 0
-                or output_tokens < 0
-                or not usd.is_finite()
-                or usd < 0
-            ):
-                raise ValueError("Usage values must be non-negative")
-            run.input_tokens += input_tokens
-            run.output_tokens += output_tokens
-            run.usd += usd
-        elif event_type == "artifact":
-            run.artifacts = [*run.artifacts, data]
-        elif event_type == "run.record":
-            string_fields = {
-                "base_sha",
-                "branch",
-                "sandbox_image_digest",
-                "prompt_hash",
-                "skills_hash",
-            }
-            object_fields = {"model_aliases", "skill_versions", "budgets"}
-            for field in string_fields:
-                if field in data and data[field] is not None and not isinstance(data[field], str):
-                    raise ValueError(f"Run record field {field} must be a string or null")
-            for field in object_fields:
-                if field in data and not isinstance(data[field], dict):
-                    raise ValueError(f"Run record field {field} must be an object")
-            run.run_record = {**run.run_record, **data}
-            for field in string_fields | object_fields:
-                if field in data and field != "skills_hash":
-                    setattr(run, field, data[field])
-            if "skills_hash" in data and "skill_versions" not in data:
-                run.skill_versions = {"hash": data["skills_hash"]}
-        elif event_type == "approval.request":
-            try:
-                approval_id = UUID(str(data["approval_id"]))
-            except (KeyError, ValueError) as exc:
-                raise ValueError("Approval events must include a UUID approval_id") from exc
-            action = data.get("action")
-            args = data.get("args", {})
-            reason = data.get("reason")
-            if not isinstance(action, str) or not isinstance(args, dict):
-                raise ValueError("Approval events must include an action and object args")
-            if reason is not None and not isinstance(reason, str):
-                raise ValueError("Approval event reason must be a string or null")
-            approval = db.get(Approval, approval_id)
-            if approval is None:
-                db.add(
-                    Approval(
-                        id=approval_id,
-                        run_id=run_id,
-                        action=action,
-                        args=args,
-                        reason=reason,
+    with _run_write_lock(run_id):
+        with session_factory() as db:
+            run = db.scalar(select(Run).where(Run.id == run_id).with_for_update())
+            if run is None:
+                raise ValueError("Executor event references a missing run")
+            if run.status in TERMINAL_RUN_STATUSES:
+                raise ValueError("Executor emitted an event after the run finished")
+            if event_type == "run.status":
+                new_status = data.get("status")
+                if new_status not in RUN_STATUSES:
+                    raise ValueError(f"Executor reported an unsupported run status: {new_status}")
+                run.status = new_status
+                if new_status == "running" and run.started_at is None:
+                    run.started_at = utc_now()
+                if new_status in TERMINAL_RUN_STATUSES:
+                    run.ended_at = utc_now()
+                if new_status == "failed":
+                    run.error = "Run failed"
+            elif event_type == "usage":
+                input_tokens = data.get("input_tokens", 0)
+                output_tokens = data.get("output_tokens", 0)
+                usd = Decimal(str(data.get("usd", 0)))
+                if (
+                    type(input_tokens) is not int
+                    or type(output_tokens) is not int
+                    or input_tokens < 0
+                    or output_tokens < 0
+                    or not usd.is_finite()
+                    or usd < 0
+                ):
+                    raise ValueError("Usage values must be non-negative")
+                run.input_tokens += input_tokens
+                run.output_tokens += output_tokens
+                run.usd += usd
+            elif event_type == "artifact":
+                run.artifacts = [*run.artifacts, data]
+            elif event_type == "run.record":
+                string_fields = {
+                    "base_sha",
+                    "branch",
+                    "sandbox_image_digest",
+                    "prompt_hash",
+                    "skills_hash",
+                }
+                object_fields = {"model_aliases", "skill_versions", "budgets"}
+                for field in string_fields:
+                    if field in data and data[field] is not None and not isinstance(data[field], str):
+                        raise ValueError(f"Run record field {field} must be a string or null")
+                for field in object_fields:
+                    if field in data and not isinstance(data[field], dict):
+                        raise ValueError(f"Run record field {field} must be an object")
+                run.run_record = {**run.run_record, **data}
+                for field in string_fields | object_fields:
+                    if field in data and field != "skills_hash":
+                        setattr(run, field, data[field])
+                if "skills_hash" in data and "skill_versions" not in data:
+                    run.skill_versions = {"hash": data["skills_hash"]}
+            elif event_type == "approval.request":
+                try:
+                    approval_id = UUID(str(data["approval_id"]))
+                except (KeyError, ValueError) as exc:
+                    raise ValueError("Approval events must include a UUID approval_id") from exc
+                action = data.get("action")
+                args = data.get("args", {})
+                reason = data.get("reason")
+                if not isinstance(action, str) or not isinstance(args, dict):
+                    raise ValueError("Approval events must include an action and object args")
+                if reason is not None and not isinstance(reason, str):
+                    raise ValueError("Approval event reason must be a string or null")
+                approval = db.get(Approval, approval_id)
+                if approval is None:
+                    db.add(
+                        Approval(
+                            id=approval_id,
+                            run_id=run_id,
+                            action=action,
+                            args=args,
+                            reason=reason,
+                        )
                     )
-                )
-            elif approval.run_id != run_id:
-                raise ValueError("Approval event UUID is already in use by another run")
-        _append_event(db, run, event_type, data, agent)
-        db.commit()
+                elif approval.run_id != run_id:
+                    raise ValueError("Approval event UUID is already in use by another run")
+            _append_event(db, run, event_type, data, agent)
+            db.commit()
 
 
 def _mark_run_failed(session_factory: SessionFactory, run_id: UUID, error: str) -> None:
-    with session_factory() as db:
-        run = db.scalar(select(Run).where(Run.id == run_id).with_for_update())
-        if run is None or run.status in TERMINAL_RUN_STATUSES:
-            return
-        run.status = "failed"
-        run.error = error
-        run.ended_at = utc_now()
-        _append_event(
-            db,
-            run,
-            "run.status",
-            {"status": "failed", "error": error},
-            "api",
-        )
-        db.commit()
+    with _run_write_lock(run_id):
+        with session_factory() as db:
+            run = db.scalar(select(Run).where(Run.id == run_id).with_for_update())
+            if run is None or run.status in TERMINAL_RUN_STATUSES:
+                return
+            run.status = "failed"
+            run.error = error
+            run.ended_at = utc_now()
+            _append_event(
+                db,
+                run,
+                "run.status",
+                {"status": "failed", "error": error},
+                "api",
+            )
+            db.commit()
 
 
 def _mark_run_started(session_factory: SessionFactory, run_id: UUID) -> None:
-    with session_factory() as db:
-        run = db.scalar(select(Run).where(Run.id == run_id).with_for_update())
-        if run is None or run.status in TERMINAL_RUN_STATUSES:
-            return
-        run.status = "running"
-        if run.started_at is None:
-            run.started_at = utc_now()
-        _append_event(db, run, "run.status", {"status": "running"}, "api")
-        db.commit()
+    with _run_write_lock(run_id):
+        with session_factory() as db:
+            run = db.scalar(select(Run).where(Run.id == run_id).with_for_update())
+            if run is None or run.status in TERMINAL_RUN_STATUSES:
+                return
+            run.status = "running"
+            if run.started_at is None:
+                run.started_at = utc_now()
+            _append_event(db, run, "run.status", {"status": "running"}, "api")
+            db.commit()
 
 
 def _mark_run_cancelled(session_factory: SessionFactory, run_id: UUID) -> None:
-    with session_factory() as db:
-        run = db.scalar(select(Run).where(Run.id == run_id).with_for_update())
-        if run is None or run.status in TERMINAL_RUN_STATUSES:
-            return
-        run.status = "cancelled"
-        run.ended_at = utc_now()
-        _append_event(db, run, "run.status", {"status": "cancelled"}, "api")
-        db.commit()
+    with _run_write_lock(run_id):
+        with session_factory() as db:
+            run = db.scalar(select(Run).where(Run.id == run_id).with_for_update())
+            if run is None or run.status in TERMINAL_RUN_STATUSES:
+                return
+            run.status = "cancelled"
+            run.ended_at = utc_now()
+            _append_event(db, run, "run.status", {"status": "cancelled"}, "api")
+            db.commit()
 
 
 def _mark_run_interrupted(session_factory: SessionFactory, run_id: UUID) -> None:
-    with session_factory() as db:
-        run = db.scalar(select(Run).where(Run.id == run_id).with_for_update())
-        if run is None or run.status in TERMINAL_RUN_STATUSES:
-            return
-        cancelled = run.cancel_requested_at is not None
-        new_status = "cancelled" if cancelled else "failed"
-        error = None if cancelled else "Interrupted by API shutdown"
-        run.status = new_status
-        run.error = error
-        run.ended_at = utc_now()
-        _append_event(
-            db,
-            run,
-            "run.status",
-            {"status": new_status, **({"error": error} if error else {})},
-            "api",
-        )
-        db.commit()
+    with _run_write_lock(run_id):
+        with session_factory() as db:
+            run = db.scalar(select(Run).where(Run.id == run_id).with_for_update())
+            if run is None or run.status in TERMINAL_RUN_STATUSES:
+                return
+            cancelled = run.cancel_requested_at is not None
+            new_status = "cancelled" if cancelled else "failed"
+            error = None if cancelled else "Interrupted by API shutdown"
+            run.status = new_status
+            run.error = error
+            run.ended_at = utc_now()
+            _append_event(
+                db,
+                run,
+                "run.status",
+                {"status": new_status, **({"error": error} if error else {})},
+                "api",
+            )
+            db.commit()
 
 
 async def _execute_run(app: FastAPI, run_id: UUID, message: str) -> None:
@@ -1330,15 +1354,18 @@ def create_app(
                 detail="RunExecutor is not configured",
             )
         task = request.app.state.run_tasks.get(run.id)
-        run.cancel_requested_at = utc_now()
-        _append_event(
-            db,
-            run,
-            "run.cancel_requested",
-            {"run_id": str(run.id)},
-            "user",
-        )
-        db.commit()
+        # The executor thread may be appending this run's events right now: same lock, or two
+        # writers can allocate the same seq (ANVIL-36).
+        with _run_write_lock(run.id):
+            run.cancel_requested_at = utc_now()
+            _append_event(
+                db,
+                run,
+                "run.cancel_requested",
+                {"run_id": str(run.id)},
+                "user",
+            )
+            db.commit()
         db.refresh(run)
         run_payload = await run_in_threadpool(
             _load_run_payload,

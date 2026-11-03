@@ -5,7 +5,7 @@ import logging
 from collections import Counter, defaultdict
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -63,6 +63,7 @@ RUN_STATUSES = {
 TERMINAL_RUN_STATUSES = {"handoff", "succeeded", "failed", "cancelled"}
 POLL_INTERVAL_SECONDS = 60
 CANCEL_TIMEOUT_SECONDS = 5
+SPEND_LOG_GRACE_PERIOD = timedelta(minutes=5)
 
 JiraCandidates = Callable[..., list[dict[str, Any]]]
 JiraTransition = Callable[[str, str], Any]
@@ -116,10 +117,27 @@ def _run_metrics(
         if (run.input_tokens or run.output_tokens)
         and str(run.id) not in spend_totals
     ]
-    if missing_spend_logs:
+    now = utc_now()
+    waiting_for_spend_logs: list[Run] = []
+    for run in missing_spend_logs:
+        usage_timestamps = [
+            event.ts for event in events_by_run[run.id] if event.type == "usage"
+        ]
+        last_usage_at = max(
+            usage_timestamps,
+            default=run.ended_at or run.started_at or run.created_at,
+        )
+        if last_usage_at.tzinfo is None or last_usage_at.utcoffset() is None:
+            last_usage_at = last_usage_at.replace(tzinfo=timezone.utc)
+        else:
+            last_usage_at = last_usage_at.astimezone(timezone.utc)
+        if now - last_usage_at <= SPEND_LOG_GRACE_PERIOD:
+            waiting_for_spend_logs.append(run)
+
+    if waiting_for_spend_logs:
         logger.error(
             "LiteLLM spend logs are missing for %d runs with token usage",
-            len(missing_spend_logs),
+            len(waiting_for_spend_logs),
         )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -127,10 +145,11 @@ def _run_metrics(
             headers={"Retry-After": "1"},
         )
 
-    now = utc_now()
+    missing_spend_run_ids = {run.id for run in missing_spend_logs}
     metrics: dict[UUID, dict[str, Any]] = {}
     for run in runs:
         run_events = events_by_run[run.id]
+        spend_is_missing = run.id in missing_spend_run_ids
         wall_time_seconds = None
         if run.started_at is not None:
             wall_time_seconds = max(
@@ -149,12 +168,16 @@ def _run_metrics(
             for event in run_events
         )
         spend = spend_totals.get(str(run.id), SpendTotals(0, Decimal("0")))
+        model_calls = None if spend_is_missing else spend.model_calls
+        usd = None if spend_is_missing else float(spend.usd)
         metrics[run.id] = {
             "wall_time_seconds": wall_time_seconds,
-            "model_calls": spend.model_calls,
+            "model_calls": model_calls,
             "input_tokens": run.input_tokens,
             "output_tokens": run.output_tokens,
-            "usd": float(spend.usd),
+            "usd": usd,
+            "cost_usd": usd,
+            "cost_status": "missing" if spend_is_missing else "available",
             "human_touches": run.human_touches + human_messages,
             "ci_rounds": ci_rounds,
             "outcome": run.status,
@@ -967,8 +990,15 @@ def create_app(
             for item in run_metrics
             if item["wall_time_seconds"] is not None
         ]
+        spend_is_missing = any(item["cost_status"] == "missing" for item in run_metrics)
         outcomes = Counter(run.status for run in runs)
         total_wall_time = sum(wall_times)
+        model_calls = (
+            None
+            if spend_is_missing
+            else sum(item["model_calls"] for item in run_metrics)
+        )
+        usd = None if spend_is_missing else sum(item["usd"] for item in run_metrics)
         return {
             "from": from_,
             "to": to,
@@ -978,10 +1008,12 @@ def create_app(
             "average_wall_time_seconds": (
                 total_wall_time / len(wall_times) if wall_times else None
             ),
-            "model_calls": sum(item["model_calls"] for item in run_metrics),
+            "model_calls": model_calls,
             "input_tokens": sum(item["input_tokens"] for item in run_metrics),
             "output_tokens": sum(item["output_tokens"] for item in run_metrics),
-            "usd": sum(item["usd"] for item in run_metrics),
+            "usd": usd,
+            "cost_usd": usd,
+            "cost_status": "missing" if spend_is_missing else "available",
             "human_touches": sum(item["human_touches"] for item in run_metrics),
             "ci_rounds": sum(item["ci_rounds"] for item in run_metrics),
             "outcomes": dict(outcomes),

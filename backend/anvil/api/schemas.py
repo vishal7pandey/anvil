@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 MergePolicy = Literal["human", "agent-after-approval", "agent"]
+CostStatus = Literal["pending", "available", "missing"]
 
 
 def normalize_repository(value: str) -> str:
@@ -100,12 +101,14 @@ class RunResponse(BaseModel):
     budgets: dict[str, Any]
     started_at: datetime | None
     ended_at: datetime | None
-    usd: float
+    usd: float | None
     input_tokens: int
     output_tokens: int
     human_touches: int
     wall_time_seconds: float | None = None
-    model_calls: int = 0
+    model_calls: int | None = None
+    cost_usd: float | None = None
+    cost_status: CostStatus = "pending"
     ci_rounds: int = 0
     outcome: str | None = None
     artifacts: list[dict[str, Any]]
@@ -122,10 +125,12 @@ class MetricsResponse(BaseModel):
     run_count: int
     total_wall_time_seconds: float
     average_wall_time_seconds: float | None
-    model_calls: int
+    model_calls: int | None
     input_tokens: int
     output_tokens: int
-    usd: float
+    usd: float | None
+    cost_usd: float | None = None
+    cost_status: Literal["available", "missing"] = "available"
     human_touches: int
     ci_rounds: int
     outcomes: dict[str, int]

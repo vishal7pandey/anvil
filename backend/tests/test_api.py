@@ -1,4 +1,5 @@
 import asyncio
+from datetime import timedelta
 from threading import Event
 from decimal import Decimal
 from time import sleep
@@ -12,7 +13,7 @@ from sqlalchemy import select
 from anvil.api.app import create_app
 from anvil.api.config import Settings
 from anvil.api.metrics import SpendTotals
-from anvil.api.models import Approval, Base, Run, RunEvent, Session, User
+from anvil.api.models import Approval, Base, Run, RunEvent, Session, User, utc_now
 
 
 AUTH = {"Authorization": "Bearer test-token"}
@@ -316,6 +317,8 @@ def test_message_run_and_sse_resume(api_factory, client_factory):
     assert run.json()["input_tokens"] == 10
     assert run.json()["output_tokens"] == 4
     assert run.json()["usd"] == pytest.approx(0.023456)
+    assert run.json()["cost_usd"] == pytest.approx(0.023456)
+    assert run.json()["cost_status"] == "available"
     assert run.json()["wall_time_seconds"] is not None
     assert run.json()["model_calls"] == 1
     assert run.json()["human_touches"] == 1
@@ -338,6 +341,8 @@ def test_message_run_and_sse_resume(api_factory, client_factory):
     assert metrics.json()["input_tokens"] == 10
     assert metrics.json()["output_tokens"] == 4
     assert metrics.json()["usd"] == pytest.approx(0.023456)
+    assert metrics.json()["cost_usd"] == pytest.approx(0.023456)
+    assert metrics.json()["cost_status"] == "available"
     assert metrics.json()["human_touches"] == 1
     assert metrics.json()["ci_rounds"] == 1
     assert metrics.json()["outcomes"] == {"succeeded": 1}
@@ -376,6 +381,47 @@ def test_run_metrics_fail_explicitly_when_spend_logs_are_missing(
         "LiteLLM spend logs are not yet available for runs with token usage"
     )
     assert response.headers["retry-after"] == "1"
+
+
+def test_stale_missing_spend_logs_return_unknown_cost(api_factory, client_factory):
+    app = api_factory(
+        executor=SuccessfulExecutor(),
+        spend_log_provider=lambda _run_ids: {},
+    )
+    client = client_factory(app)
+    session_id = create_session(client)
+    start = client.post(
+        f"/api/sessions/{session_id}/messages",
+        headers=AUTH,
+        json={"text": "hello"},
+    )
+    run_id = UUID(start.json()["id"])
+    client.get(f"/api/runs/{run_id}/events", headers=AUTH)
+
+    with app.state.session_factory() as db:
+        usage_event = db.scalar(
+            select(RunEvent).where(
+                RunEvent.run_id == run_id,
+                RunEvent.type == "usage",
+            )
+        )
+        assert usage_event is not None
+        usage_event.ts = utc_now() - timedelta(minutes=6)
+        db.commit()
+
+    run = client.get(f"/api/runs/{run_id}", headers=AUTH)
+    assert run.status_code == 200
+    assert run.json()["model_calls"] is None
+    assert run.json()["usd"] is None
+    assert run.json()["cost_usd"] is None
+    assert run.json()["cost_status"] == "missing"
+
+    metrics = client.get("/api/metrics", headers=AUTH)
+    assert metrics.status_code == 200
+    assert metrics.json()["model_calls"] is None
+    assert metrics.json()["usd"] is None
+    assert metrics.json()["cost_usd"] is None
+    assert metrics.json()["cost_status"] == "missing"
 
 
 def test_message_rejected_without_executor(api_factory, client_factory):

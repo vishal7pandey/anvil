@@ -79,7 +79,7 @@ flowchart LR
 *Demonstrates: Autonomous dependency management, C port layer adaptation, cross-compilation, and compliance artifact generation (SBOM, OSV CVE analysis & follow-ups, API impact).*
 
 - **Target Ticket:** `RTEMS-2` (`Upgrade vendored lwIP to 2.2.1 in rtems-lwip`).
-- **Codebase:** `vishal7pandey/rtems-lwip` on branch `tc2/upgrade-base-leon3`.
+- **Codebase:** `vishal7pandey/rtems-lwip` on branch `tc2/upgrade-base-leon3` (constructed baseline: backports SPARC/LEON3 GRETH support to lwIP 2.1.3 so the demo builds under the SPARC sandbox while keeping the vendored lwIP tree untouched).
 - **Target Architecture:** SPARC / LEON3 (`sparc/leon3`) via SIS simulator.
 - **Estimated Duration:** ~6–8 minutes.
 

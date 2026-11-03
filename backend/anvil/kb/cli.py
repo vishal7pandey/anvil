@@ -21,7 +21,11 @@ from dataclasses import asdict
 from pathlib import Path
 
 from .config import KBSettings
-from .sources import documents_from_docs_dir, fetch_closed_gitlab_issues
+from .sources import (
+    documents_from_docs_dir,
+    fetch_closed_gitlab_issues,
+    fetch_confluence_pages,
+)
 from .store import KBStore
 
 log = logging.getLogger(__name__)
@@ -62,6 +66,16 @@ def main(argv: list[str] | None = None) -> int:
             documents = fetch_closed_gitlab_issues(settings, max_pages=args.max_pages)
             report = store.ingest(documents)
             print(json.dumps(_report_dict("issues", report)))
+            if args.command == "ingest-issues":
+                return 0
+
+        if args.command in {"ingest-confluence", "ingest-all"}:
+            store.ensure_schema()
+            space = getattr(args, "space", "RTKB")
+            limit = getattr(args, "limit", 100)
+            documents = fetch_confluence_pages(space_key=space, limit=limit)
+            report = store.ingest(documents)
+            print(json.dumps(_report_dict("confluence", report)))
             return 0
 
         if args.command == "search":
@@ -108,12 +122,18 @@ def _build_parser() -> argparse.ArgumentParser:
     issues = sub.add_parser("ingest-issues", help="ingest closed RTEMS GitLab issues")
     issues.add_argument("--max-pages", type=int, default=None)
 
-    sub.add_parser("ingest-all", help="docs + issues")
+    confluence = sub.add_parser("ingest-confluence", help="ingest pages from Confluence space")
+    confluence.add_argument("--space", default="RTKB", help="Confluence space key (default: RTKB)")
+    confluence.add_argument("--limit", type=int, default=100, help="maximum pages to fetch")
+
+    sub.add_parser("ingest-all", help="docs + issues + confluence")
 
     search = sub.add_parser("search", help="hybrid search")
     search.add_argument("query")
     search.add_argument("--k", type=int, default=8)
-    search.add_argument("--sources", nargs="*", choices=["rtems-docs", "gitlab-issue"])
+    search.add_argument(
+        "--sources", nargs="*", choices=["rtems-docs", "gitlab-issue", "confluence"]
+    )
     return parser
 
 

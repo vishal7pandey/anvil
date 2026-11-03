@@ -1,7 +1,12 @@
 import httpx
 import respx
 from anvil.kb.config import KBSettings
-from anvil.kb.sources import documents_from_docs_dir, fetch_closed_gitlab_issues
+from anvil.kb.sources import (
+    CONFLUENCE_SOURCE,
+    documents_from_docs_dir,
+    fetch_closed_gitlab_issues,
+    fetch_confluence_pages,
+)
 
 
 def _issue(iid: int, title: str) -> dict:
@@ -82,3 +87,65 @@ def test_title_skips_spdx_preamble(tmp_path):
     )
     documents = list(documents_from_docs_dir(tmp_path))
     assert documents[0].title == "RTEMS Documentation"
+
+
+def test_confluence_pages_fetched_and_parsed():
+    mock_search_results = [
+        {"id": "28868609", "title": "Payload Telemetry Flow", "url": "/wiki/spaces/RTKB/pages/28868609"},
+        {"id": "att12345", "title": "Attachment (skip)", "url": "/wiki/attachment"},
+    ]
+
+    def mock_search(cql: str, limit: int = 10):
+        assert "space = RTKB" in cql
+        return mock_search_results
+
+    def mock_get(page_id: str):
+        if page_id == "28868609":
+            return {
+                "id": "28868609",
+                "title": "Payload Telemetry Flow",
+                "version": 1,
+                "body": "<h2>1. Overview</h2><p>The science payload instrument acquires telemetry.</p>",
+                "url": "https://example.atlassian.net/wiki/spaces/RTKB/pages/28868609",
+            }
+        raise ValueError(f"Unknown page {page_id}")
+
+    docs = fetch_confluence_pages(
+        space_key="RTKB",
+        search_fn=mock_search,
+        get_fn=mock_get,
+    )
+
+    assert len(docs) == 1
+    doc = docs[0]
+    assert doc.source == CONFLUENCE_SOURCE
+    assert doc.external_id == "28868609"
+    assert doc.title == "Payload Telemetry Flow"
+    assert doc.url == "https://example.atlassian.net/wiki/spaces/RTKB/pages/28868609"
+    assert "The science payload instrument acquires telemetry." in doc.text
+    assert doc.metadata == {"space": "RTKB", "version": 1}
+
+
+def test_confluence_pages_guard_exclusion():
+    mock_search_results = [
+        {"id": "28868609", "title": "Safe Page"},
+        {"id": "28868610", "title": "Leaky Page mentioning #5776"},
+    ]
+
+    def mock_search(cql: str, limit: int = 10):
+        return mock_search_results
+
+    def mock_get(page_id: str):
+        if page_id == "28868609":
+            return {"id": "28868609", "title": "Safe Page", "version": 1, "body": "<p>Safe content</p>"}
+        return {"id": "28868610", "title": "Leaky Page", "version": 1, "body": "<p>Fixes issue #5776</p>"}
+
+    docs = fetch_confluence_pages(
+        space_key="RTKB",
+        search_fn=mock_search,
+        get_fn=mock_get,
+    )
+
+    assert len(docs) == 1
+    assert docs[0].external_id == "28868609"
+

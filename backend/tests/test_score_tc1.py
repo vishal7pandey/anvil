@@ -144,6 +144,25 @@ def test_parse_unified_diff_extracts_base_line_numbers():
     assert hunks[2]["changed_lines"] == [214]
 
 
+def test_parse_unified_diff_counts_leading_dash_or_plus_c_lines():
+    # Regression for PR #43 review: a removed C line starting with `--` (e.g. `--count;`) must
+    # still be recorded as a changed base line, not skipped as a `---` file header.
+    diff = """\
+diff --git a/cpukit/posix/src/mutexinit.c b/cpukit/posix/src/mutexinit.c
+index aaa..bbb 100644
+--- a/cpukit/posix/src/mutexinit.c
++++ b/cpukit/posix/src/mutexinit.c
+@@ -50,4 +50,4 @@ int pthread_mutex_init(
+   ctx_50();
+-  --count;
++  x++;
+   ctx_52();
+"""
+    hunks = parse_unified_diff(diff)["cpukit/posix/src/mutexinit.c"]
+    assert len(hunks) == 1
+    assert hunks[0]["changed_lines"] == [51, 52]
+
+
 def test_score_tc1_diff_matches_all_three_hunks_within_tolerance():
     result = score_tc1_diff(AGENT_MATCHING_DIFF, UPSTREAM_FIXTURE_DIFF, tolerance=3)
     assert result["target_file"] == TARGET_FILE

@@ -85,8 +85,6 @@ def parse_unified_diff(diff_text: str) -> dict[str, list[dict[str, Any]]]:
         if current_hunk is None:
             continue
 
-        if raw_line.startswith("---") or raw_line.startswith("+++"):
-            continue
         if raw_line.startswith("-"):
             current_hunk["changed_lines"].append(old_line)
             old_line += 1

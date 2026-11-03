@@ -50,11 +50,22 @@ def test_falls_back_to_gh_cli_token(monkeypatch):
 @respx.mock
 def test_open_pr_creates_and_sends_bearer():
     respx.get(f"{API}/pulls").respond(json=[])
+    respx.get(f"{API}/branches/anvil%2Frtems-1-fix").respond(json={"name": "anvil/rtems-1-fix"})
     post = respx.post(f"{API}/pulls").respond(201, json=PR)
     out = github.github_open_pr("rtems", "anvil/rtems-1-fix", "RTEMS-1: Fix timer", "body")
     assert out == {"number": 7, "url": PR["html_url"], "head_sha": "abc", "created": True}
     assert json.loads(post.calls[0].request.content)["head"] == "anvil/rtems-1-fix"
     assert post.calls[0].request.headers["authorization"] == "Bearer fake-gh-token"
+
+
+@respx.mock
+def test_open_pr_before_push_says_to_push_first():
+    respx.get(f"{API}/pulls").respond(json=[])
+    respx.get(f"{API}/branches/anvil%2Frtems-1-fix").respond(404, json={"message": "Branch not found"})
+    post = respx.post(f"{API}/pulls").respond(422, json={"message": "Validation Failed"})
+    with pytest.raises(ToolError, match="not on GitHub yet: call git_push first"):
+        github.github_open_pr("rtems", "anvil/rtems-1-fix", "RTEMS-1: Fix timer", "body")
+    assert not post.called
 
 
 @respx.mock

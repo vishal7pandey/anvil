@@ -160,6 +160,9 @@ class DeepAgentExecutor:
             f"git clone --quiet --single-branch --branch {shlex.quote(base)} --depth 200 {shlex.quote(url)} {qpath}; fi; "
             f"cd {qpath}; git config user.name anvil-bot; git config user.email anvil-bot@users.noreply.github.com; "
             f"git remote set-url origin {shlex.quote(url)}; "
+            # Submodules come in while the sandbox still has network: vendored-component upgrades
+            # (TC2: lwip-upstream) need the upstream project's tags once the sandbox is offline.
+            f"if [ -f .gitmodules ]; then git submodule update --init --quiet; fi; "
             f"git switch --quiet {shlex.quote(branch)} 2>/dev/null || git switch --quiet -c {shlex.quote(branch)}; "
             f"echo BASE_SHA=$(git rev-parse origin/{shlex.quote(base)}); echo HEAD_SHA=$(git rev-parse HEAD)"
         )

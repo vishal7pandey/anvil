@@ -114,6 +114,29 @@ async def test_cancel_stops_stream():
     assert len(seen) < 50
 
 
+def test_checkout_inits_submodules_before_going_offline():
+    class RecordingSandbox:
+        def __init__(self):
+            self.calls = []
+
+        def set_network(self, network):
+            self.calls.append(("network", network))
+
+        def execute(self, command, *, timeout=None):
+            self.calls.append(("execute", command))
+            return type("R", (), {"exit_code": 0, "output": "BASE_SHA=" + "a" * 40 + "\nHEAD_SHA=" + "a" * 40})()
+
+        def upload_files(self, files):
+            return [type("U", (), {"path": p, "error": None})() for p, _ in files]
+
+    sb = RecordingSandbox()
+    DeepAgentExecutor(image="unused").checkout(sb, RUN)
+    script = next(c for kind, c in sb.calls if kind == "execute")
+    assert "git submodule update --init" in script
+    # Online for the clone and submodules, offline afterwards.
+    assert sb.calls[0] == ("network", "bridge") and sb.calls[-1] == ("network", None)
+
+
 # -- integration: real container, real clone --------------------------------------------------
 
 docker = pytest.importorskip("docker")

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import sys
 from typing import Any
@@ -7,6 +8,8 @@ from sqlalchemy.engine import make_url
 
 from anvil.api.config import get_settings, normalize_database_url
 from anvil.api.executor import RunExecutor
+
+logger = logging.getLogger(__name__)
 
 
 def _runtime_database_url(database_url: str) -> str:
@@ -45,7 +48,7 @@ def create_executor_from_environment() -> RunExecutor | None:
     from anvil.tools.confluence import CONFLUENCE_TOOLS
     from anvil.tools.evidence import handoff_note, publish_evidence
     from anvil.tools.git_push import make_git_push
-    from anvil.tools.github import GITHUB_TOOLS
+    from anvil.tools.github import GITHUB_TOOLS, github_open_pr
     from anvil.tools.jira import JIRA_TOOLS, jira_comment, jira_set_labels
 
     def tools_factory(sandbox: Any, run: dict[str, Any]) -> list[Any]:
@@ -60,7 +63,24 @@ def create_executor_from_environment() -> RunExecutor | None:
 
     def push_hook(sandbox: Any, run: dict[str, Any], wip_branch: str) -> str:
         pushed = make_git_push(sandbox)(run["repo"], wip_branch)
-        return pushed["url"]
+        # A pushed branch gets no CI; a draft PR does (build, tests, SBOM/OSV on the mirrors), so the
+        # human picking up the handoff sees the same evidence a finished run would have. Best effort:
+        # without it the note still links the branch.
+        key = run.get("jira_key") or "ANVIL"
+        try:
+            pr = github_open_pr(
+                run["repo"],
+                wip_branch,
+                f"{key}: WIP handoff (Anvil run {run.get('run_id', '?')})",
+                "Anvil stopped and handed this task to a human. This draft PR exists so CI runs on "
+                f"the work in progress; the handoff note is on {key}. Do not merge as is.",
+                base=run.get("base_ref") or "main",
+                draft=True,
+            )
+        except Exception as exc:  # noqa: BLE001 - the handoff must complete without it
+            logger.warning("Draft PR for %s failed: %s", wip_branch, exc)
+            return pushed["url"]
+        return pr["url"]
 
     def report_hook(run: dict[str, Any], handoff: dict[str, Any]) -> None:
         jira_key = run.get("jira_key")

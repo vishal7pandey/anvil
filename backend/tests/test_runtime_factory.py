@@ -124,6 +124,15 @@ def test_deepagent_executor_receives_host_tools_and_hooks(
         "url": f"https://example.test/{branch}",
     })
     monkeypatch.setattr(github, "GITHUB_TOOLS", ["github_tool"])
+    drafts: list[dict[str, Any]] = []
+
+    def github_open_pr(repo, branch, title, body, base="main", draft=False):
+        drafts.append({"repo": repo, "branch": branch, "title": title, "base": base, "draft": draft})
+        if repo == "owner/broken":
+            raise RuntimeError("GitHub said no")
+        return {"number": 7, "url": f"https://example.test/pull/7?{branch}"}
+
+    monkeypatch.setattr(github, "github_open_pr", github_open_pr)
     monkeypatch.setattr(jira, "JIRA_TOOLS", ["jira_tool"])
     comments: list[tuple[str, str]] = []
     labels: list[tuple[str, list[str]]] = []
@@ -155,9 +164,23 @@ def test_deepagent_executor_receives_host_tools_and_hooks(
         (("blocked.example",), "jira-run"),
         (("blocked.example",), "ui-run"),
     ]
-    assert created["push_hook"](sandbox, {"repo": "owner/repo"}, "anvil/rtems-1-wip") == (
+    # The handoff opens a draft PR against the run's base so CI runs on the WIP, and links it.
+    run = {"repo": "owner/repo", "jira_key": "RTEMS-2", "run_id": "r-9", "base_ref": "tc2/upgrade-base-leon3"}
+    assert created["push_hook"](sandbox, run, "anvil/rtems-2-wip") == (
+        "https://example.test/pull/7?anvil/rtems-2-wip"
+    )
+    assert drafts[-1] == {
+        "repo": "owner/repo",
+        "branch": "anvil/rtems-2-wip",
+        "title": "RTEMS-2: WIP handoff (Anvil run r-9)",
+        "base": "tc2/upgrade-base-leon3",
+        "draft": True,
+    }
+    # If the PR can't be opened, the handoff still completes with the branch URL.
+    assert created["push_hook"](sandbox, {"repo": "owner/broken"}, "anvil/rtems-1-wip") == (
         "https://example.test/anvil/rtems-1-wip"
     )
+    assert drafts[-1]["base"] == "main" and drafts[-1]["title"].startswith("ANVIL: WIP handoff")
 
     created["report_hook"](
         {"jira_key": "RTEMS-1", "run_id": "run-1"},

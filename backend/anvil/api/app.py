@@ -2,8 +2,10 @@ import asyncio
 import hmac
 import json
 import logging
+from collections import Counter, defaultdict
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -28,12 +30,18 @@ from starlette.middleware.cors import CORSMiddleware
 from anvil.api.config import Settings, get_settings
 from anvil.api.database import SessionFactory, create_session_factory, get_db
 from anvil.api.executor import RunExecutor
+from anvil.api.metrics import (
+    SpendTotals,
+    create_litellm_engine,
+    load_litellm_spend_totals,
+)
 from anvil.api.runtime_factory import create_executor_from_environment
 from anvil.api.models import Approval, Run, RunEvent, Session, User, utc_now
 from anvil.api.schemas import (
     ApprovalDecision,
     ApprovalResponse,
     IntakeResponse,
+    MetricsResponse,
     MessageCreate,
     RunResponse,
     SessionCreate,
@@ -58,6 +66,100 @@ CANCEL_TIMEOUT_SECONDS = 5
 
 JiraCandidates = Callable[..., list[dict[str, Any]]]
 JiraTransition = Callable[[str, str], Any]
+SpendLogProvider = Callable[[list[UUID]], dict[str, SpendTotals]]
+
+
+def _spend_totals_for_runs(
+    request: Request,
+    run_ids: list[UUID],
+) -> dict[str, SpendTotals]:
+    if not run_ids:
+        return {}
+    provider: SpendLogProvider | None = request.app.state.spend_log_provider
+    if provider is not None:
+        return {str(run_id): total for run_id, total in provider(run_ids).items()}
+
+    engine = request.app.state.litellm_engine
+    if engine is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="LiteLLM spend log database is not configured",
+        )
+    try:
+        return load_litellm_spend_totals(engine, run_ids)
+    except SQLAlchemyError as exc:
+        logger.exception("Unable to read LiteLLM spend logs")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="LiteLLM spend logs are unavailable",
+        ) from exc
+
+
+def _run_metrics(
+    db: DBSession,
+    request: Request,
+    runs: list[Run],
+) -> dict[UUID, dict[str, Any]]:
+    if not runs:
+        return {}
+
+    run_ids = [run.id for run in runs]
+    events_by_run: dict[UUID, list[RunEvent]] = defaultdict(list)
+    events = db.scalars(select(RunEvent).where(RunEvent.run_id.in_(run_ids)))
+    for event in events:
+        events_by_run[event.run_id].append(event)
+
+    spend_totals = _spend_totals_for_runs(request, run_ids)
+    missing_spend_logs = [
+        run
+        for run in runs
+        if (run.input_tokens or run.output_tokens)
+        and str(run.id) not in spend_totals
+    ]
+    if missing_spend_logs:
+        logger.error(
+            "LiteLLM spend logs are missing for %d runs with token usage",
+            len(missing_spend_logs),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="LiteLLM spend logs are not yet available for runs with token usage",
+            headers={"Retry-After": "1"},
+        )
+
+    now = utc_now()
+    metrics: dict[UUID, dict[str, Any]] = {}
+    for run in runs:
+        run_events = events_by_run[run.id]
+        wall_time_seconds = None
+        if run.started_at is not None:
+            wall_time_seconds = max(
+                0.0,
+                ((run.ended_at or now) - run.started_at).total_seconds(),
+            )
+        human_messages = sum(
+            event.type == "message"
+            and (event.agent == "user" or event.data.get("role") == "user")
+            for event in run_events
+        )
+        ci_rounds = sum(
+            event.type == "tool.result"
+            and event.data.get("name") == "github_checks"
+            and "failure" in str(event.data.get("output", "")).casefold()
+            for event in run_events
+        )
+        spend = spend_totals.get(str(run.id), SpendTotals(0, Decimal("0")))
+        metrics[run.id] = {
+            "wall_time_seconds": wall_time_seconds,
+            "model_calls": spend.model_calls,
+            "input_tokens": run.input_tokens,
+            "output_tokens": run.output_tokens,
+            "usd": float(spend.usd),
+            "human_touches": run.human_touches + human_messages,
+            "ci_rounds": ci_rounds,
+            "outcome": run.status,
+        }
+    return metrics
 
 
 def _authenticated_user(
@@ -681,12 +783,15 @@ def create_app(
     executor: RunExecutor | None = None,
     jira_candidates: JiraCandidates | None = None,
     jira_transition: JiraTransition | None = None,
+    spend_log_provider: SpendLogProvider | None = None,
     start_intake_loop: bool = True,
 ) -> FastAPI:
     configured_settings = settings or get_settings()
+    configured_database_url = database_url or configured_settings.database_dsn
     engine, session_factory = create_session_factory(
-        database_url or configured_settings.database_dsn
+        configured_database_url
     )
+    litellm_engine = create_litellm_engine(configured_database_url)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -707,6 +812,8 @@ def create_app(
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
             app.state.engine.dispose()
+            if app.state.litellm_engine is not None:
+                app.state.litellm_engine.dispose()
 
     app = FastAPI(
         title="Anvil Control API",
@@ -722,8 +829,10 @@ def create_app(
     )
     app.state.settings = configured_settings
     app.state.engine = engine
+    app.state.litellm_engine = litellm_engine
     app.state.session_factory = session_factory
     app.state.executor = executor
+    app.state.spend_log_provider = spend_log_provider
     app.state.jira_candidates = jira_candidates
     app.state.jira_transition = jira_transition
     app.state.start_intake_loop = start_intake_loop
@@ -772,7 +881,7 @@ def create_app(
         request: Request,
         db: DBSession = Depends(get_db),
         user: User = Depends(_authenticated_user),
-    ) -> Run:
+    ) -> dict[str, Any]:
         if request.app.state.executor is None:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -793,6 +902,7 @@ def create_app(
             input_text=payload.text,
             network="offline",
             base_ref="main",
+            run_record={"scenario": payload.scenario} if payload.scenario else {},
         )
         db.add(run)
         db.flush()
@@ -801,15 +911,93 @@ def create_app(
         db.commit()
         db.refresh(run)
         _schedule_run(request.app, run.id, payload.text)
-        return run
+        response = RunResponse.model_validate(run).model_dump()
+        response.update(
+            {
+                "human_touches": 1,
+                "outcome": run.status,
+            }
+        )
+        return response
+
+    @app.get("/api/metrics", response_model=MetricsResponse)
+    def get_metrics(
+        request: Request,
+        from_: datetime | None = Query(default=None, alias="from"),
+        to: datetime | None = None,
+        scenario: str | None = Query(default=None, min_length=1, max_length=100),
+        db: DBSession = Depends(get_db),
+        user: User = Depends(_authenticated_user),
+    ) -> dict[str, Any]:
+        for bound_name, bound in (("from", from_), ("to", to)):
+            if bound is not None and (bound.tzinfo is None or bound.utcoffset() is None):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"{bound_name} must include a timezone",
+                )
+        if from_ is not None and to is not None and from_ > to:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="'from' must be before or equal to 'to'",
+            )
+        if scenario is not None:
+            scenario = scenario.strip()
+            if not scenario:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="scenario must not be blank",
+                )
+
+        statement = (
+            select(Run)
+            .join(Session, Run.session_id == Session.id)
+            .where(Session.user_id == user.id)
+        )
+        if from_ is not None:
+            statement = statement.where(Run.created_at >= from_)
+        if to is not None:
+            statement = statement.where(Run.created_at <= to)
+        if scenario is not None:
+            statement = statement.where(Run.run_record["scenario"].as_string() == scenario)
+        runs = list(db.scalars(statement.order_by(Run.created_at)).all())
+        metrics_by_run = _run_metrics(db, request, runs)
+        run_metrics = [metrics_by_run[run.id] for run in runs]
+        wall_times = [
+            item["wall_time_seconds"]
+            for item in run_metrics
+            if item["wall_time_seconds"] is not None
+        ]
+        outcomes = Counter(run.status for run in runs)
+        total_wall_time = sum(wall_times)
+        return {
+            "from": from_,
+            "to": to,
+            "scenario": scenario,
+            "run_count": len(runs),
+            "total_wall_time_seconds": total_wall_time,
+            "average_wall_time_seconds": (
+                total_wall_time / len(wall_times) if wall_times else None
+            ),
+            "model_calls": sum(item["model_calls"] for item in run_metrics),
+            "input_tokens": sum(item["input_tokens"] for item in run_metrics),
+            "output_tokens": sum(item["output_tokens"] for item in run_metrics),
+            "usd": sum(item["usd"] for item in run_metrics),
+            "human_touches": sum(item["human_touches"] for item in run_metrics),
+            "ci_rounds": sum(item["ci_rounds"] for item in run_metrics),
+            "outcomes": dict(outcomes),
+        }
 
     @app.get("/api/runs/{run_id}", response_model=RunResponse)
     def get_run(
         run_id: UUID,
+        request: Request,
         db: DBSession = Depends(get_db),
         user: User = Depends(_authenticated_user),
-    ) -> Run:
-        return _load_run(db, run_id, user.id)
+    ) -> dict[str, Any]:
+        run = _load_run(db, run_id, user.id)
+        response = RunResponse.model_validate(run).model_dump()
+        response.update(_run_metrics(db, request, [run])[run.id])
+        return response
 
     @app.get("/api/runs/{run_id}/events")
     async def stream_run_events(

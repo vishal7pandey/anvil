@@ -74,6 +74,9 @@ class SessionResponse(BaseModel):
 
 class MessageCreate(BaseModel):
     text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=20000)]
+    scenario: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
+    ] | None = None
 
 
 class RunResponse(BaseModel):
@@ -101,11 +104,31 @@ class RunResponse(BaseModel):
     input_tokens: int
     output_tokens: int
     human_touches: int
+    wall_time_seconds: float | None = None
+    model_calls: int = 0
+    ci_rounds: int = 0
+    outcome: str | None = None
     artifacts: list[dict[str, Any]]
     run_record: dict[str, Any]
     cancel_requested_at: datetime | None
     error: str | None
     created_at: datetime
+
+
+class MetricsResponse(BaseModel):
+    from_: datetime | None = Field(default=None, alias="from")
+    to: datetime | None
+    scenario: str | None
+    run_count: int
+    total_wall_time_seconds: float
+    average_wall_time_seconds: float | None
+    model_calls: int
+    input_tokens: int
+    output_tokens: int
+    usd: float
+    human_touches: int
+    ci_rounds: int
+    outcomes: dict[str, int]
 
 
 class EventResponse(BaseModel):

@@ -37,6 +37,23 @@ def test_clean_result_returns_text_and_sources():
 
 
 @respx.mock
+def test_sends_run_id_as_litellm_spend_log_metadata():
+    route = respx.post(URL).mock(return_value=httpx.Response(200, json=response("answer", [])))
+
+    make_web_search(
+        gateway_url="http://gw.test/v1",
+        api_key="k",
+        run_id="run-123",
+    )("question")
+
+    payload = json.loads(route.calls[0].request.content)
+    assert payload["litellm_metadata"]["spend_logs_metadata"] == {
+        "run_id": "run-123",
+        "tool": "web_search",
+    }
+
+
+@respx.mock
 def test_retry_when_first_answer_touched_blocked_source():
     route = respx.post(URL).mock(side_effect=[
         httpx.Response(200, json=response("leaky", ["https://example.org"], opened=["https://gitlab.rtems.org/i/5776"])),

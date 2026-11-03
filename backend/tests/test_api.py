@@ -604,6 +604,68 @@ def test_manual_jira_intake_creates_and_starts_run(api_factory, client_factory):
     assert run["repo"] == "vishal7pandey/rtems"
 
 
+@pytest.mark.parametrize(
+    ("description", "repo", "ref"),
+    [
+        # RTEMS-1 as written: mid-sentence, backticks, trailing full stop.
+        (
+            "Uniprocessor, RTEMS_DEBUG off. Reproduce on `sparc/erc32` (SIS). "
+            "Code base: branch `tc1/5776-base` of github.com/vishal7pandey/rtems.",
+            "vishal7pandey/rtems",
+            "tc1/5776-base",
+        ),
+        # RTEMS-2 as written: own line, parenthetical after the repo.
+        (
+            "Code base: branch `tc2/upgrade-base-leon3` of github.com/vishal7pandey/rtems-lwip "
+            "(lwIP 2.1.3, with the LEON3 BSP definition and GRETH driver).",
+            "vishal7pandey/rtems-lwip",
+            "tc2/upgrade-base-leon3",
+        ),
+        ("Code base: release-branch\nAdditional details.", None, "release-branch"),
+        ("code base: branch main of https://github.com/acme/widget.git", "acme/widget", "main"),
+    ],
+)
+def test_code_base_line_is_parsed_wherever_it_appears(description, repo, ref):
+    from anvil.api.app import _code_base
+
+    assert _code_base(description) == (repo, ref)
+
+
+def test_intake_never_guesses_a_base_branch(api_factory, client_factory):
+    """No "Code base:" line means no run: defaulting to main would check out withheld fixes."""
+    transitions = []
+
+    def candidates(*, max_results):
+        return [
+            {"key": "RTEMS-9", "summary": "No code base", "description": "Just text.", "labels": ["anvil"]},
+            {
+                "key": "RTEMS-2",
+                "summary": "Upgrade lwIP",
+                "description": "Code base: branch `tc2/upgrade-base-leon3` of github.com/vishal7pandey/rtems-lwip.",
+                "labels": ["anvil"],
+            },
+        ]
+
+    app = api_factory(
+        executor=SuccessfulExecutor(),
+        jira_candidates=candidates,
+        jira_transition=lambda key, target: transitions.append((key, target)),
+        start_intake_loop=False,
+    )
+    client = client_factory(app)
+
+    response = client.post("/api/intake/jira/poll", headers=AUTH)
+
+    assert response.status_code == 200
+    assert response.json()["accepted"] == 1
+    assert transitions == [("RTEMS-2", "In Progress")]
+    run_id = response.json()["run_ids"][0]
+    client.get(f"/api/runs/{run_id}/events", headers=AUTH)  # let the run finish first
+    run = client.get(f"/api/runs/{run_id}", headers=AUTH).json()
+    assert run["repo"] == "vishal7pandey/rtems-lwip"
+    assert run["base_ref"] == "tc2/upgrade-base-leon3"
+
+
 def test_cancel_requests_stop_and_records_terminal_cancelled_status(api_factory, client_factory):
     executor = WaitingExecutor()
     app = api_factory(executor=executor)

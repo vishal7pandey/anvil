@@ -2,6 +2,7 @@ import asyncio
 import hmac
 import json
 import logging
+import re
 from collections import Counter, defaultdict
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -684,7 +685,7 @@ def _get_or_create_intake_run(
     message = f"Work on Jira issue {key}: {summary}"
     if description:
         message = f"{message}\n\n{description}"
-    base_ref = _code_base_ref(description)
+    code_base_repo, base_ref = _code_base(description)
 
     with session_factory() as db:
         user = db.get(User, user_id)
@@ -700,7 +701,9 @@ def _get_or_create_intake_run(
 
         session = Session(
             user_id=user_id,
-            repo=normalize_repository(issue.get("repo") or "vishal7pandey/rtems"),
+            repo=normalize_repository(
+                issue.get("repo") or code_base_repo or "vishal7pandey/rtems"
+            ),
             environment="local",
             mode="autonomous",
             merge_policy="human",
@@ -733,12 +736,25 @@ def _get_or_create_intake_run(
         return run.id, message, True
 
 
-def _code_base_ref(description: str) -> str:
-    for line in description.splitlines():
-        label, separator, value = line.partition(":")
-        if separator and label.strip().casefold() == "code base" and value.strip():
-            return value.strip()
-    return "main"
+# "Code base: branch `tc1/5776-base` of github.com/vishal7pandey/rtems." anywhere in the ticket
+# (backticks and the "of github.com/..." part optional). Answer-leak control: a TC ticket's base
+# branch is what keeps the withheld fix out of the sandbox, so never guess it.
+_CODE_BASE = re.compile(
+    r"code base:\s*(?:branch\s+)?`?(?P<ref>[A-Za-z0-9._/-]+?)`?"
+    r"(?:\s+of\s+(?:https?://)?github\.com/(?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?)?"
+    r"(?=[\s.,;)]|$)",
+    re.IGNORECASE,
+)
+
+
+def _code_base(description: str) -> tuple[str | None, str]:
+    """(repo or None, base ref) from the ticket's "Code base:" line; ValueError if there is none."""
+    match = _CODE_BASE.search(description)
+    if match is None:
+        raise ValueError(
+            "Jira intake candidate has no 'Code base: branch <ref> of github.com/<owner>/<repo>' line"
+        )
+    return match.group("repo"), match.group("ref")
 
 
 def _jira_network(issue: dict[str, Any]) -> str:
@@ -759,13 +775,18 @@ async def poll_jira_intake(app: FastAPI) -> list[UUID]:
     started: list[UUID] = []
     user_id = app.state.settings.demo_user_id
     for issue in candidates:
-        run_id, message, should_start = await run_in_threadpool(
-            _get_or_create_intake_run,
-            app.state.session_factory,
-            issue,
-            user_id,
-            app.state.settings.demo_user_email,
-        )
+        try:
+            run_id, message, should_start = await run_in_threadpool(
+                _get_or_create_intake_run,
+                app.state.session_factory,
+                issue,
+                user_id,
+                app.state.settings.demo_user_email,
+            )
+        except ValueError as exc:
+            # One malformed ticket must not block the others, and must not start on a guessed base.
+            logger.warning("Skipping Jira intake candidate %s: %s", issue.get("key"), exc)
+            continue
         await run_in_threadpool(transition_fn, issue["key"], "In Progress")
         if should_start:
             _schedule_run(app, run_id, message)

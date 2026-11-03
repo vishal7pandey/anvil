@@ -28,6 +28,7 @@ from starlette.middleware.cors import CORSMiddleware
 from anvil.api.config import Settings, get_settings
 from anvil.api.database import SessionFactory, create_session_factory, get_db
 from anvil.api.executor import RunExecutor
+from anvil.api.runtime_factory import create_executor_from_environment
 from anvil.api.models import Approval, Run, RunEvent, Session, User, utc_now
 from anvil.api.schemas import (
     ApprovalDecision,
@@ -1069,4 +1070,4 @@ def _load_run_payload(session_factory: SessionFactory, run_id: UUID) -> dict[str
         return payload
 
 
-app = create_app()
+app = create_app(executor=create_executor_from_environment())

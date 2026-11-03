@@ -27,9 +27,10 @@ uv run --project backend alembic -c backend/alembic.ini upgrade head
 uv run --project backend uvicorn anvil.api.app:app --app-dir backend --port 8000
 ```
 
-`create_app` accepts a `RunExecutor`; production startup must supply the runtime implementation.
-Without one, session and run-read APIs remain available, while message submission and Jira intake
-return an explicit `503` rather than pretending to execute work.
+Set `ANVIL_EXECUTOR=deepagent` to configure the runtime executor and host-side tools during API
+startup. The setting is opt-in; without it, session and run-read APIs remain available, while
+message submission and Jira intake return an explicit `503` rather than pretending to execute
+work. `create_app` also accepts an explicit `RunExecutor` for embedding and tests.
 
 The executor contract includes `start`, `resume`, and `cancel`. Executor events include the run ID
 and an advisory sequence; the API assigns the persisted sequence under the run lock and stamps

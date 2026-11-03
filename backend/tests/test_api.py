@@ -1,4 +1,5 @@
 import asyncio
+from threading import Event
 from time import sleep
 from uuid import uuid4
 
@@ -65,9 +66,11 @@ class SuccessfulExecutor:
 class WaitingExecutor:
     def __init__(self):
         self.cancelled = asyncio.Event()
+        self.started = Event()
         self.cancel_run = None
 
     async def start(self, run, message):
+        self.started.set()
         await self.cancelled.wait()
         yield executor_event(
             self.cancel_run,
@@ -439,6 +442,7 @@ def test_cancel_requests_stop_and_records_terminal_cancelled_status(api_factory,
         json={"text": "wait until cancelled"},
     )
     run_id = start.json()["id"]
+    assert executor.started.wait(timeout=5)
 
     response = client.post(f"/api/runs/{run_id}/cancel", headers=AUTH)
 

@@ -35,6 +35,7 @@ jobs:
           --health-retries 5
     env:
       DATABASE_URL: postgresql+psycopg://anvil:anvil@localhost:5432/anvil_test
+      ANVIL_TEST_DATABASE_URL: postgresql+psycopg://anvil:anvil@localhost:5432/anvil_test
     steps:
       - name: Check out source
         uses: actions/checkout@v7

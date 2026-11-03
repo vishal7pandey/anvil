@@ -20,17 +20,14 @@ from sqlalchemy import create_engine, insert, text
 
 URL = os.environ.get("ANVIL_TEST_DATABASE_URL")
 
-pytestmark = pytest.mark.skipif(not URL, reason="ANVIL_TEST_DATABASE_URL not set")
-
 
 @pytest.fixture(scope="module")
 def store():
+    if not URL:
+        raise RuntimeError("ANVIL_TEST_DATABASE_URL must be set for live pgvector tests")
     engine = create_engine(URL, future=True)
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-    except Exception as exc:  # noqa: BLE001 - any failure means skip, not fail
-        pytest.skip(f"test database unreachable: {exc}")
+    with engine.connect() as conn:
+        conn.execute(text("SELECT 1"))
     settings = KBSettings(database_url=URL)
     instance = KBStore(settings, engine=engine, embedder=DeterministicEmbedder())
     instance.ensure_schema()

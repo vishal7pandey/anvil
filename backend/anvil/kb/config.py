@@ -10,8 +10,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
-DEFAULT_DATABASE_URL = "postgresql+psycopg://anvil:anvil@localhost:5433/anvil"
-DEFAULT_GATEWAY_URL = "http://localhost:4000"
+DEFAULT_DATABASE_URL = "postgresql+psycopg://anvil:anvil@127.0.0.1:5433/anvil"
+DEFAULT_GATEWAY_URL = "http://127.0.0.1:4000"
 
 # Upstream RTEMS issues used by the TC1 demo. Their records (and the fix
 # discussion / merge requests / fix commit prefixes) must never enter the

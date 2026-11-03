@@ -1,13 +1,15 @@
-"""Knowledge sources: the rtems-docs mirror and closed RTEMS GitLab issues.
+"""Knowledge sources: rtems-docs mirror, RTEMS GitLab issues, and Confluence wiki.
 
-Both loaders return plain ``SourceDocument`` values; embedding, storage and
+Loaders return plain ``SourceDocument`` values; embedding, storage and
 exclusion happen in ``store.py``. Loaders are pure enough to unit-test: the
-GitLab one takes an ``httpx.Client`` and the docs one reads a local checkout
-(the CLI can clone the mirror for you).
+GitLab one takes an ``httpx.Client``, Confluence takes optional callables,
+and docs reads a local checkout (the CLI can clone the mirror for you).
 """
 
 from __future__ import annotations
 
+import html
+from html.parser import HTMLParser
 import logging
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -23,6 +25,7 @@ from .exclusions import GITLAB_ISSUE_SOURCE, ExclusionGuard
 log = logging.getLogger(__name__)
 
 DOCS_SOURCE = "rtems-docs"
+CONFLUENCE_SOURCE = "confluence"
 DOC_SUFFIXES = {".md", ".rst", ".txt"}
 MAX_DOC_BYTES = 512 * 1024
 
@@ -164,3 +167,117 @@ def _title_from_text(text: str, fallback: str) -> str:
             continue
         return line[:120]
     return fallback
+
+
+class _HTMLTextExtractor(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self._pieces: list[str] = []
+        self._block_tags = {
+            "p", "h1", "h2", "h3", "h4", "h5", "h6",
+            "li", "tr", "div", "blockquote", "pre",
+        }
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in self._block_tags:
+            self._pieces.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self._block_tags:
+            self._pieces.append("\n")
+        elif tag in {"td", "th"}:
+            self._pieces.append(" ")
+
+    def handle_data(self, data: str) -> None:
+        self._pieces.append(data)
+
+    def get_text(self) -> str:
+        raw = "".join(self._pieces)
+        lines = [line.strip() for line in raw.splitlines()]
+        collapsed: list[str] = []
+        blank = False
+        for line in lines:
+            if line:
+                collapsed.append(line)
+                blank = False
+            elif not blank:
+                collapsed.append("")
+                blank = True
+        return html.unescape("\n".join(collapsed)).strip()
+
+
+def fetch_confluence_pages(
+    space_key: str = "RTKB",
+    *,
+    guard: ExclusionGuard | None = None,
+    limit: int = 50,
+    search_fn: Any = None,
+    get_fn: Any = None,
+) -> list[SourceDocument]:
+    """Fetch pages from a Confluence space and convert XHTML body to plain text."""
+    guard = guard or ExclusionGuard()
+    if search_fn is None or get_fn is None:
+        from anvil.tools.confluence import confluence_get, confluence_search
+
+        search_fn = search_fn or confluence_search
+        get_fn = get_fn or confluence_get
+
+    cql = f"space = {space_key} AND type = page"
+    results = search_fn(cql=cql, limit=limit)
+    documents: list[SourceDocument] = []
+    skipped = 0
+
+    for item in results:
+        page_id = item.get("id")
+        if not page_id:
+            continue
+        page_id_str = str(page_id)
+        if not page_id_str.isdigit():
+            continue
+
+        try:
+            page = get_fn(page_id_str)
+        except Exception as exc:
+            log.warning("failed to fetch confluence page %s: %s", page_id_str, exc)
+            continue
+
+        raw_body = page.get("body", "")
+        extractor = _HTMLTextExtractor()
+        extractor.feed(raw_body)
+        body_text = extractor.get_text()
+
+        title = str(
+            page.get("title") or item.get("title") or f"Confluence page {page_id_str}"
+        ).strip()
+        text_parts = [f"# {title}"]
+        if body_text:
+            text_parts.append(body_text)
+        full_text = "\n\n".join(text_parts).strip()
+
+        if not full_text:
+            continue
+
+        if guard.is_excluded(CONFLUENCE_SOURCE, page_id_str) or guard.is_content_excluded(
+            full_text
+        ):
+            skipped += 1
+            continue
+
+        documents.append(
+            SourceDocument(
+                source=CONFLUENCE_SOURCE,
+                external_id=page_id_str,
+                title=title,
+                url=page.get("url") or item.get("url"),
+                text=full_text,
+                metadata={
+                    "space": space_key,
+                    "version": page.get("version"),
+                },
+            )
+        )
+
+    if skipped:
+        log.info("excluded %d Confluence page(s) by guard", skipped)
+    return documents
+

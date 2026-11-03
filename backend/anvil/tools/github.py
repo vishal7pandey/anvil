@@ -41,6 +41,16 @@ class GitHubSettings(BaseSettings):
 
 
 def full_name(repo: str) -> str:
+    """'owner/name' for a repo given as 'owner/name', 'name' or the sandbox path '/workspace/name'.
+
+    Models pass the checkout path they have been working in (M1 run c820a577 called
+    git_push(repo="/workspace/rtems")); that names the same repo, so accept it.
+    """
+    repo = repo.strip().rstrip("/").removesuffix(".git")
+    if repo.startswith("/"):
+        repo = repo.rsplit("/", 1)[-1]
+    if not repo:
+        raise ToolError("refused: empty repo name")
     return repo if "/" in repo else f"{GitHubSettings().github_owner}/{repo}"
 
 

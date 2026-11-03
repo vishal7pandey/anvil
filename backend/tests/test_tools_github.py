@@ -169,3 +169,14 @@ def test_sonar_issues_anonymous():
     assert out["issues"][0]["path"] == "cpukit/x.c"
     assert "authorization" not in gate.calls[0].request.headers
     assert gate.calls[0].request.url.params["projectKey"] == "vishal7pandey_rtems"
+
+
+@pytest.mark.parametrize("given", ["rtems", "vishal7pandey/rtems", "/workspace/rtems", "/workspace/rtems/", "rtems.git"])
+def test_full_name_accepts_name_owner_name_and_sandbox_path(given):
+    # M1 run c820a577 called git_push(repo="/workspace/rtems") and the host cloned github.com//workspace/rtems.
+    assert github.full_name(given) == "vishal7pandey/rtems"
+
+
+def test_full_name_refuses_empty():
+    with pytest.raises(ToolError, match="empty repo"):
+        github.full_name("  ")

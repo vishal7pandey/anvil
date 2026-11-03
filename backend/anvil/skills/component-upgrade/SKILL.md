@@ -47,6 +47,21 @@ A ticket asks to move a vendored or submodule-tracked component to a newer upstr
    local change to the new files (`git apply --3way`, or by hand where upstream moved the code).
    A change upstream now makes itself can be dropped: say so in the report. Commit the submodule
    bump + manifest + re-import + re-applied local patches as the mechanical step.
+   Concretely (`<sub>` = submodule dir, `<vendored>` = in-tree copy, files from the manifest):
+   ```sh
+   # submodule still at the OLD tag
+   for f in $(<list manifest files>); do
+     diff -u --label "a/$f" --label "b/$f" "<sub>/$f" "<vendored>/$f"
+   done > local-patches.diff            # exit status 1 from diff is normal
+   grep -rl __rtems__ <vendored> | sort > markers-before.txt
+   # ... checkout the new tag, run the import tool ...
+   patch -p1 -d <vendored> --no-backup-if-mismatch < local-patches.diff
+   # read every "FAILED" hunk: fix its .rej by hand against the new code, then delete the .rej
+   grep -rl __rtems__ <vendored> | sort > markers-after.txt
+   diff markers-before.txt markers-after.txt   # GATE: must be empty before you build
+   ```
+   Do not build until that gate passes: every file that carried a local change before must carry
+   it after (or the report says why upstream made it unnecessary).
    **Check the import before you build:** every manifest file differs from the new tag only by
    the local patches you re-applied, and every `#include` an imported file uses is itself
    imported. A header left at the old version, or a lost local patch, produces confusing errors

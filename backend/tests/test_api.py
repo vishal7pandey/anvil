@@ -424,6 +424,44 @@ def test_stale_missing_spend_logs_return_unknown_cost(api_factory, client_factor
     assert metrics.json()["cost_status"] == "missing"
 
 
+def test_aggregate_cost_sums_priced_runs_and_counts_the_rest(api_factory, client_factory):
+    priced: set[str] = set()
+    app = api_factory(
+        executor=SuccessfulExecutor(),
+        spend_log_provider=lambda run_ids: {
+            str(run_id): SpendTotals(1, Decimal("0.5"))
+            for run_id in run_ids
+            if str(run_id) in priced
+        },
+    )
+    client = client_factory(app)
+    session_id = create_session(client)
+    run_ids = []
+    for _ in range(2):
+        start = client.post(
+            f"/api/sessions/{session_id}/messages", headers=AUTH, json={"text": "hello"}
+        )
+        run_ids.append(start.json()["id"])
+        client.get(f"/api/runs/{run_ids[-1]}/events", headers=AUTH)
+    priced.add(run_ids[0])
+
+    with app.state.session_factory() as db:
+        for event in db.scalars(
+            select(RunEvent).where(RunEvent.run_id == UUID(run_ids[1]), RunEvent.type == "usage")
+        ):
+            event.ts = utc_now() - timedelta(minutes=6)
+        db.commit()
+
+    metrics = client.get("/api/metrics", headers=AUTH)
+    assert metrics.status_code == 200
+    body = metrics.json()
+    assert body["run_count"] == 2
+    assert body["cost_status"] == "partial"
+    assert body["runs_missing_cost"] == 1
+    assert body["usd"] == pytest.approx(0.5)
+    assert body["model_calls"] == 1
+
+
 def test_message_rejected_without_executor(api_factory, client_factory):
     app = api_factory()
     client = client_factory(app)

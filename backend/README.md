@@ -24,12 +24,15 @@ From the repository root, apply the schema and run the API with:
 
 ```powershell
 uv run --project backend alembic -c backend/alembic.ini upgrade head
-uv run --project backend uvicorn anvil.api.app:app --app-dir backend --port 8000
+uv run --project backend python -m anvil.api.serve
 ```
 
-`create_app` accepts a `RunExecutor`; production startup must supply the runtime implementation.
-Without one, session and run-read APIs remain available, while message submission and Jira intake
-return an explicit `503` rather than pretending to execute work.
+Set `ANVIL_EXECUTOR=deepagent` to configure the runtime executor and host-side tools during API
+startup. The setting is opt-in; without it, session and run-read APIs remain available, while
+message submission and Jira intake return an explicit `503` rather than pretending to execute
+work. On Windows, enabling the executor selects the event loop required by Psycopg's async
+Postgres connections; run the API through `anvil.api.serve` rather than the default Uvicorn CLI.
+`create_app` also accepts an explicit `RunExecutor` for embedding and tests.
 
 The executor contract includes `start`, `resume`, and `cancel`. Executor events include the run ID
 and an advisory sequence; the API assigns the persisted sequence under the run lock and stamps

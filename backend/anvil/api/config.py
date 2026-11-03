@@ -1,8 +1,19 @@
+import sys
 from functools import lru_cache
 from urllib.parse import quote_plus
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
+
+
+def normalize_database_url(database_url: str) -> str:
+    if sys.platform != "win32":
+        return database_url
+    url = make_url(database_url)
+    if url.host == "localhost":
+        return url.set(host="127.0.0.1").render_as_string(hide_password=False)
+    return database_url
 
 
 class Settings(BaseSettings):

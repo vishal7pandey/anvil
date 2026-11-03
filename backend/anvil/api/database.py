@@ -8,12 +8,15 @@ from sqlalchemy.orm import Session as DBSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from anvil.api.config import normalize_database_url
+
 SessionFactory = sessionmaker[DBSession]
 
 
 def create_session_factory(
     database_url: str,
 ) -> tuple[Engine, SessionFactory]:
+    database_url = normalize_database_url(database_url)
     url = make_url(database_url)
     engine_options: dict[str, Any] = {"pool_pre_ping": True}
     if url.get_backend_name() == "sqlite":

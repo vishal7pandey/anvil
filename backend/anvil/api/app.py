@@ -990,15 +990,18 @@ def create_app(
             for item in run_metrics
             if item["wall_time_seconds"] is not None
         ]
-        spend_is_missing = any(item["cost_status"] == "missing" for item in run_metrics)
+        # Sum what is known and say how much is not: one run without spend rows (e.g. from before
+        # spend-log tagging) must not turn every total into "n/a".
+        priced = [item for item in run_metrics if item["cost_status"] != "missing"]
+        runs_missing_cost = len(run_metrics) - len(priced)
         outcomes = Counter(run.status for run in runs)
         total_wall_time = sum(wall_times)
-        model_calls = (
-            None
-            if spend_is_missing
-            else sum(item["model_calls"] for item in run_metrics)
-        )
-        usd = None if spend_is_missing else sum(item["usd"] for item in run_metrics)
+        if run_metrics and not priced:
+            cost_status, model_calls, usd = "missing", None, None
+        else:
+            cost_status = "partial" if runs_missing_cost else "available"
+            model_calls = sum(item["model_calls"] for item in priced)
+            usd = sum(item["usd"] for item in priced)
         return {
             "from": from_,
             "to": to,
@@ -1013,7 +1016,8 @@ def create_app(
             "output_tokens": sum(item["output_tokens"] for item in run_metrics),
             "usd": usd,
             "cost_usd": usd,
-            "cost_status": "missing" if spend_is_missing else "available",
+            "cost_status": cost_status,
+            "runs_missing_cost": runs_missing_cost,
             "human_touches": sum(item["human_touches"] for item in run_metrics),
             "ci_rounds": sum(item["ci_rounds"] for item in run_metrics),
             "outcomes": dict(outcomes),

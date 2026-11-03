@@ -130,7 +130,8 @@ class MetricsResponse(BaseModel):
     output_tokens: int
     usd: float | None
     cost_usd: float | None = None
-    cost_status: Literal["available", "missing"] = "available"
+    cost_status: Literal["available", "partial", "missing"] = "available"
+    runs_missing_cost: int = 0
     human_touches: int
     ci_rounds: int
     outcomes: dict[str, int]

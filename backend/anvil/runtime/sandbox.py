@@ -96,6 +96,17 @@ class DockerSandbox(BaseSandbox):
         except NotFound:
             pass
 
+    def set_network(self, network: str | None) -> None:
+        """Connect to `network`, or disconnect from every network when None (offline sandbox)."""
+        self._container.reload()
+        attached = list((self._container.attrs.get("NetworkSettings", {}).get("Networks") or {}).keys())
+        client = self._container.client
+        for name in attached:
+            if name != network:
+                client.networks.get(name).disconnect(self._container)
+        if network and network not in attached:
+            client.networks.get(network).connect(self._container)
+
     @property
     def id(self) -> str:
         return self._container.name

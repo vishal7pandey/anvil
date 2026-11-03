@@ -54,7 +54,7 @@ The script evaluates 8 critical preconditions and outputs `[PASS]` or `[FAIL]` w
 |---|---|---|---|
 | **1** | **Docker Sandbox Image** | `anvil-sandbox-rtems:7.1` present locally; image ID matches `sha256:bc17ec29...`. | Rebuild locally: `docker build -f sandbox/rtems/Dockerfile.leon3 -t anvil-sandbox-rtems:7.1 sandbox/rtems` |
 | **2** | **Backend Python Environment** | Signed CPython 3.13 venv; imports `unicodedata` and `requests` cleanly without Smart App Control interference. | Rebuild venv: `uv sync --directory backend --python "C:/Users/yedna/AppData/Local/Python/pythoncore-3.13-64/python.exe"` |
-| **3** | **Control API Freshness & Health** | Exactly one process listening on `:8000`, process start time is **newer** than latest merge on `origin/main`, and `GET /api/sessions` with `ANVIL_DEMO_TOKEN` returns 200. | Terminate stale instance and start from latest main: `Stop-Process -Id <pid>; uv run --no-sync python -m anvil.api.serve` |
+| **3** | **Control API Freshness & Health** | Exactly one process listening on `:8000`, process start time is **newer** than latest merge on `origin/main`, and `GET /api/sessions` with `ANVIL_DEMO_TOKEN` returns 200. | Restart API from latest main: `.\scripts\start-api.ps1` |
 | **4** | **Local Stack Health** | `anvil-gateway` healthy on `/health/liveliness`, `anvil-postgres` healthy on 5433. | Re-launch local stack: `docker compose -f deploy/compose.yaml up -d --wait` |
 | **5** | **RTEMS Build Lock** | `comms/locks/rtems-build.lock` absent or held by the presenter. | Await active dry run completion or coordinate handover in comms. |
 | **6** | **Jira Demo Baseline** | `RTEMS-1` through `RTEMS-6` at `To Do` with baseline labels, `RTEMS-7+` purged. | Reset tickets: `.\scripts\reset-demo.ps1 -Jira` |

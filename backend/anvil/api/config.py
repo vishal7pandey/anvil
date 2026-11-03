@@ -18,7 +18,7 @@ def normalize_database_url(database_url: str) -> str:
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", "../.env"),
         env_prefix="ANVIL_",
         extra="ignore",
     )

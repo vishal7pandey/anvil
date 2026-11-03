@@ -49,14 +49,13 @@ def create_executor_from_environment() -> RunExecutor | None:
     from anvil.tools.jira import JIRA_TOOLS, jira_comment, jira_set_labels
 
     def tools_factory(sandbox: Any, run: dict[str, Any]) -> list[Any]:
-        blocklist = TC_BLOCKLIST if run.get("jira_key") else ()
         return [
             *JIRA_TOOLS,
             *GITHUB_TOOLS,
             *CONFLUENCE_TOOLS,
             publish_evidence,
             make_git_push(sandbox),
-            make_web_search(blocklist=blocklist, run_id=run["run_id"]),
+            make_web_search(blocklist=TC_BLOCKLIST, run_id=run["run_id"]),
         ]
 
     def push_hook(sandbox: Any, run: dict[str, Any], wip_branch: str) -> str:

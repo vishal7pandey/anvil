@@ -71,7 +71,12 @@ def make_web_search(blocklist: Iterable[str] = (), *, gateway_url: str | None = 
     def _ask(query: str) -> dict[str, Any]:
         r = http.post(f"{base}/responses", headers={"Authorization": f"Bearer {key}"},
                       json={"model": model, "input": query, "tools": [{"type": "web_search"}],
-                            "metadata": {"run_id": run_id or "", "tool": "web_search"}})
+                            "litellm_metadata": {
+                                "spend_logs_metadata": {
+                                    "run_id": run_id or "",
+                                    "tool": "web_search",
+                                },
+                            }})
         r.raise_for_status()
         return r.json()
 

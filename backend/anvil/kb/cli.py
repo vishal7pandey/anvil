@@ -26,6 +26,7 @@ from .sources import (
     fetch_closed_gitlab_issues,
     fetch_confluence_pages,
 )
+from .gitlab import GitLabClient, fetch_gitlab_items
 from .store import KBStore
 
 log = logging.getLogger(__name__)
@@ -68,6 +69,11 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(_report_dict("issues", report)))
             if args.command == "ingest-issues":
                 return 0
+
+        if args.command == "ingest-gitlab":
+            store.ensure_schema()
+            print(json.dumps(_ingest_gitlab(args, settings, store)))
+            return 0
 
         if args.command in {"ingest-confluence", "ingest-all"}:
             store.ensure_schema()
@@ -122,6 +128,17 @@ def _build_parser() -> argparse.ArgumentParser:
     issues = sub.add_parser("ingest-issues", help="ingest closed RTEMS GitLab issues")
     issues.add_argument("--max-pages", type=int, default=None)
 
+    gitlab = sub.add_parser(
+        "ingest-gitlab",
+        help="issues and merge requests with their comments, all states; resumable",
+    )
+    gitlab.add_argument("--projects", nargs="*", help="default: KB_GITLAB_PROJECTS")
+    gitlab.add_argument("--kinds", nargs="*", default=["issues", "merge_requests"],
+                        choices=["issues", "merge_requests"])
+    gitlab.add_argument("--since", help="updated_after (ISO date); default: the saved cursor")
+    gitlab.add_argument("--max-pages", type=int, default=None)
+    gitlab.add_argument("--no-notes", action="store_true", help="skip comments (fast, 1 request per 100 items)")
+
     confluence = sub.add_parser("ingest-confluence", help="ingest pages from Confluence space")
     confluence.add_argument("--space", default="RTKB", help="Confluence space key (default: RTKB)")
     confluence.add_argument("--limit", type=int, default=100, help="maximum pages to fetch")
@@ -132,7 +149,8 @@ def _build_parser() -> argparse.ArgumentParser:
     search.add_argument("query")
     search.add_argument("--k", type=int, default=8)
     search.add_argument(
-        "--sources", nargs="*", choices=["rtems-docs", "gitlab-issue", "confluence"]
+        "--sources", nargs="*",
+        choices=["rtems-docs", "gitlab-issue", "gitlab-mr", "mailing-list", "confluence"],
     )
     return parser
 
@@ -151,6 +169,37 @@ def _resolve_docs_dir(args: argparse.Namespace, settings: KBSettings) -> Path:
             check=True,
         )
     return clone_to
+
+
+def _ingest_gitlab(args: argparse.Namespace, settings: KBSettings, store: KBStore) -> dict[str, object]:
+    """Crawl each project/kind from its saved cursor, ingesting page by page."""
+    state_path = Path(settings.crawl_state_path)
+    state: dict[str, str] = json.loads(state_path.read_text()) if state_path.exists() else {}
+
+    def save(key: str, cursor: str) -> None:
+        state[key] = cursor
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(json.dumps(state, indent=2, sort_keys=True))
+
+    gl = GitLabClient(settings.gitlab_url, settings.gitlab_token)
+    results: dict[str, object] = {}
+    try:
+        for project in args.projects or settings.gitlab_projects:
+            for kind in args.kinds:
+                key = f"{settings.gitlab_url}|{project}|{kind}"
+                documents = fetch_gitlab_items(
+                    gl, project, kind,
+                    updated_after=args.since or state.get(key),
+                    with_notes=not args.no_notes,
+                    max_pages=args.max_pages,
+                    on_page=lambda cursor, key=key: save(key, cursor),
+                )
+                report = store.ingest(documents)
+                results[f"{project}:{kind}"] = asdict(report)
+                log.info("%s %s: %s", project, kind, report)
+    finally:
+        gl.close()
+    return {"ok": True, "kind": "gitlab", "results": results}
 
 
 def _report_dict(kind: str, report: object) -> dict[str, object]:

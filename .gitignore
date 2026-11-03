@@ -9,3 +9,6 @@ dist/
 .cache/
 test-results/
 playwright-report/
+
+# KB crawl cursors (ANVIL-39)
+backend/.cache/

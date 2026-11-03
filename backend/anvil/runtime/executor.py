@@ -312,7 +312,7 @@ class DeepAgentExecutor:
         message = f"{key}: WIP handoff (Anvil run {run['run_id']})"
         commit = await asyncio.to_thread(sandbox.execute, (
             f"cd {shlex.quote(path)} && git add -A && git commit -q --no-verify --allow-empty -m {shlex.quote(message)} "
-            f"&& git branch -f {shlex.quote(wip)} HEAD && git rev-parse HEAD"), 120)
+            f"&& git branch -f {shlex.quote(wip)} HEAD && git rev-parse HEAD"), timeout=120)
         url = None
         if commit.exit_code == 0 and self.push_hook:
             try:

@@ -18,6 +18,8 @@ Mode = Literal["interactive", "autonomous"]
 MergePolicy = Literal["human", "agent-after-approval", "agent"]
 
 # Outward-facing host tools (devin, ANVIL-13). Gated by policy; anything not listed runs freely.
+ARTIFACTS_ROOT = "/workspace/.anvil"
+
 OUTWARD_TOOLS = ("git_push", "github_open_pr", "github_merge", "jira_transition", "jira_comment",
                  "jira_set_labels", "jira_create", "confluence_write", "publish_evidence")
 
@@ -95,13 +97,12 @@ def build_agent(config: RunConfig, sandbox: DockerSandbox, *, tools: Sequence[An
     handoffs: list[dict[str, str]] = []
     handoff = make_handoff_tool(on_handoff or handoffs.append)
 
-    backend: Any = sandbox
+    # artifacts_root: deepagents captures large command output under <root>/large_tool_results/.
+    # The default "/" isn't writable for the sandbox's non-root user, so every execute failed to capture.
+    routes: dict[str, Any] = {}
     if store is not None:
-        backend = CompositeBackend(
-            default=sandbox,
-            routes={"/memories/": StoreBackend(namespace=lambda _rt: ("anvil", "memories", config.repo),
-                                               store=store)},
-        )
+        routes["/memories/"] = StoreBackend(namespace=lambda _rt: ("anvil", "memories", config.repo), store=store)
+    backend: Any = CompositeBackend(default=sandbox, routes=routes, artifacts_root=ARTIFACTS_ROOT)
 
     tool_names = {getattr(t, "name", getattr(t, "__name__", "")) for t in tools}
     fast = _model(config, config.fast_model)

@@ -62,7 +62,7 @@ class FakeSandbox:
     def __init__(self):
         self.commands = []
 
-    def execute(self, command, timeout=None):
+    def execute(self, command, *, timeout=None):
         self.commands.append(command)
         return ExecuteResponse(output="deadbeef", exit_code=0)
 

@@ -38,7 +38,7 @@ class OfflineExecutor(DeepAgentExecutor):
         class _Sandbox:
             id = "anvil-sbx-offline"
 
-            def execute(self, command, timeout=None):
+            def execute(self, command, *, timeout=None):
                 return ExecuteResponse(output="0" * 40, exit_code=0)
 
         return _Sandbox()
@@ -192,7 +192,7 @@ class RecordingSandbox:
     def __init__(self):
         self.commands = []
 
-    def execute(self, command, timeout=None):
+    def execute(self, command, *, timeout=None):
         self.commands.append(command)
         from deepagents.backends.protocol import ExecuteResponse
         return ExecuteResponse(output="", exit_code=0)

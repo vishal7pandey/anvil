@@ -28,11 +28,14 @@ target_files = ["file-import.json", "lwip/src/include/lwip/init.h"]
 # Every manifest file must equal lwIP 2.2.1 read without __rtems__ (whitespace aside), the RTEMS local
 # patches must survive, and the submodule must sit at the tag. Upstream's own upgrade retired the
 # debug-print patches in sockets.c and api_msg.c, so dropping those two is allowed (keeping them too).
-# Validated in a Linux sandbox: base vs 2.1.3 passes; a30180a passes; run 7's stale tree fails (129
-# files); a mechanical re-import with patches re-applied fails on the 2 genuine conflicts.
+# The tag and base are pinned by commit (a retagged submodule fails). Validated in a Linux sandbox:
+# base vs 2.1.3 passes; a30180a passes; run 7's stale tree fails (129 files); a retag of 2.2.1 to 2.1.3
+# fails; the old tcp.c body hidden under #ifdef __rtems__ fails; a mechanical re-import with patches
+# re-applied fails on its 2 genuine conflicts.
 [[acceptance.checks]]
 name = "vendored lwIP equals upstream 2.2.1 apart from the RTEMS patches"
 script = "vendored_matches_upstream.py"
 args = ["--manifest", "file-import.json", "--vendored", "lwip", "--upstream", "lwip-upstream",
-        "--tag", "STABLE-2_2_1_RELEASE", "--marker", "__rtems__", "--base-ref", "{base_ref}",
+        "--tag", "STABLE-2_2_1_RELEASE", "--tag-sha", "77dcd25a72509eb83f72b033d219b1d40cd8eb95",
+        "--marker", "__rtems__", "--base-commit", "{base_sha}",
         "--allow-dropped", "src/api/sockets.c", "src/api/api_msg.c"]

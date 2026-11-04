@@ -46,4 +46,4 @@ tolerance = 3
 [[acceptance.checks]]
 name = "a regression test is part of the change"
 script = "changed_files_match.py"
-args = ["--base-ref", "{base_ref}", "--pattern", "testsuites/*", "--what", "regression test"]
+args = ["--base-commit", "{base_sha}", "--pattern", "testsuites/*", "--what", "regression test"]

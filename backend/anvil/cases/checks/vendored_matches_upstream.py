@@ -4,20 +4,34 @@
 Runs inside the sandbox after the agent has finished, uploaded fresh by the host (the agent never
 sees or edits it). Stdlib only: the sandbox has python3, nothing else is assumed.
 
-Rule: for every file in the import manifest, the vendored file read as if MARKER (e.g. __rtems__) were
-undefined must be byte-identical to the file at the upstream tag. Local patches are allowed only
-inside `#ifdef MARKER ... [#else ...] #endif` / `#ifndef MARKER ... [#else ...] #endif` blocks, so
-they vanish under that reading; any other difference is a real one (TC2 run 7 changed only the
-submodule pointer and a version header, and left the 2.1.3 sources in place).
+Ground truth is pinned by commit, never by a name the agent can move: the case gives the upstream
+tag's commit (--tag-sha) and the base commit (--base-commit). A retagged submodule or a repointed
+remote-tracking ref fails the check instead of feeding it (devin's review of #60).
 
-Also: the submodule must sit at the tag; the manifest must not have dropped files that the base
-manifest listed and the new upstream still has (shrinking the manifest would hide stale files); and no
-file may have fewer MARKER blocks than on the base (a re-import that silently drops the local patches
-passes the equality rule) unless the case lists it in --allow-dropped (patches retired on purpose).
+Rules, for every file in the import manifest:
 
-    python3 vendored_matches_upstream.py --repo . --manifest file-import.json --vendored lwip \
-        --upstream lwip-upstream --tag STABLE-2_2_1_RELEASE --marker __rtems__ \
-        --base-ref origin/tc2/upgrade-base-leon3
+1. Read as if MARKER (e.g. __rtems__) were undefined, the vendored file equals the file at the pinned
+   upstream commit, ignoring trailing whitespace, blank lines and labels after #else/#endif.
+2. The local patches survive: no file has fewer MARKER blocks than at the base commit, unless the
+   case lists it in --allow-dropped (patches retired on purpose; upstream's own 2.2.1 upgrade retired
+   two). A re-import that silently drops the patches would otherwise pass rule 1.
+3. No new MARKER-only code: lines compiled only when MARKER is defined must already be patch lines at
+   the base commit, unless the case lists the file in --allow-changed-patches. Without this, keeping
+   the old body under `#ifdef MARKER` and the new one under `#else` passes rules 1-2 while the real
+   build still compiles the old code.
+
+Also: the submodule sits at the pinned commit, and the manifest has not dropped files that the base
+manifest listed and the pinned upstream still has.
+
+Known limits (both fail closed: a false failure, never a false pass): `#elif` and
+`#if defined(MARKER)` are not treated as marker blocks. Residual risk: git does not re-verify object
+hashes on read, so an agent that forged objects under a pinned SHA in its own .git could still fool
+this; closing that means computing the expectations on the host. The failures seen so far are
+sloppiness (TC2 run 7), not forgery.
+
+    python3 vendored_matches_upstream.py --manifest file-import.json --vendored lwip \
+        --upstream lwip-upstream --tag STABLE-2_2_1_RELEASE --tag-sha 77dcd25a... \
+        --marker __rtems__ --base-commit def203bd...
 
 Prints one JSON object {"ok": bool, "checked": n, "problems": [...]} and exits 0 when ok.
 """
@@ -32,21 +46,22 @@ import sys
 from pathlib import Path
 
 MAX_PROBLEMS = 25
+_DIRECTIVE_LABEL = re.compile(r"^\s*(#\s*(?:endif|else))\b.*$")
 
 
 def git(*args: str, cwd: Path) -> subprocess.CompletedProcess:
     return subprocess.run(["git", *args], cwd=cwd, capture_output=True)
 
 
-def strip_marker(text: str, marker: str) -> str:
-    """The text a compiler sees with `marker` undefined, touching only directives about `marker`."""
+def strip_marker(text: str, marker: str, defined: bool = False) -> str:
+    """The text a compiler sees with `marker` undefined (or defined), touching only `marker` directives."""
     ifdef = re.compile(rf"^\s*#\s*ifdef\s+{re.escape(marker)}\b")
     ifndef = re.compile(rf"^\s*#\s*ifndef\s+{re.escape(marker)}\b")
     if_any = re.compile(r"^\s*#\s*if")
     els = re.compile(r"^\s*#\s*else\b")
     endif = re.compile(r"^\s*#\s*endif\b")
     out: list[str] = []
-    # Stack entries: (is_marker_block, keeping_now). Non-marker #if blocks inherit and are kept verbatim.
+    # Stack entries: (is_marker_block, keeping_now). Non-marker #if blocks are kept verbatim.
     stack: list[tuple[bool, bool]] = []
 
     def keeping() -> bool:
@@ -54,10 +69,10 @@ def strip_marker(text: str, marker: str) -> str:
 
     for line in text.splitlines(keepends=True):
         if ifdef.match(line):
-            stack.append((True, False))
+            stack.append((True, defined))
             continue
         if ifndef.match(line):
-            stack.append((True, True))
+            stack.append((True, not defined))
             continue
         if if_any.match(line):
             if keeping():
@@ -82,10 +97,10 @@ def strip_marker(text: str, marker: str) -> str:
 
 
 def normalize(text: str) -> list[str]:
-    """Lines without trailing whitespace, blank lines dropped. The project's pre-commit hooks strip
-    trailing whitespace and its patches add blank lines around their blocks; neither can hide a stale
-    file, because every non-blank line must still match. Comments after `#endif`/`#else` are dropped
-    too: patches that wrap upstream code move those labels around (lwIP's sockets.h)."""
+    """Lines without trailing whitespace, blank lines dropped, labels after #else/#endif dropped. The
+    project's pre-commit hooks strip trailing whitespace, its patches add blank lines around their
+    blocks and move those labels; none of that can hide a stale file, because every other line must
+    still match."""
     out = []
     for line in text.splitlines():
         if not line.strip():
@@ -95,7 +110,9 @@ def normalize(text: str) -> list[str]:
     return out
 
 
-_DIRECTIVE_LABEL = re.compile(r"^\s*(#\s*(?:endif|else))\b.*$")
+def marker_only_lines(text: str, marker: str) -> set[str]:
+    """Lines compiled only when `marker` is defined."""
+    return set(normalize(strip_marker(text, marker, defined=True))) - set(normalize(strip_marker(text, marker)))
 
 
 def marker_blocks(text: str, marker: str) -> int:
@@ -107,50 +124,50 @@ def manifest_files(raw: bytes) -> list[str]:
     return list(json.loads(raw)["files-to-import"])
 
 
+def decode(raw: bytes) -> str:
+    return raw.decode("utf-8", "surrogateescape")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo", default=".")
     ap.add_argument("--manifest", required=True)
     ap.add_argument("--vendored", required=True)
     ap.add_argument("--upstream", required=True)
-    ap.add_argument("--tag", required=True)
+    ap.add_argument("--tag", required=True, help="upstream tag name (for messages and the tag check)")
+    ap.add_argument("--tag-sha", required=True, help="the commit the tag must point at (pinned by the case)")
     ap.add_argument("--marker", required=True)
-    ap.add_argument("--base-ref", help="ref whose manifest the new one must not shrink")
+    ap.add_argument("--base-commit", required=True, help="pinned base commit (the case's base.sha)")
     ap.add_argument("--allow-dropped", nargs="*", default=[],
                     help="manifest files whose local patches may be retired (declared by the case)")
+    ap.add_argument("--allow-changed-patches", nargs="*", default=[],
+                    help="manifest files whose local patches may gain new lines (declared by the case)")
     a = ap.parse_args()
     repo = Path(a.repo).resolve()
     upstream = repo / a.upstream
+    sha = a.tag_sha
     problems: list[str] = []
 
-    tag_sha = git("rev-parse", f"{a.tag}^{{commit}}", cwd=upstream)
-    head_sha = git("rev-parse", "HEAD", cwd=upstream)
-    if tag_sha.returncode != 0:
-        problems.append(f"upstream tag {a.tag} is not available in {a.upstream}")
-    elif head_sha.stdout.strip() != tag_sha.stdout.strip():
-        problems.append(f"{a.upstream} is not checked out at {a.tag}")
+    if git("cat-file", "-e", f"{sha}^{{commit}}", cwd=upstream).returncode != 0:
+        problems.append(f"upstream commit {sha[:12]} ({a.tag}) is not available in {a.upstream}")
+    tagged = git("rev-parse", f"{a.tag}^{{commit}}", cwd=upstream).stdout.decode().strip()
+    if tagged and tagged != sha:
+        problems.append(f"{a.upstream}: tag {a.tag} points at {tagged[:12]}, not the pinned {sha[:12]}")
+    if git("rev-parse", "HEAD", cwd=upstream).stdout.decode().strip() != sha:
+        problems.append(f"{a.upstream} is not checked out at {a.tag} ({sha[:12]})")
+    if git("cat-file", "-e", f"{a.base_commit}^{{commit}}", cwd=repo).returncode != 0:
+        problems.append(f"base commit {a.base_commit[:12]} is not available")
 
     files = manifest_files((repo / a.manifest).read_bytes())
-    if a.base_ref:
-        base = git("show", f"{a.base_ref}:{a.manifest}", cwd=repo)
-        if base.returncode == 0:
-            for f in manifest_files(base.stdout):
-                if f not in files and git("cat-file", "-e", f"{a.tag}:{f}", cwd=upstream).returncode == 0:
-                    problems.append(f"manifest dropped {f}, which {a.tag} still has")
-                # The local patches must survive: a plain re-import that drops them passes the
-                # equality rule below (TC2 runs 3-5 lost the __rtems__ patches exactly that way).
-                old = git("show", f"{a.base_ref}:{a.vendored}/{f}", cwd=repo)
-                vendored_now = repo / a.vendored / f
-                if old.returncode == 0 and vendored_now.is_file():
-                    before = marker_blocks(old.stdout.decode("utf-8", "surrogateescape"), a.marker)
-                    after = marker_blocks(vendored_now.read_bytes().decode("utf-8", "surrogateescape"), a.marker)
-                    if after < before and f not in a.allow_dropped:
-                        problems.append(f"{a.vendored}/{f}: {a.marker} local patches lost "
-                                        f"({before} blocks on the base, {after} now)")
+    base_manifest = git("show", f"{a.base_commit}:{a.manifest}", cwd=repo)
+    base_files = manifest_files(base_manifest.stdout) if base_manifest.returncode == 0 else []
+    for f in base_files:
+        if f not in files and git("cat-file", "-e", f"{sha}:{f}", cwd=upstream).returncode == 0:
+            problems.append(f"manifest dropped {f}, which {a.tag} still has")
 
     checked = 0
     for f in files:
-        up = git("show", f"{a.tag}:{f}", cwd=upstream)
+        up = git("show", f"{sha}:{f}", cwd=upstream)
         if up.returncode != 0:
             problems.append(f"{f}: not in upstream {a.tag}")
             continue
@@ -158,11 +175,21 @@ def main() -> int:
         if not vendored.is_file():
             problems.append(f"{a.vendored}/{f}: missing")
             continue
-        mine = strip_marker(vendored.read_bytes().decode("utf-8", "surrogateescape"), a.marker)
-        theirs = up.stdout.decode("utf-8", "surrogateescape")
+        mine = decode(vendored.read_bytes())
         checked += 1
-        if normalize(mine) != normalize(theirs):
+        if normalize(strip_marker(mine, a.marker)) != normalize(decode(up.stdout)):
             problems.append(f"{a.vendored}/{f}: differs from {a.tag} outside {a.marker} blocks")
+        old = git("show", f"{a.base_commit}:{a.vendored}/{f}", cwd=repo)
+        if old.returncode != 0:
+            continue
+        base_text = decode(old.stdout)
+        before, after = marker_blocks(base_text, a.marker), marker_blocks(mine, a.marker)
+        if after < before and f not in a.allow_dropped:
+            problems.append(f"{a.vendored}/{f}: {a.marker} local patches lost ({before} blocks on the base, {after} now)")
+        new = marker_only_lines(mine, a.marker) - marker_only_lines(base_text, a.marker)
+        if new and f not in a.allow_changed_patches:
+            problems.append(f"{a.vendored}/{f}: {len(new)} new {a.marker}-only lines that are not local patches on "
+                            f"the base (code compiled only for {a.marker} must not replace upstream code)")
 
     ok = not problems
     print(json.dumps({"ok": ok, "checked": checked, "files": len(files),

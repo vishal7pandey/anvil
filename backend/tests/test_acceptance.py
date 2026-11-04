@@ -77,9 +77,11 @@ def project(tmp_path):
 
 
 def vmu(repo, *extra):
+    v2 = git("rev-parse", "V2^{commit}", cwd=repo / "upstream")
     out = subprocess.run([sys.executable, str(VMU), "--manifest", "file-import.json", "--vendored", "vend",
-                          "--upstream", "upstream", "--tag", "V2", "--marker", "__rtems__",
-                          "--base-ref", "base", *extra], cwd=repo, capture_output=True, text=True)
+                          "--upstream", "upstream", "--tag", "V2", "--tag-sha", v2, "--marker", "__rtems__",
+                          "--base-commit", git("rev-parse", "base", cwd=repo), *extra],
+                         cwd=repo, capture_output=True, text=True)
     return out.returncode, json.loads(out.stdout)
 
 
@@ -109,18 +111,39 @@ def test_shrinking_the_manifest_fails(project):
     assert code == 1 and "manifest dropped src/a.c, which V2 still has" in result["problems"]
 
 
+def test_retagging_the_upstream_fails(project):  # devin's review: ground truth is pinned by commit
+    v1 = git("rev-parse", "V1^{commit}", cwd=project / "upstream")
+    v2 = git("rev-parse", "V2^{commit}", cwd=project / "upstream")
+    git("tag", "-f", "V2", v1, cwd=project / "upstream")  # stale vendored tree now "matches" V2 by name
+    git("checkout", "-q", v1, cwd=project / "upstream")
+    out = subprocess.run([sys.executable, str(VMU), "--manifest", "file-import.json", "--vendored", "vend",
+                          "--upstream", "upstream", "--tag", "V2", "--tag-sha", v2, "--marker", "__rtems__",
+                          "--base-commit", git("rev-parse", "base", cwd=project)], cwd=project,
+                         capture_output=True, text=True)
+    problems = json.loads(out.stdout)["problems"]
+    assert out.returncode == 1 and any("points at" in p for p in problems)
+
+
+def test_old_code_hidden_in_the_marker_arm_fails(project):  # marker-arm inversion
+    write(project / "vend/src/a.c", "#ifdef __rtems__\nint a = 1;\n#else\nint a = 2;\n#endif\n")
+    code, result = vmu(project)
+    assert code == 1 and any("new __rtems__-only lines" in p for p in result["problems"])
+    assert vmu(project, "--allow-changed-patches", "src/a.c")[0] == 0  # declared by the case
+
+
 def test_submodule_not_at_tag_fails(project):
     write(project / "vend/src/a.c", "int a = 2;\n")
     git("checkout", "-q", "V1", cwd=project / "upstream")
     code, result = vmu(project)
-    assert code == 1 and "upstream is not checked out at V2" in result["problems"]
+    assert code == 1 and any(p.startswith("upstream is not checked out at V2") for p in result["problems"])
 
 
 # -- changed_files_match.py ------------------------------------------------------------------------
 
 def test_change_must_include_a_test(project):
     def cfm():
-        out = subprocess.run([sys.executable, str(CFM), "--base-ref", "base", "--pattern", "testsuites/*"],
+        out = subprocess.run([sys.executable, str(CFM), "--base-commit", git("rev-parse", "base", cwd=project),
+                              "--pattern", "testsuites/*"],
                              cwd=project, capture_output=True, text=True)
         return out.returncode, json.loads(out.stdout)
 
@@ -145,6 +168,7 @@ as_of = "2026-01-01"
 fix_commits = ["abc"]
 [base]
 branch = "case/base"
+sha = "0123456789abcdef0123456789abcdef01234567"
 [ticket]
 project = "P"
 summary = "s"
@@ -152,7 +176,7 @@ body = "b"
 [[acceptance.checks]]
 name = "upgrade is real"
 script = "vendored_matches_upstream.py"
-args = ["--base-ref", "{base_ref}"]
+args = ["--base-commit", "{base_sha}"]
 """
 
 
@@ -175,14 +199,19 @@ def test_runner_uploads_fresh_scripts_and_reports_failures(tmp_path):
     bad = Sandbox(json.dumps({"ok": False, "problems": ["lwip/a.c differs"], "more_problems": 128}), 1)
     problems = run_acceptance(case, bad, "/workspace/p")
     assert bad.uploaded == [SANDBOX_CHECKS + "vendored_matches_upstream.py"]
-    assert "origin/case/base" in bad.commands[0] and bad.commands[0].startswith("cd /workspace/p && python3 ")
+    assert "0123456789abcdef0123456789abcdef01234567" in bad.commands[0] and bad.commands[0].startswith("cd /workspace/p && python3 ")
     assert problems == ["acceptance check 'upgrade is real' failed: lwip/a.c differs (+128 more)"]
     assert run_acceptance(case, Sandbox(json.dumps({"ok": True, "problems": []}), 0), "/workspace/p") == []
 
 
-def test_unknown_check_script_is_a_case_error(tmp_path):
-    (tmp_path / "c1.toml").write_text(CASE.replace("vendored_matches_upstream.py", "nope.py"), encoding="utf-8")
-    with pytest.raises(CaseError, match="nope.py not found"):
+@pytest.mark.parametrize("change,error", [
+    (("vendored_matches_upstream.py", "nope.py"), "nope.py not found"),
+    (("vendored_matches_upstream.py", "../spec.py"), "not found"),  # a file name in checks/, nothing else
+    (('sha = "0123456789abcdef0123456789abcdef01234567"\n', ""), "base.sha is not pinned"),
+])
+def test_bad_acceptance_spec_is_a_case_error(tmp_path, change, error):
+    (tmp_path / "c1.toml").write_text(CASE.replace(*change), encoding="utf-8")
+    with pytest.raises(CaseError, match=error):
         load_case(tmp_path / "c1.toml")
 
 

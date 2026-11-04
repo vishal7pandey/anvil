@@ -43,10 +43,11 @@ class Overlay:
 class Check:
     name: str
     script: str                     # file name in anvil/cases/checks/
-    args: tuple[str, ...] = ()      # "{base_ref}" is replaced with origin/<base branch>
+    args: tuple[str, ...] = ()      # "{base_sha}" is replaced with the case's pinned base commit
 
     def argv(self, case: "Case") -> list[str]:
-        return [a.replace("{base_ref}", f"origin/{case.base_branch}") for a in self.args]
+        # Commits, not ref names: the agent can move refs in its sandbox (devin's review of #60).
+        return [a.replace("{base_sha}", case.base_sha or "") for a in self.args]
 
 
 @dataclass(frozen=True)
@@ -97,7 +98,7 @@ def _checks(value: object, where: str) -> tuple[Check, ...]:
     for item in value:
         if not isinstance(item, dict) or "name" not in item or "script" not in item:
             raise CaseError(f"{where}: every acceptance check needs name and script")
-        if not (CHECKS_DIR / item["script"]).is_file():
+        if Path(item["script"]).name != item["script"] or not (CHECKS_DIR / item["script"]).is_file():
             raise CaseError(f"{where}: acceptance script {item['script']} not found in {CHECKS_DIR.name}/")
         checks.append(Check(name=item["name"], script=item["script"], args=_strs(item.get("args"), where)))
     return tuple(checks)
@@ -140,6 +141,8 @@ def load_case(path: Path) -> Case:
             tolerance=int(scoring.get("tolerance", 3)),
             acceptance=_checks(raw.get("acceptance", {}).get("checks", []), path.name), path=path,
         )
+        if not case.base_sha and any("{base_sha}" in a for c in case.acceptance for a in c.args):
+            raise CaseError(f"{path.name}: acceptance uses {{base_sha}} but base.sha is not pinned")
     except KeyError as exc:
         raise CaseError(f"{path.name}: missing required key {exc}") from exc
     if case.id != path.stem:

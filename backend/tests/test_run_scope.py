@@ -23,6 +23,7 @@ def gh(monkeypatch):
     state = {"prs": [], "checks": {"state": "success", "failing": []}}
     monkeypatch.setattr(github, "_gh", lambda method, path, **kw: state["prs"])
     monkeypatch.setattr(github, "github_checks", lambda repo, pr, wait_seconds=0, **kw: state["checks"])
+    monkeypatch.setattr(run_scope, "case_problems", lambda run, sb: [])  # case checks: test_acceptance.py
     return state
 
 

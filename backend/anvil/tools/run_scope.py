@@ -82,7 +82,9 @@ def verify_outcome(run: dict[str, Any], sandbox: Any) -> list[str]:
 
     * a PR from the sandbox's branch exists -> it targets the run's base branch and its CI passed;
     * the code changed but there is no PR -> not verified;
-    * nothing changed (investigation, report) -> nothing to verify here.
+    * nothing changed (investigation, report) -> nothing to verify here;
+    * and if the run replays a case, the case's own acceptance checks pass (ANVIL-44): a PR with green
+      CI is necessary, not sufficient (TC2 run 7 bumped a submodule pointer and a version header).
     """
     import shlex
 
@@ -101,10 +103,26 @@ def verify_outcome(run: dict[str, Any], sandbox: Any) -> list[str]:
     owner = name.split("/")[0]
     prs = github._gh("GET", f"/repos/{name}/pulls", params={"head": f"{owner}:{branch}", "state": "all"}) \
         if branch.startswith("anvil/") else []
+    problems: list[str] = []
     if not prs:
-        return [f"the code changed on `{branch}` but no pull request was opened"] if changed else []
+        if changed:
+            problems.append(f"the code changed on `{branch}` but no pull request was opened")
+    else:
+        problems += _pr_problems(run, prs[0], base)
+    return problems + case_problems(run, sandbox)
 
-    pr = prs[0]
+
+def case_problems(run: dict[str, Any], sandbox: Any) -> list[str]:
+    """The run's case acceptance checks (none when the run replays no case). Also used by dry runs."""
+    from anvil.cases import case_for_run
+    from anvil.cases.acceptance import run_acceptance
+    from anvil.runtime.executor import repo_path
+
+    case = case_for_run(run)
+    return run_acceptance(case, sandbox, repo_path(run["repo"])) if case else []
+
+
+def _pr_problems(run: dict[str, Any], pr: dict[str, Any], base: str) -> list[str]:
     problems = []
     if pr["base"]["ref"] != base:
         problems.append(f"PR #{pr['number']} targets `{pr['base']['ref']}`, not the run's base branch `{base}`")

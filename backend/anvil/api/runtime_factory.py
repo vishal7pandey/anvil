@@ -43,7 +43,7 @@ def create_executor_from_environment() -> RunExecutor | None:
 
     _validate_async_postgres_event_loop()
 
-    from anvil.cases import load_cases
+    from anvil.cases import case_for_run
     from anvil.kb.tool import make_kb_search
     from anvil.runtime.executor import DeepAgentExecutor
     from anvil.runtime.websearch import TC_BLOCKLIST, make_web_search
@@ -56,17 +56,9 @@ def create_executor_from_environment() -> RunExecutor | None:
     from anvil.tools.run_scope import run_tools, verify_outcome
 
     def _case_as_of(run: dict[str, Any]) -> str | None:
-        """The leak boundary for this run's case (ANVIL-43), or None for ordinary runs.
-
-        The case is resolved host-side: ``run["case_id"]`` when the runner set it, else the case
-        whose ticket key matches ``run["jira_key"]``. The model never picks it.
-        """
-        case_id = run.get("case_id")
-        jira_key = run.get("jira_key")
-        for case in load_cases():
-            if (case_id and case.id == case_id) or (jira_key and case.ticket_key == jira_key):
-                return case.as_of
-        return None
+        """The leak boundary for this run's case (ANVIL-43), or None for ordinary runs."""
+        case = case_for_run(run)
+        return case.as_of if case else None
 
     def tools_factory(sandbox: Any, run: dict[str, Any]) -> list[Any]:
         tools = [

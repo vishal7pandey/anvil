@@ -39,3 +39,11 @@ body_file = "rtems-5776.ticket.md"
 target_files = ["cpukit/posix/src/mutexinit.c"]
 test_files = ["testsuites/psxtests/psx05/init.c"]
 tolerance = 3
+
+
+# Host-side checks before a run counts as succeeded (ANVIL-44). CI on the PR proves the head builds
+# and passes; this proves the change carries a regression test at all.
+[[acceptance.checks]]
+name = "a regression test is part of the change"
+script = "changed_files_match.py"
+args = ["--base-ref", "{base_ref}", "--pattern", "testsuites/*", "--what", "regression test"]

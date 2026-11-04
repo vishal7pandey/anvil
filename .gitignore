@@ -16,4 +16,11 @@ backend/.cache/
 # KB vectors snapshot is large and shared out-of-band, never committed (ANVIL-58)
 data/kb/kb-snapshot-vectors.jsonl.gz
 data/kb/kb-snapshot-vectors.manifest.json
+
+# Run-correlated structured logs (ANVIL-84)
 logs/
+
+# Sandbox image archives are large and shared out-of-band, never committed (ANVIL-57)
+data/sandbox/*.tar
+data/sandbox/*.tar.gz
+data/sandbox/*.tar.zst

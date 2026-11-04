@@ -110,9 +110,14 @@ def normalize(text: str) -> list[str]:
     return out
 
 
+_COMMENT_ONLY = re.compile(r"^\s*(?:/\*.*\*/|//.*|/\*.*|\*.*|.*\*/)\s*$")
+
+
 def marker_only_lines(text: str, marker: str) -> set[str]:
-    """Lines compiled only when `marker` is defined."""
-    return set(normalize(strip_marker(text, marker, defined=True))) - set(normalize(strip_marker(text, marker)))
+    """Code lines compiled only when `marker` is defined. Comment-only lines don't compile, so they
+    can't hide old code (TC2 run 8 added a one-line comment next to an existing patch)."""
+    lines = set(normalize(strip_marker(text, marker, defined=True))) - set(normalize(strip_marker(text, marker)))
+    return {line for line in lines if not _COMMENT_ONLY.match(line)}
 
 
 def marker_blocks(text: str, marker: str) -> int:

@@ -13,6 +13,12 @@ from dataclasses import dataclass, field
 DEFAULT_DATABASE_URL = "postgresql+psycopg://anvil:anvil@127.0.0.1:5433/anvil"
 DEFAULT_GATEWAY_URL = "http://127.0.0.1:4000"
 
+
+def kb_database_url() -> str:
+    """ANVIL_KB_DATABASE_URL, else the run database (ANVIL_DATABASE_URL), else the local default."""
+    return (os.environ.get("ANVIL_KB_DATABASE_URL") or os.environ.get("ANVIL_DATABASE_URL")
+            or DEFAULT_DATABASE_URL)
+
 # Everything an eval case withholds (its upstream issues, merge requests and fix commits) must
 # never enter the knowledge base: the eval would leak the answer it is supposed to withhold.
 # The list is the union over all case files (cases/*.toml, ANVIL-38), not a constant here.
@@ -39,11 +45,9 @@ TC1_EXCLUDED_COMMIT_PREFIXES = WITHHELD_COMMIT_PREFIXES
 
 @dataclass(frozen=True)
 class KBSettings:
-    database_url: str = field(
-        default_factory=lambda: os.environ.get(
-            "ANVIL_DATABASE_URL", DEFAULT_DATABASE_URL
-        )
-    )
+    # The KB is one shared, read-only corpus; run state may live in a per-agent database
+    # (start-api.ps1 -DatabaseUrl). ANVIL_KB_DATABASE_URL keeps the two apart (ANVIL-51).
+    database_url: str = field(default_factory=lambda: kb_database_url())
     gateway_url: str = field(
         default_factory=lambda: os.environ.get("ANVIL_GATEWAY_URL", DEFAULT_GATEWAY_URL)
     )

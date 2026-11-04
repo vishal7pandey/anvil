@@ -75,6 +75,7 @@ class Case:
     tolerance: int = 3
     acceptance: tuple[Check, ...] = ()
     required_checks: tuple[str, ...] = ()   # CI checks that gate the PR; others are advisory
+    web_allow: tuple[str, ...] = ()         # [web] allow: trusted web_search sources (ANVIL-64); () = any
     build: dict[str, str] = field(default_factory=dict)  # [build]: the BSP's configure/build/test recipe
     path: Path | None = field(default=None, compare=False)
 
@@ -153,6 +154,7 @@ def load_case(path: Path) -> Case:
             tolerance=int(scoring.get("tolerance", 3)),
             acceptance=_checks(raw.get("acceptance", {}).get("checks", []), path.name),
             required_checks=_strs(raw.get("ci", {}).get("required_checks"), "ci.required_checks"),
+            web_allow=_strs(raw.get("web", {}).get("allow"), "web.allow"),
             build=_build(raw.get("build")), path=path,
         )
         if not case.base_sha and any("{base_sha}" in a for c in case.acceptance for a in c.args):

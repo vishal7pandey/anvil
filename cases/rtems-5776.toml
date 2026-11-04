@@ -71,3 +71,8 @@ build = './waf -j"$(nproc)"'
 # committing, not after every edit.
 test_one = 'rtems-test --rtems-bsp=erc32-sis build/sparc/erc32/testsuites/psxtests/<test>.exe  # pick the test for the area you changed'
 test_suite = 'rtems-test --rtems-bsp=erc32-sis build/sparc/erc32/testsuites/psxtests/'
+
+# Trusted web_search sources (ANVIL-64): results drawing on anything else are withheld.
+# The leak blocklist (upstream tracker, lists, mirrors) applies on top.
+[web]
+allow = ["docs.rtems.org", "pubs.opengroup.org", "man7.org"]

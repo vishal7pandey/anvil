@@ -103,20 +103,22 @@ if (-not $env:ATLASSIAN_API_TOKEN -and $env:JIRA_API_TOKEN) {
     $env:ATLASSIAN_API_TOKEN = $env:JIRA_API_TOKEN
 }
 
-# 3. Fail loudly upfront if Atlassian credentials missing
-Write-Host "`n3. Validating required Atlassian / Jira credentials..." -ForegroundColor Yellow
+# 3. Fail loudly upfront if credentials missing
+Write-Host "`n3. Validating required credentials..." -ForegroundColor Yellow
 $missing = @()
 if (-not $env:ATLASSIAN_SITE) { $missing += "ATLASSIAN_SITE (or JIRA_URL)" }
 if (-not $env:ATLASSIAN_EMAIL) { $missing += "ATLASSIAN_EMAIL (or JIRA_USER_EMAIL)" }
 if (-not $env:ATLASSIAN_API_TOKEN) { $missing += "ATLASSIAN_API_TOKEN (or JIRA_API_TOKEN)" }
+if (-not $env:ANVIL_DEMO_TOKEN) { $missing += "ANVIL_DEMO_TOKEN" }
 
 if ($missing.Count -gt 0) {
-    Write-Error "Missing required Atlassian credentials in .env: $($missing -join ', '). Jira intake will fail."
+    Write-Error "Missing required credentials in .env: $($missing -join ', '). Cannot start API securely."
     exit 1
 }
 Write-Host "  [PASS] Atlassian site: $env:ATLASSIAN_SITE" -ForegroundColor Green
 Write-Host "  [PASS] Atlassian user: $env:ATLASSIAN_EMAIL" -ForegroundColor Green
 Write-Host "  [PASS] Atlassian token: [configured]" -ForegroundColor Green
+Write-Host "  [PASS] Demo token:      [configured]" -ForegroundColor Green
 
 # 4. Configure runtime environment
 $env:ANVIL_EXECUTOR = "deepagent"
@@ -147,41 +149,17 @@ Write-Host "  [PASS] Port $Port is available." -ForegroundColor Green
 Write-Host "`n5. Starting Control API process..." -ForegroundColor Yellow
 $pythonExe = Join-Path $backendDir ".venv\Scripts\python.exe"
 if (-not (Test-Path $pythonExe)) {
-    # Fallback to signed CPython 3.13 if available
-    $signedPy = "C:\Users\yedna\AppData\Local\Python\pythoncore-3.13-64\python.exe"
-    if (Test-Path $signedPy) {
-        $pythonExe = $signedPy
-    } else {
-        Write-Error "Python executable not found in $pythonExe or $signedPy."
-        exit 1
-    }
+    Write-Error "Virtual environment not found at $pythonExe. Rebuild venv with: uv sync --directory backend --python 'C:\Users\yedna\AppData\Local\Python\pythoncore-3.13-64\python.exe'"
+    exit 1
 }
 Write-Host "  Using Python runtime: $pythonExe"
 
-$demoToken = if ($env:ANVIL_DEMO_TOKEN) { $env:ANVIL_DEMO_TOKEN } else { "sk-anvil-local" }
-$launcherCmd = Join-Path ([System.IO.Path]::GetTempPath()) "anvil-api-launcher.cmd"
-
-$launcherContent = @"
-@echo off
-set "ANVIL_EXECUTOR=deepagent"
-set "ANVIL_DATABASE_URL=$DatabaseUrl"
-set "ATLASSIAN_SITE=$env:ATLASSIAN_SITE"
-set "ATLASSIAN_EMAIL=$env:ATLASSIAN_EMAIL"
-set "ATLASSIAN_API_TOKEN=$env:ATLASSIAN_API_TOKEN"
-set "JIRA_URL=$env:ATLASSIAN_SITE"
-set "JIRA_USER_EMAIL=$env:ATLASSIAN_EMAIL"
-set "JIRA_API_TOKEN=$env:ATLASSIAN_API_TOKEN"
-set "ANVIL_DEMO_TOKEN=$demoToken"
-set "PYTHONUNBUFFERED=1"
-cd /d "$backendDir"
-"$pythonExe" -u -c "import uvicorn; uvicorn.run('anvil.api.app:app', host='$HostAddress', port=$Port, loop='anvil.api.serve:api_loop_factory')" > "$logPath" 2> "$errLogPath"
-"@
-
-[System.IO.File]::WriteAllText($launcherCmd, $launcherContent)
+$demoToken = $env:ANVIL_DEMO_TOKEN
+$runCmd = Join-Path $PSScriptRoot "run-api.cmd"
 
 # Start detached background process via WMI to break away from any terminating job/session
 $res = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
-    CommandLine = "cmd.exe /c `"$launcherCmd`""
+    CommandLine = "cmd.exe /c `"`"$runCmd`" `"$HostAddress`" $Port `"$DatabaseUrl`"`""
     CurrentDirectory = $backendDir
 }
 
@@ -193,11 +171,11 @@ if ($res.ReturnValue -ne 0) {
 $spawnedPid = $res.ProcessId
 Write-Host "  Spawned Control API launcher on PID $spawnedPid"
 
-# 7. Poll for API readiness
+# 7. Poll for API readiness (up to 60 seconds)
 Write-Host "`n6. Waiting for API readiness on http://${HostAddress}:${Port}..." -ForegroundColor Yellow
 $authHeader = @{ "Authorization" = "Bearer $demoToken" }
 $ready = $false
-$maxAttempts = 30
+$maxAttempts = 120
 $actualApiPid = $null
 
 for ($i = 1; $i -le $maxAttempts; $i++) {

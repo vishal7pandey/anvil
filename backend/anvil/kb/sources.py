@@ -43,7 +43,11 @@ class SourceDocument:
 
 
 def _git_commit_dates_for_dir(root: Path) -> dict[str, str]:
-    """Map relative posix path inside root -> latest ISO committer date from git history."""
+    """Map relative posix path inside root -> latest ISO committer date from git history.
+
+    Leaves files undated if the repository is a shallow clone to avoid stamping all
+    files with the shallow tip commit date (ANVIL-68).
+    """
     dates: dict[str, str] = {}
     root = root.resolve()
     try:
@@ -57,6 +61,20 @@ def _git_commit_dates_for_dir(root: Path) -> dict[str, str]:
         if top_res.returncode != 0:
             return dates
         repo_root = Path(top_res.stdout.strip()).resolve()
+
+        shallow_res = subprocess.run(
+            ["git", "rev-parse", "--is-shallow-repository"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if shallow_res.returncode == 0 and shallow_res.stdout.strip().lower() == "true":
+            log.warning(
+                "git repository at %s is shallow; leaving documents undated to avoid tip date pollution",
+                repo_root,
+            )
+            return dates
 
         res = subprocess.run(
             ["git", "log", "--name-only", "--format=COMMIT:%cI", "--", str(root)],
@@ -81,8 +99,10 @@ def _git_commit_dates_for_dir(root: Path) -> dict[str, str]:
                             dates[rel] = current_date
                     except ValueError:
                         pass
-    except Exception:
-        pass
+        else:
+            log.warning("git log failed for %s (exit %d): %s", root, res.returncode, res.stderr.strip())
+    except Exception as exc:
+        log.warning("failed to extract git commit dates for %s: %s", root, exc)
     return dates
 
 
@@ -122,8 +142,8 @@ def documents_from_docs_dir(
                 )
                 if f_res.returncode == 0 and f_res.stdout.strip():
                     commit_date = f_res.stdout.strip()
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("failed to extract git commit date for %s: %s", path, exc)
         if commit_date:
             metadata["created_at"] = commit_date
 
@@ -328,6 +348,11 @@ def fetch_confluence_pages(
             skipped += 1
             continue
 
+        # Confluence timestamp extraction (ANVIL-68):
+        # Prefers true page creation timestamp (createdAt / createdDate).
+        # Falling back to versionCreatedAt or lastModified represents a modification timestamp
+        # rather than initial page creation, but errs toward hiding post-fix content (conservative
+        # leak guard under as_of).
         ver = page.get("version")
         ver_created = ver.get("createdAt") if isinstance(ver, dict) else None
         hist = item.get("history")

@@ -1,14 +1,15 @@
 {
   "file": "kb-snapshot.jsonl.gz",
-  "sha256": "643efa7fc306714e190a73eb1a7c11c15cbc8aba15b0292fecd2a625dd8f588d",
-  "documents": 7573,
-  "chunks": 14654,
+  "sha256": "34e48f3e5659468d2af06d5a3ae4e5533bce17e47808a75549b317c3db180e45",
+  "documents": 7576,
+  "chunks": 14657,
   "documents_by_source": {
     "confluence": 12,
     "gitlab-issue": 5519,
     "gitlab-mr": 1552,
+    "local": 3,
     "rtems-docs": 490
   },
-  "created_at": "2026-11-04T04:38:47+00:00",
+  "created_at": "2026-11-04T19:15:08+00:00",
   "embedding": "not included: `python -m anvil.kb import-snapshot` re-embeds with the configured model"
 }

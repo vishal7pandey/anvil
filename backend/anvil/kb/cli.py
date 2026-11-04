@@ -103,7 +103,16 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.command == "search":
-            hits = store.search(args.query, k=args.k, sources=args.sources or None)
+            as_of_dt = None
+            if getattr(args, "as_of", None):
+                from datetime import datetime
+                as_of_dt = datetime.fromisoformat(args.as_of.replace("Z", "+00:00"))
+            hits = store.search(
+                args.query,
+                k=args.k,
+                sources=args.sources or None,
+                as_of=as_of_dt,
+            )
             print(
                 json.dumps(
                     [
@@ -182,6 +191,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--sources", nargs="*",
         choices=["rtems-docs", "gitlab-issue", "gitlab-mr", "mailing-list", "confluence"],
     )
+    search.add_argument(
+        "--as-of",
+        help="ISO 8601 timestamp cutoff (ANVIL-68, e.g. 2026-10-30T00:00:00Z)",
+    )
     return parser
 
 
@@ -195,9 +208,23 @@ def _resolve_docs_dir(args: argparse.Namespace, settings: KBSettings) -> Path:
         clone_to.parent.mkdir(parents=True, exist_ok=True)
         log.info("cloning %s into %s", RTEMS_DOCS_URL, clone_to)
         subprocess.run(
-            ["git", "clone", "--depth", "1", RTEMS_DOCS_URL, str(clone_to)],
+            ["git", "clone", RTEMS_DOCS_URL, str(clone_to)],
             check=True,
         )
+    else:
+        try:
+            check_shallow = subprocess.run(
+                ["git", "rev-parse", "--is-shallow-repository"],
+                cwd=clone_to,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if check_shallow.returncode == 0 and check_shallow.stdout.strip().lower() == "true":
+                log.info("unshallowing %s for commit dates", clone_to)
+                subprocess.run(["git", "fetch", "--unshallow"], cwd=clone_to, check=False)
+        except Exception as exc:
+            log.warning("failed to check/unshallow %s: %s", clone_to, exc)
     return clone_to
 
 

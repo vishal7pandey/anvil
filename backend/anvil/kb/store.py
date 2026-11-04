@@ -155,6 +155,16 @@ class KBStore:
                 )
             ).first()
             if existing and existing.content_sha256 == digest:
+                # Content is identical, skip re-chunking/re-embedding but update metadata/created_at if changed (ANVIL-68)
+                new_created_at = _doc_created_at(document)
+                conn.execute(
+                    update(kb_documents)
+                    .where(kb_documents.c.id == existing.id)
+                    .values(
+                        doc_metadata=document.metadata,
+                        created_at=new_created_at,
+                    )
+                )
                 return "skipped", 0
 
             if existing:

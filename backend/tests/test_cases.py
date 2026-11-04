@@ -65,7 +65,8 @@ def test_repo_case_reproduces_the_old_tc1_exclusions():
 
     assert sorted(WITHHELD_ISSUE_IDS) == sorted(["5776", "5806", "5723", "5750", "5749", "5760"])
     assert sorted(WITHHELD_MR_IDS) == sorted(["1493", "1526", "1448", "1468", "1484", "1479"])
-    assert "a62e60b5" in WITHHELD_COMMIT_PREFIXES and len(WITHHELD_COMMIT_PREFIXES) == 6
+    assert "a62e60b5" in WITHHELD_COMMIT_PREFIXES and "a30180a462c4" in WITHHELD_COMMIT_PREFIXES  # + TC2 (ANVIL-44)
+    assert len(WITHHELD_COMMIT_PREFIXES) == 7  # 6 from the TC1 shortlist, 1 from the TC2 case
     case = get_case("rtems-5776")
     assert case.ticket_key == "RTEMS-1" and "Code base: branch `tc1/5776-base`" in case.ticket_text
 

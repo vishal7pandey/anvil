@@ -41,3 +41,11 @@ body_file = "rtems-5806.ticket.md"
 target_files = ["cpukit/sapi/src/cpucounterconverter.c"]
 test_files = ["testsuites/sptests/spcpucounter01/init.c"]
 tolerance = 3
+
+
+# Host-side checks before a run counts as succeeded (ANVIL-44). CI on the PR proves the head builds
+# and passes; this proves the change carries a regression test at all.
+[[acceptance.checks]]
+name = "a regression test is part of the change"
+script = "changed_files_match.py"
+args = ["--base-commit", "{base_sha}", "--pattern", "testsuites/*", "--what", "regression test"]

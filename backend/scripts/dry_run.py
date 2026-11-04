@@ -70,6 +70,9 @@ async def main() -> int:
     diff = sandbox.execute(f"cd {path} && git diff {base}", timeout=60).output
     (out / "agent.diff").write_text(diff, encoding="utf-8")
 
+    from anvil.tools.run_scope import case_problems
+
+    acceptance = case_problems(run, sandbox)
     touched = set(files)
     score = {
         "run_id": run_id, "session": run["session_id"], "ticket": args.ticket,
@@ -78,11 +81,14 @@ async def main() -> int:
         "score_files_hit": sorted(touched & score_files),
         "extra_files": sorted(touched - score_files),
         "reviewer_score": None,  # filled in by a human reviewer
+        # Same host-side acceptance as real runs (ANVIL-44): "succeeded" is the agent's word, this is ours.
+        "acceptance_problems": acceptance,
+        "verified": status == "succeeded" and not acceptance,
     }
     (out / "score.json").write_text(json.dumps(score, indent=2), encoding="utf-8")
     print(json.dumps(score, indent=2))
     print(f"sandbox kept for inspection: {sandbox.id}")
-    return 0 if status == "succeeded" else 1
+    return 0 if score["verified"] else 1
 
 
 if __name__ == "__main__":

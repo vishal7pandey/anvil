@@ -43,7 +43,8 @@ async def main() -> int:
     ticket = f"{case.ticket_key or case.id}: {case.ticket_summary}\n\n{case.ticket_text}{DRY_RUN_NOTE}"
     run = {"run_id": run_id, "session_id": f"{case.id}-{run_id[:8]}", "repo": case.repo,
            "base_ref": case.base_branch, "jira_key": case.ticket_key, "mode": "autonomous",
-           "merge_policy": "human", "network": "offline", "trigger": "tc1-dry-run"}
+           "merge_policy": "human", "network": "offline", "trigger": "tc1-dry-run",
+           "case_id": case.id}
     ex = DeepAgentExecutor(image=args.image, db_url=args.db)
     started = time.monotonic()
     counts: dict[str, int] = {}
@@ -70,6 +71,9 @@ async def main() -> int:
 
     from scripts.score_tc1 import score_case_diff
 
+    from anvil.tools.run_scope import case_problems
+
+    acceptance = case_problems(run, sandbox)
     touched = set(files)
     try:
         hunk_overlap = score_case_diff(diff, case)
@@ -85,11 +89,14 @@ async def main() -> int:
         "extra_files": sorted(touched - upstream_files),
         "hunk_overlap": hunk_overlap,
         "root_cause_score_0_2": None,  # filled in by a human reviewer
+        # Same host-side acceptance as real runs (ANVIL-44): "succeeded" is the agent's word, this is ours.
+        "acceptance_problems": acceptance,
+        "verified": status == "succeeded" and not acceptance,
     }
     (out / "score.json").write_text(json.dumps(score, indent=2), encoding="utf-8")
     print(json.dumps(score, indent=2))
     print(f"sandbox kept for inspection: {sandbox.id}")
-    return 0 if status == "succeeded" else 1
+    return 0 if score["verified"] else 1
 
 
 if __name__ == "__main__":

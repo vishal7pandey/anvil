@@ -1,0 +1,41 @@
+# TC2 as a case (ANVIL-44): upgrade the vendored lwIP in rtems-lwip from 2.1.3 to 2.2.1. The upstream
+# maintainers did the same upgrade in a30180a ("lwip: Update lwIP to 2.2.1"); it is withheld from the
+# agent and is what the acceptance check was validated against.
+id = "rtems-lwip-2.2.1"
+kind = "component-upgrade"
+repo = "vishal7pandey/rtems-lwip"
+as_of = "2025-08-22"               # a30180a committed upstream
+
+[upstream]
+url = "https://gitlab.rtems.org"
+project = "rtems/pkg/rtems-lwip"
+fix_commits = ["a30180a462c4"]
+
+[base]
+branch = "tc2/upgrade-base-leon3"
+sha = "def203bde6e89a52ec45cc997882794db06793b5"   # 2.1.3 + LEON3 BSP + GRETH + factory CI (ANVIL-29)
+
+[ticket]
+project = "RTEMS"
+key = "RTEMS-2"
+labels = ["anvil", "component-upgrade", "tc2"]
+summary = "Upgrade vendored lwIP to 2.2.1 in rtems-lwip"
+body_file = "rtems-lwip-2.2.1.ticket.md"
+
+[scoring]
+target_files = ["file-import.json", "lwip/src/include/lwip/init.h"]
+
+# Every manifest file must equal lwIP 2.2.1 read without __rtems__ (whitespace aside), the RTEMS local
+# patches must survive, and the submodule must sit at the tag. Upstream's own upgrade retired the
+# debug-print patches in sockets.c and api_msg.c, so dropping those two is allowed (keeping them too).
+# The tag and base are pinned by commit (a retagged submodule fails). Validated in a Linux sandbox:
+# base vs 2.1.3 passes; a30180a passes; run 7's stale tree fails (129 files); a retag of 2.2.1 to 2.1.3
+# fails; the old tcp.c body hidden under #ifdef __rtems__ fails; a mechanical re-import with patches
+# re-applied fails on its 2 genuine conflicts.
+[[acceptance.checks]]
+name = "vendored lwIP equals upstream 2.2.1 apart from the RTEMS patches"
+script = "vendored_matches_upstream.py"
+args = ["--manifest", "file-import.json", "--vendored", "lwip", "--upstream", "lwip-upstream",
+        "--tag", "STABLE-2_2_1_RELEASE", "--tag-sha", "77dcd25a72509eb83f72b033d219b1d40cd8eb95",
+        "--marker", "__rtems__", "--base-commit", "{base_sha}",
+        "--allow-dropped", "src/api/sockets.c", "src/api/api_msg.c"]

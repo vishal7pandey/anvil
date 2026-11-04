@@ -8,7 +8,10 @@ A case turns an upstream fix into a task the factory can be measured on:
 * **withheld**: everything that would hand the agent the answer (the upstream issues, merge
   requests and fix commits). The KB leak guard uses the union over all cases;
 * **as_of**: when the fix landed. Knowledge created after it is "from the future" for this case;
-* **scoring**: what to compare the agent's diff with.
+* **scoring**: what to compare the agent's diff with;
+* **acceptance**: checks the result must pass before a run counts as succeeded (ANVIL-44). Each
+  names a script in ``anvil/cases/checks/`` and its arguments; the host uploads the script into the
+  sandbox after the agent has finished and runs it there (see ``anvil.cases.acceptance``).
 
 Case files live in ``<repo>/cases/*.toml`` (``ANVIL_CASES_DIR`` overrides). They are host-side
 only: the sandbox gets skills, never cases.
@@ -23,6 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 DEFAULT_CASES_DIR = Path(__file__).resolve().parents[3] / "cases"
+CHECKS_DIR = Path(__file__).resolve().parent / "checks"
 
 
 class CaseError(ValueError):
@@ -33,6 +37,17 @@ class CaseError(ValueError):
 class Overlay:
     ref: str
     paths: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class Check:
+    name: str
+    script: str                     # file name in anvil/cases/checks/
+    args: tuple[str, ...] = ()      # "{base_sha}" is replaced with the case's pinned base commit
+
+    def argv(self, case: "Case") -> list[str]:
+        # Commits, not ref names: the agent can move refs in its sandbox (devin's review of #60).
+        return [a.replace("{base_sha}", case.base_sha or "") for a in self.args]
 
 
 @dataclass(frozen=True)
@@ -58,6 +73,7 @@ class Case:
     target_files: tuple[str, ...] = ()
     test_files: tuple[str, ...] = ()
     tolerance: int = 3
+    acceptance: tuple[Check, ...] = ()
     path: Path | None = field(default=None, compare=False)
 
     @property
@@ -73,6 +89,19 @@ def _strs(value: object, where: str) -> tuple[str, ...]:
     if not isinstance(value, list) or not all(isinstance(v, (str, int)) for v in value):
         raise CaseError(f"{where}: expected a list of strings")
     return tuple(str(v) for v in value)
+
+
+def _checks(value: object, where: str) -> tuple[Check, ...]:
+    if not isinstance(value, list):
+        raise CaseError(f"{where}: acceptance.checks must be a list of tables")
+    checks = []
+    for item in value:
+        if not isinstance(item, dict) or "name" not in item or "script" not in item:
+            raise CaseError(f"{where}: every acceptance check needs name and script")
+        if Path(item["script"]).name != item["script"] or not (CHECKS_DIR / item["script"]).is_file():
+            raise CaseError(f"{where}: acceptance script {item['script']} not found in {CHECKS_DIR.name}/")
+        checks.append(Check(name=item["name"], script=item["script"], args=_strs(item.get("args"), where)))
+    return tuple(checks)
 
 
 def load_case(path: Path) -> Case:
@@ -109,8 +138,11 @@ def load_case(path: Path) -> Case:
             withheld_commits=tuple(dict.fromkeys(fix + _strs(withheld.get("commits"), "withheld.commits"))),
             target_files=_strs(scoring.get("target_files"), "scoring.target_files"),
             test_files=_strs(scoring.get("test_files"), "scoring.test_files"),
-            tolerance=int(scoring.get("tolerance", 3)), path=path,
+            tolerance=int(scoring.get("tolerance", 3)),
+            acceptance=_checks(raw.get("acceptance", {}).get("checks", []), path.name), path=path,
         )
+        if not case.base_sha and any("{base_sha}" in a for c in case.acceptance for a in c.args):
+            raise CaseError(f"{path.name}: acceptance uses {{base_sha}} but base.sha is not pinned")
     except KeyError as exc:
         raise CaseError(f"{path.name}: missing required key {exc}") from exc
     if case.id != path.stem:
@@ -153,3 +185,13 @@ def withheld_union(cases: Iterable[Case]) -> Withheld:
         mrs.update(dict.fromkeys(case.withheld_mrs))
         commits.update(dict.fromkeys(case.withheld_commits))
     return Withheld(tuple(issues), tuple(mrs), tuple(commits))
+
+
+def case_for_run(run: dict, directory: Path | None = None) -> Case | None:
+    """The case a run replays, resolved host-side: ``run["case_id"]`` when the runner set it, else the
+    case whose ticket key is the run's Jira key. The model never chooses it."""
+    case_id, jira_key = run.get("case_id"), run.get("jira_key")
+    for case in load_cases(directory):
+        if (case_id and case.id == case_id) or (jira_key and case.ticket_key == jira_key):
+            return case
+    return None

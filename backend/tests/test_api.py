@@ -957,3 +957,26 @@ def test_one_active_run_per_session(api_factory, client_factory):
     assert client.get(f"/api/runs/{first.json()['id']}", headers=AUTH).json()["status"] == "cancelled"
     again = client.post(f"/api/sessions/{session_id}/messages", headers=AUTH, json={"text": "three"})
     assert again.status_code == 202
+
+
+def test_list_runs_for_session_newest_first(api_factory, client_factory):
+    """A reopened session gets its runs newest-first — that's the one the UI reattaches to (ANVIL-73)."""
+    app = api_factory(executor=SuccessfulExecutor())
+    client = client_factory(app)
+    session_id = create_session(client)
+
+    run_ids = []
+    for text in ("first", "second"):
+        response = client.post(
+            f"/api/sessions/{session_id}/messages",
+            headers=AUTH,
+            json={"text": text},
+        )
+        assert response.status_code == 202
+        run_ids.append(response.json()["id"])
+        # One active run per session (409 since ANVIL-71): drain so this run reaches terminal
+        # before the next message can start another.
+        client.get(f"/api/runs/{run_ids[-1]}/events", headers=AUTH)
+
+    runs = client.get(f"/api/sessions/{session_id}/runs", headers=AUTH).json()
+    assert [r["id"] for r in runs[:2]] == [run_ids[1], run_ids[0]]

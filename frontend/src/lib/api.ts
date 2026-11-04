@@ -52,6 +52,14 @@ export async function listRuns(): Promise<Run[]> {
   return res.json();
 }
 
+export async function listRunsForSession(sessionId: string): Promise<Run[]> {
+  const res = await fetch(`${API_BASE}/sessions/${sessionId}/runs`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`Failed to list runs: ${res.statusText}`);
+  return res.json();
+}
+
 export async function getRunTimeline(runId: string): Promise<StreamEvent[]> {
   const res = await fetch(`${API_BASE}/runs/${runId}/timeline`, { headers: authHeaders() });
   if (!res.ok) throw new Error(`Failed to get run timeline: ${res.statusText}`);
@@ -139,11 +147,11 @@ export function parseSse(buffer: string): { messages: SseMessage[]; rest: string
 export function subscribeToEvents(
   runId: string,
   onEvent: (event: StreamEvent) => void,
-  options: { maxReconnects?: number; reconnectDelayMs?: number } = {},
+  options: { maxReconnects?: number; reconnectDelayMs?: number; afterSeq?: number } = {},
 ): () => void {
-  const { maxReconnects = 20, reconnectDelayMs = 1000 } = options;
+  const { maxReconnects = 20, reconnectDelayMs = 1000, afterSeq } = options;
   const controller = new AbortController();
-  let lastId: string | undefined;
+  let lastId: string | undefined = afterSeq !== undefined ? String(afterSeq) : undefined;
   let finished = false;
 
   const connect = async (attempt: number): Promise<void> => {

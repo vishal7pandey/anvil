@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import App from '../App';
 
@@ -124,5 +124,77 @@ describe('App', () => {
     fireEvent.click(screen.getAllByRole('button', { name: /Approvals/ })[0]);
     expect(await screen.findByRole('heading', { name: 'Approvals inbox' })).toBeInTheDocument();
     expect(screen.getByText('No pending approvals.')).toBeInTheDocument();
+  });
+
+  it('New Session dialog shows repo hint and field descriptions', async () => {
+    mockSessions([]);
+    render(<App />);
+    fireEvent.click(screen.getAllByText('New Session')[0]);
+    expect(await screen.findByRole('heading', { name: 'New Session' })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/vishal7pandey\/rtems or C:\\work\\rtems/)).toBeInTheDocument();
+    expect(screen.getByText('GitHub owner/repository or an absolute local path')).toBeInTheDocument();
+    expect(screen.getByText('Every tool waits for your approval (TC1 default)')).toBeInTheDocument();
+    expect(screen.getByText('Balanced model for general tasks (TC1 default)')).toBeInTheDocument();
+  });
+
+  it('creating a session submits the form and closes the dialog', async () => {
+    const fetchMock = vi.mocked(globalThis.fetch);
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ...session, id: 's-new' }),
+      } as Response);
+
+    render(<App />);
+    await screen.findByText('No sessions yet.');
+    fireEvent.click(screen.getAllByText('New Session')[0]);
+    await screen.findByRole('heading', { name: 'New Session' });
+
+    fireEvent.change(screen.getByPlaceholderText(/vishal7pandey\/rtems or C:\\work\\rtems/), {
+      target: { value: 'vishal7pandey/rtems' },
+    });
+    fireEvent.submit(screen.getByRole('button', { name: /Create/ }).closest('form')!);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/sessions',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"repo":"vishal7pandey/rtems"'),
+      }),
+    );
+    // Dialog closes and the new session appears in the list
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: 'New Session' })).not.toBeInTheDocument();
+    });
+    expect(await screen.findByText('RTEMS-1 mutex defect')).toBeInTheDocument();
+  });
+
+  it('shows the API 422 error inline when session creation fails', async () => {
+    const fetchMock = vi.mocked(globalThis.fetch);
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 422,
+        statusText: 'Repository must be a GitHub owner/repository',
+        json: async () => ({ detail: 'Repository must be a GitHub owner/repository' }),
+      } as Response);
+
+    render(<App />);
+    await screen.findByText('No sessions yet.');
+    fireEvent.click(screen.getAllByText('New Session')[0]);
+    await screen.findByRole('heading', { name: 'New Session' });
+
+    fireEvent.change(screen.getByPlaceholderText(/vishal7pandey\/rtems or C:\\work\\rtems/), {
+      target: { value: 'not-a-valid-repo' },
+    });
+    fireEvent.submit(screen.getByRole('button', { name: /Create/ }).closest('form')!);
+
+    expect(await screen.findByText('Failed to create session: Repository must be a GitHub owner/repository')).toBeInTheDocument();
+    // Dialog stays open so the user can fix the input
+    expect(screen.getByRole('heading', { name: 'New Session' })).toBeInTheDocument();
   });
 });

@@ -64,7 +64,7 @@ def _ticket(tickets_dir, key, repo):
 
 
 def _scripted(action):
-    def factory(config, sandbox, *, tools, on_handoff, checkpointer, store, skills):
+    def factory(config, sandbox, *, tools, on_handoff, checkpointer, store, skills, **_):
         class Scripted:
             async def astream(self, *_args, **_kwargs):
                 yield ((), "updates", {"model": {"messages": [AIMessage(content="starting")]}})

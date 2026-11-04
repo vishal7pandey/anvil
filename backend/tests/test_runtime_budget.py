@@ -53,7 +53,7 @@ async def test_executor_sets_the_deadline_while_the_agent_runs_and_clears_it_for
             seen["sandbox"] = sb
             return sb
 
-    def factory(config, sandbox, *, tools, on_handoff, checkpointer, store, skills):
+    def factory(config, sandbox, *, tools, on_handoff, checkpointer, store, skills, **_):
         class Agent(FakeAgent):
             async def astream(self, *a, **k):
                 seen["during"] = sandbox.deadline

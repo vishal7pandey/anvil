@@ -67,4 +67,7 @@ BUILD_PSXTESTS = True
 INI
 ./waf configure --prefix="$RTEMS_PREFIX"'''
 build = './waf -j"$(nproc)"'
-test = 'rtems-test --rtems-bsp=erc32-sis build/sparc/erc32/testsuites/psxtests/'
+# One test exe after a change (review on #90); the whole directory is test_suite — run once, before
+# committing, not after every edit.
+test_one = 'rtems-test --rtems-bsp=erc32-sis build/sparc/erc32/testsuites/psxtests/psx05.exe'
+test_suite = 'rtems-test --rtems-bsp=erc32-sis build/sparc/erc32/testsuites/psxtests/'

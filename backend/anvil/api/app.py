@@ -39,7 +39,6 @@ from anvil.api.executor import RunExecutor
 from anvil.api.metrics import (
     SpendTotals,
     create_litellm_engine,
-    estimate_cost,
     load_litellm_spend_totals,
 )
 from anvil.api.runtime_factory import create_executor_from_environment
@@ -191,9 +190,9 @@ def _run_metrics(
             cost_estimated = False
         elif is_pending:
             model_calls = sum(1 for e in run_events if e.type == "usage")
-            usd = estimate_cost(run.input_tokens, run.output_tokens, run_events)
+            usd = None
             cost_status = "pending"
-            cost_estimated = True
+            cost_estimated = False
         elif spend_is_missing:
             model_calls = None
             usd = None
@@ -1257,23 +1256,24 @@ def create_app(
         ]
         # Sum what is known and say how much is not: one run without spend rows (e.g. from before
         # spend-log tagging) must not turn every total into "n/a".
-        priced = [item for item in run_metrics if item["cost_status"] != "missing"]
-        runs_missing_cost = len(run_metrics) - len(priced)
+        priced = [item for item in run_metrics if item["usd"] is not None]
+        runs_missing_cost = sum(1 for item in run_metrics if item["cost_status"] == "missing")
+        runs_pending_cost = sum(1 for item in run_metrics if item["cost_status"] == "pending")
         outcomes = Counter(run.status for run in runs)
         total_wall_time = sum(wall_times)
         if run_metrics and not priced:
-            cost_status, model_calls, usd = "missing", None, None
+            if runs_pending_cost > 0:
+                cost_status = "pending"
+            else:
+                cost_status = "missing"
+            model_calls, usd = None, None
             cost_estimated = False
         else:
-            all_pending = bool(priced) and all(item["cost_status"] == "pending" for item in priced)
-            any_pending = any(item["cost_status"] == "pending" for item in priced)
-            if all_pending and not runs_missing_cost:
-                cost_status = "pending"
-            elif runs_missing_cost or any_pending:
+            if runs_missing_cost > 0 or runs_pending_cost > 0:
                 cost_status = "partial"
             else:
                 cost_status = "available"
-            cost_estimated = any(bool(item.get("cost_estimated")) for item in priced)
+            cost_estimated = False
             model_calls = sum(item["model_calls"] for item in priced if item["model_calls"] is not None)
             usd = sum(item["usd"] for item in priced if item["usd"] is not None)
         return {

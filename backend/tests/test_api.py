@@ -379,19 +379,17 @@ def test_run_metrics_return_pending_estimate_when_spend_logs_are_missing(
     assert response.status_code == 200
     data = response.json()
     assert data["cost_status"] == "pending"
-    assert data["cost_estimated"] is True
-    assert data["cost_usd"] is not None
-    assert data["cost_usd"] > 0
-    assert data["usd"] == data["cost_usd"]
+    assert data["cost_estimated"] is False
+    assert data["cost_usd"] is None
+    assert data["usd"] is None
 
     metrics = client.get("/api/metrics", headers=AUTH)
     assert metrics.status_code == 200
     metrics_data = metrics.json()
     assert metrics_data["cost_status"] == "pending"
-    assert metrics_data["cost_estimated"] is True
-    assert metrics_data["cost_usd"] is not None
-    assert metrics_data["cost_usd"] > 0
-    assert metrics_data["usd"] == metrics_data["cost_usd"]
+    assert metrics_data["cost_estimated"] is False
+    assert metrics_data["cost_usd"] is None
+    assert metrics_data["usd"] is None
 
 
 def test_stale_missing_spend_logs_return_unknown_cost(api_factory, client_factory):

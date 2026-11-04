@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -20,6 +21,8 @@ from sqlalchemy.engine import Engine, make_url
 
 from anvil.api.config import normalize_database_url
 
+logger = logging.getLogger(__name__)
+
 _SPEND_LOGS = Table(
     "LiteLLM_SpendLogs",
     MetaData(),
@@ -34,8 +37,15 @@ class SpendTotals:
     usd: Decimal
 
 
-def ensure_spend_log_index(engine: Engine) -> None:
-    """Ensure the expression index on LiteLLM_SpendLogs(run_id) exists."""
+def ensure_spend_log_index(engine: Engine) -> bool:
+    """Ensure the expression index on LiteLLM_SpendLogs(run_id) exists.
+
+    Note: The SQLite branch is used only in automated tests; production uses
+    PostgreSQL with jsonb expression index.
+    """
+    if getattr(engine, "_spend_log_index_ensured", False):
+        return True
+
     dialect = engine.url.get_backend_name()
     try:
         with engine.begin() as conn:
@@ -53,9 +63,11 @@ def ensure_spend_log_index(engine: Engine) -> None:
                         'ON "LiteLLM_SpendLogs" (CAST(JSON_EXTRACT(JSON_QUOTE(JSON_EXTRACT(metadata, \'$.\"spend_logs_metadata\"\')), \'$.\"run_id\"\') AS VARCHAR));'
                     )
                 )
-    except Exception:
-        # Table might not exist yet if LiteLLM has not initialized
-        pass
+        setattr(engine, "_spend_log_index_ensured", True)
+        return True
+    except Exception as exc:
+        logger.warning("Failed to create LiteLLM spend logs index: %s", exc)
+        return False
 
 
 def estimate_cost(
@@ -107,10 +119,17 @@ def load_litellm_spend_totals(engine: Engine, run_ids: list[UUID]) -> dict[str, 
     statement = build_spend_totals_statement(run_ids)
     with engine.connect() as connection:
         rows = connection.execute(statement).mappings()
-        return {
+        totals = {
             row["run_id"]: SpendTotals(
                 model_calls=int(row["model_calls"]),
                 usd=Decimal(str(row["usd"])),
             )
             for row in rows
         }
+
+    # If the index was not yet created at engine init (e.g. LiteLLM initialized lazily),
+    # retry lazily on successful query.
+    if not getattr(engine, "_spend_log_index_ensured", False):
+        ensure_spend_log_index(engine)
+
+    return totals

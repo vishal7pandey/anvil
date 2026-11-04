@@ -191,3 +191,4 @@ def test_full_name_accepts_name_owner_name_and_sandbox_path(given):
 def test_full_name_refuses_empty():
     with pytest.raises(ToolError, match="empty repo"):
         github.full_name("  ")
+

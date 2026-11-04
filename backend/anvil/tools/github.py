@@ -155,6 +155,9 @@ def github_checks(repo: str, pr: int, wait_seconds: int = 900, poll_seconds: int
         if result["state"] in {"success", "failure"} or time.monotonic() >= deadline:
             break
         time.sleep(poll_seconds)
+    if result["state"] == "none":
+        result["note"] = ("No CI checks ran on this PR. This is not a pass: the PR's base branch may have no "
+                          "CI, or CI did not start. Report it in the handoff instead of claiming CI is green.")
     return _check_state(name, pr, with_logs=True) if result["state"] == "failure" else result
 
 

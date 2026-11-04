@@ -49,16 +49,16 @@ def create_executor_from_environment() -> RunExecutor | None:
     from anvil.tools.errors import returning_errors
     from anvil.tools.evidence import handoff_note, publish_evidence
     from anvil.tools.git_push import make_git_push
-    from anvil.tools.github import GITHUB_TOOLS, github_open_pr
-    from anvil.tools.jira import JIRA_TOOLS, jira_comment, jira_set_labels
+    from anvil.tools.github import github_open_pr
+    from anvil.tools.jira import jira_comment, jira_set_labels
+    from anvil.tools.run_scope import run_tools, verify_outcome
 
     def tools_factory(sandbox: Any, run: dict[str, Any]) -> list[Any]:
         tools = [
-            *JIRA_TOOLS,
-            *GITHUB_TOOLS,
+            # Repo, base branch and ticket come from the run, never from the agent (ANVIL-32).
+            *run_tools(run, sandbox),
             *CONFLUENCE_TOOLS,
             publish_evidence,
-            make_git_push(sandbox),
             make_web_search(blocklist=TC_BLOCKLIST, run_id=run["run_id"]),
         ]
         # A ToolError goes back to the model instead of failing the run (ANVIL-19, run c820a577).
@@ -117,4 +117,5 @@ def create_executor_from_environment() -> RunExecutor | None:
         tools_factory=tools_factory,
         push_hook=push_hook,
         report_hook=report_hook,
+        verify_hook=verify_outcome,
     )

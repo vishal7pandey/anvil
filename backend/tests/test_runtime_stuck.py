@@ -116,3 +116,14 @@ async def test_push_failure_does_not_block_handoff():
     events = await collect(ex.start(RUN, "x"))
     assert events[-1]["data"]["status"] == "handoff"
     assert any("WIP push failed" in e["data"].get("text", "") for e in events if e["type"] == "message")
+
+
+def test_same_failure_with_code_changes_in_between_is_iteration_not_stuck():
+    d = StuckDetector(Budgets())
+    d.note_diff_state("v0")
+    for state in ("v1", "v2", "v3"):  # edit, build fails the same way, edit again...
+        assert d.observe(exec_ev("make", 2)) is None
+        d.note_diff_state(state)
+    assert d.observe(exec_ev("make", 2)) is None
+    d.observe(exec_ev("make", 2))  # ...but nothing changed between these three: stuck
+    assert "failed 3 times" in (d.observe(exec_ev("make", 2)) or "")

@@ -63,12 +63,13 @@ A ticket describes wrong behaviour (crash, wrong return value, leak, hang) in an
     ```
     Write the message to a file and use `git commit -F <file>`: `\n` inside `git commit -m "..."`
     is not a newline, it ends up as literal text on one line.
-11. **Push and PR**, in this order: commit, then `git_push(repo="<repo name>", ...)` (e.g. `rtems`,
-    not the checkout path), then `github_open_pr` with the PR body below (it fails until the branch
-    is pushed). Then
-    `github_checks`; if CI fails, read the log, fix, commit, push (max 3 rounds), else `handoff`.
-12. **Evidence.** `jira_comment` on the ticket with root cause, fix, tests, PR link and CI
-    status; label the ticket `anvil-in-review`.
+11. **Push and PR**, in this order: commit, then `git_push(branch=...)`, then `github_open_pr`
+    with the PR body below (it fails until the branch is pushed). The repo, the PR's base branch and
+    the ticket are fixed by the run; you don't pass them. Then `github_checks(pr)`; if CI fails,
+    read the log, fix, commit, push (max 3 rounds), else `handoff`. State `none` means no CI ran:
+    that is not a pass. The runtime checks the PR and its CI itself before the run counts as done.
+12. **Evidence.** `jira_comment` with root cause, fix, tests, PR link and CI status; label the
+    ticket `anvil-in-review` with `jira_set_labels(add=[...])`.
 
 ## PR body template
 ```

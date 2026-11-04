@@ -53,6 +53,9 @@ PushHook = Callable[[DockerSandbox, dict[str, Any], str], str | None]
 # report(run, handoff) where handoff = {note, wip_branch, url, sandbox, markdown}. The host side
 # formats its own Jira text (devin's evidence.handoff_note); markdown is a ready-made fallback.
 ReportHook = Callable[[dict[str, Any], dict[str, Any]], None]
+# verify(run, sandbox) -> problems. Host-side check of a finished run's result (ANVIL-32): an empty list
+# means verified; anything else turns the run into a handoff that says what could not be verified.
+VerifyHook = Callable[[dict[str, Any], Any], list[str]]
 PROGRESS_TOOLS = {"write_file", "edit_file", "execute"}
 AgentFactory = Callable[..., Any]
 
@@ -103,8 +106,10 @@ class DeepAgentExecutor:
     def __init__(self, *, image: str | None = None, db_url: str | None = None,
                  tools_factory: ToolsFactory | None = None, agent_factory: AgentFactory = build_agent,
                  docker_client: docker.DockerClient | None = None, budgets: Budgets | None = None,
-                 push_hook: PushHook | None = None, report_hook: ReportHook | None = None) -> None:
+                 push_hook: PushHook | None = None, report_hook: ReportHook | None = None,
+                 verify_hook: VerifyHook | None = None) -> None:
         self.budgets = budgets
+        self.verify_hook = verify_hook
         self.push_hook = push_hook
         self.report_hook = report_hook
         self.image = image or os.environ.get("ANVIL_SANDBOX_IMAGE", DEFAULT_IMAGE)
@@ -287,13 +292,39 @@ class DeepAgentExecutor:
             async for ev in self._handoff(run, sandbox, mapper, path, note, stuck):
                 yield ev
         elif not waiting:
-            yield mapper.event("run.status", {"status": "succeeded"})
+            problems = await self._verify(run, sandbox)
+            if not problems:
+                yield mapper.event("run.status", {"status": "succeeded"})
+                return
+            # The agent finished, but its result does not check out: a human takes over, told exactly why.
+            # Its own branch and PR are already pushed, so no WIP branch is made.
+            note = {"goal": run.get("jira_key") or "see the run's first message",
+                    "tried": "The agent finished and reported its work as done.",
+                    "evidence": "\n".join(f"- {p}" for p in problems),
+                    "hypothesis": "The result could not be verified, so the run is not counted as succeeded.",
+                    "next_step": "Check the PR and its CI; fix what is listed above, or re-run with guidance."}
+            async for ev in self._handoff(run, sandbox, mapper, path, note,
+                                          "the result could not be verified: " + "; ".join(problems),
+                                          push_wip=False):
+                yield ev
+
+    async def _verify(self, run: dict[str, Any], sandbox: DockerSandbox) -> list[str]:
+        if not self.verify_hook:
+            return []
+        try:
+            return list(await asyncio.to_thread(self.verify_hook, run, sandbox))
+        except Exception as exc:  # noqa: BLE001 - an unverifiable result is not a success
+            return [f"the outcome check itself failed ({type(exc).__name__}: {exc})"]
 
     # -- handoff ---------------------------------------------------------------------------
 
     @staticmethod
     def diff_state(sandbox: DockerSandbox, path: str) -> str:
-        res = sandbox.execute(f"cd {shlex.quote(path)} 2>/dev/null && (git diff HEAD; git status --porcelain) | sha1sum", timeout=60)
+        # Tracked edits, plus the content of untracked files that aren't ignored (a rewritten config.ini
+        # is progress; build/ output is gitignored and is not).
+        res = sandbox.execute(
+            f"cd {shlex.quote(path)} 2>/dev/null && (git diff HEAD; git status --porcelain; "
+            f"git ls-files -o --exclude-standard -z | xargs -0 -r sha1sum) | sha1sum", timeout=60)
         return res.output.strip()[:40]
 
     @staticmethod
@@ -317,22 +348,25 @@ class DeepAgentExecutor:
                              "re-run with more guidance or take over on the WIP branch."}
 
     async def _handoff(self, run: dict[str, Any], sandbox: DockerSandbox, mapper: EventMapper, path: str,
-                       note: dict[str, str], reason: str | None) -> AsyncIterator[dict[str, Any]]:
+                       note: dict[str, str], reason: str | None, *, push_wip: bool = True) -> AsyncIterator[dict[str, Any]]:
         if reason:
             yield mapper.event("message", {"role": "system", "text": f"Stopping and handing off: {reason}."})
-        wip = f"{work_branch(run)}-wip"
-        key = run.get("jira_key") or "ANVIL"
-        message = f"{key}: WIP handoff (Anvil run {run['run_id']})"
-        commit = await asyncio.to_thread(sandbox.execute, (
-            f"cd {shlex.quote(path)} && git add -A && git commit -q --no-verify --allow-empty -m {shlex.quote(message)} "
-            f"&& git branch -f {shlex.quote(wip)} HEAD && git rev-parse HEAD"), timeout=120)
+        wip = f"{work_branch(run)}-wip" if push_wip else work_branch(run)
         url = None
-        if commit.exit_code == 0 and self.push_hook:
-            try:
-                url = await asyncio.to_thread(self.push_hook, sandbox, run, wip)
-            except Exception as exc:  # noqa: BLE001 - handoff must still complete
-                yield mapper.event("message", {"role": "system", "text": f"WIP push failed: {exc}"})
-        branch_line = f"WIP branch: `{wip}`" + (f" ({url})" if url else " (not pushed)")
+        if push_wip:
+            key = run.get("jira_key") or "ANVIL"
+            message = f"{key}: WIP handoff (Anvil run {run['run_id']})"
+            commit = await asyncio.to_thread(sandbox.execute, (
+                f"cd {shlex.quote(path)} && git add -A && git commit -q --no-verify --allow-empty -m {shlex.quote(message)} "
+                f"&& git branch -f {shlex.quote(wip)} HEAD && git rev-parse HEAD"), timeout=120)
+            if commit.exit_code == 0 and self.push_hook:
+                try:
+                    url = await asyncio.to_thread(self.push_hook, sandbox, run, wip)
+                except Exception as exc:  # noqa: BLE001 - handoff must still complete
+                    yield mapper.event("message", {"role": "system", "text": f"WIP push failed: {exc}"})
+            branch_line = f"WIP branch: `{wip}`" + (f" ({url})" if url else " (not pushed)")
+        else:
+            branch_line = "The agent's own branch and PR are as it pushed them."
         markdown = "\n\n".join([
             "**Anvil handed this task back to a human.**",
             f"**Goal:** {note.get('goal')}",

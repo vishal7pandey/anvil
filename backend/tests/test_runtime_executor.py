@@ -250,3 +250,21 @@ async def test_start_reports_failed_setup_for_malicious_repo():
     events = await collect(Ex(image="unused").start({**RUN, "repo": "x/$(id)"}, "go"))
     assert events[-1]["data"]["status"] == "failed"
     assert "invalid repo" in events[-2]["data"]["text"]
+
+
+async def test_unverified_result_becomes_a_handoff_without_a_wip_branch():
+    msg = AIMessage(content="done")
+    items = [((), "updates", {"model": {"messages": [msg]}})]
+    pushed = []
+    ex = OfflineExecutor(agent_factory=factory_for(items),
+                         verify_hook=lambda run, sb: ["CI on PR #10 is `none` (failing: -), not green"],
+                         push_hook=lambda sb, run, wip: pushed.append(wip))
+    events = await collect(ex.start(RUN, "fix it"))
+    assert events[-1]["data"]["status"] == "handoff" and not pushed
+    assert any("could not be verified" in str(e["data"].get("text", "")) for e in events)
+
+    ok = OfflineExecutor(agent_factory=factory_for(items), verify_hook=lambda run, sb: [])
+    assert (await collect(ok.start(RUN, "fix it")))[-1]["data"]["status"] == "succeeded"
+
+    broken = OfflineExecutor(agent_factory=factory_for(items), verify_hook=lambda run, sb: 1 / 0)
+    assert (await collect(broken.start(RUN, "fix it")))[-1]["data"]["status"] == "handoff"

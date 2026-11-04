@@ -24,6 +24,8 @@ def test_execute_call_and_result_become_tool_and_sandbox_events():
                      response_metadata={"model_name": "anvil-main"})
     ev = m.map(((), "updates", {"model": {"messages": [call]}}))
     assert types_of(ev) == ["tool.call", "usage"]
+    latency = ev[1]["data"].pop("latency_ms")  # ANVIL-83: model step time, measured by the mapper
+    assert isinstance(latency, int) and latency >= 0
     assert ev[1]["data"] == {"model_alias": "anvil-main", "input_tokens": 10, "output_tokens": 5}
 
     result = ToolMessage(content="build ok\n", tool_call_id="c1", name="execute", artifact={"exit_code": 0})

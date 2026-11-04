@@ -92,6 +92,8 @@ class DockerSandbox(BaseSandbox):
         # runs, cleared for the handoff. Without it one long command overran the 45-min budget by
         # 16 min (ANVIL-41), because the budget was only checked between tool calls.
         self.deadline: float | None = None
+        # (command, duration, timed_out) per execute, taken by the executor for sandbox.exec events.
+        self.exec_log: list[dict] = []
 
     # -- lifecycle -------------------------------------------------------------------------
 
@@ -178,11 +180,23 @@ class DockerSandbox(BaseSandbox):
         if truncated:
             raw = raw[-MAX_OUTPUT_BYTES:]  # keep the tail: build errors are at the end
         output = raw.decode("utf-8", errors="replace")
-        if result.exit_code == TIMEOUT_EXIT_CODE and effective and time.monotonic() - started >= effective:
+        elapsed = time.monotonic() - started
+        timed_out = bool(result.exit_code == TIMEOUT_EXIT_CODE and effective and elapsed >= effective)
+        if timed_out:
             output += f"\n[anvil] command timed out after {effective}s"
             if effective != requested:
                 output += " (the run's time budget ended)"
+        # Exact timing for the run report (ANVIL-83); the executor attaches it to the sandbox.exec event.
+        self.exec_log.append({"cmd": command, "duration_s": round(elapsed, 3), "timed_out": timed_out})
         return ExecuteResponse(output=output, exit_code=result.exit_code, truncated=truncated)
+
+    def take_timing(self, command: str) -> dict | None:
+        """Pop the oldest recorded timing for `command` (tool calls may run in parallel)."""
+        for i, entry in enumerate(self.exec_log):
+            if entry["cmd"] == command:
+                del self.exec_log[i]
+                return {"duration_s": entry["duration_s"], "timed_out": entry["timed_out"]}
+        return None
 
     def upload_tar(self, parent: str, data: bytes) -> None:
         """Extract a tar under `parent`, owned by the sandbox user (ANVIL-55: a local source's .git).

@@ -127,3 +127,8 @@ def test_same_failure_with_code_changes_in_between_is_iteration_not_stuck():
     assert d.observe(exec_ev("make", 2)) is None
     d.observe(exec_ev("make", 2))  # ...but nothing changed between these three: stuck
     assert "failed 3 times" in (d.observe(exec_ev("make", 2)) or "")
+
+
+def test_tool_call_guard_is_a_runaway_guard_not_the_budget():
+    # 150 stopped TC1 rehearsals mid-work at 15-20 min (ANVIL-32); time and no-progress bound runs.
+    assert Budgets().max_tool_calls >= 400

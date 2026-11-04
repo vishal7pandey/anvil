@@ -29,8 +29,8 @@ from anvil.runtime.stuck import Budgets, StuckDetector
 
 GITHUB_BASE = os.environ.get("ANVIL_GIT_BASE", "https://github.com")
 # Graph supersteps, not tool calls: one tool call costs ~3 (model, tools, middleware) and subagents
-# add their own. The tool-call budget (150) is the real bound, so this must sit well above it.
-RECURSION_LIMIT = int(os.environ.get("ANVIL_RECURSION_LIMIT", "1000"))
+# add their own. A safety net only: it must sit well above the tool-call guard (Budgets.max_tool_calls).
+RECURSION_LIMIT = int(os.environ.get("ANVIL_RECURSION_LIMIT", "2000"))
 SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
 SANDBOX_SKILLS = "/workspace/.anvil/skills/"
 
@@ -177,7 +177,9 @@ class DeepAgentExecutor:
         sandbox.set_network("bridge")  # needed for the first clone; dropped again below for offline runs
         res = sandbox.execute(script, timeout=1800)
         if res.exit_code != 0:
-            raise RuntimeError(f"checkout failed: {res.output[-1500:]}")
+            # Say what failed even when the command printed nothing (rehearsal 3e7db2f9: "checkout failed: ").
+            raise RuntimeError(f"checkout failed (exit {res.exit_code}): "
+                               f"{res.output[-1500:].strip() or 'no output'}")
         found = dict(re.findall(r"^(BASE_SHA|HEAD_SHA)=(\w+)$", res.output, re.M))
         # Answer-leak control: --single-branch only limits the *default* fetch; with network the agent
         # could still `git fetch origin main` and read a withheld fix. Offline runs (the default) lose
@@ -246,6 +248,9 @@ class DeepAgentExecutor:
                       graph_input: Any) -> AsyncIterator[dict[str, Any]]:
         cancel = self._cancel.setdefault(run["run_id"], asyncio.Event())
         handoffs: list[dict[str, str]] = []
+        # Commands run in the run's repo checkout, for the agent and its subagents alike.
+        if hasattr(sandbox, "set_workdir"):
+            sandbox.set_workdir(repo_path(run["repo"]))
         checkpointer, store = await self._persistence()
         config = RunConfig(run_id=run["run_id"], repo=run["repo"], mode=run.get("mode", "interactive"),
                            merge_policy=run.get("merge_policy", "human"))

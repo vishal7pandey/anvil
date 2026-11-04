@@ -22,7 +22,11 @@ def _env_int(name: str, default: int) -> int:
 
 @dataclass
 class Budgets:
-    max_tool_calls: int = field(default_factory=lambda: _env_int("ANVIL_MAX_TOOL_CALLS", 150))
+    # Not a cost: a runaway guard only. Wall time (enforced inside commands), tokens and the
+    # no-progress rule are the real bounds. At 150 it stopped two TC1 rehearsals (ANVIL-32, 170c75eb
+    # and 750cffd7) after 15-20 min, with 25-30 min of the time budget left, while they were still
+    # building and testing: cheap reads (ls, grep, read_file) made up two thirds of the calls.
+    max_tool_calls: int = field(default_factory=lambda: _env_int("ANVIL_MAX_TOOL_CALLS", 400))
     # Cumulative tokens grow with context (every call resends it): the TC2 dry run hit 3M at call 67
     # while progressing, for ~$1 thanks to prompt caching. Wall time and tool calls bound real cost.
     max_tokens: int = field(default_factory=lambda: _env_int("ANVIL_MAX_TOKENS", 12_000_000))

@@ -11,6 +11,8 @@ import {
   createSession,
   listSessions,
   listApprovals,
+  listRunsForSession,
+  getRunTimeline,
   sendMessage,
   subscribeToEvents,
   decideApproval,
@@ -61,6 +63,7 @@ export default function App() {
   const [activeView, setActiveView] = useState<AppView>('chat');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [approvalError, setApprovalError] = useState<string | null>(null);
+  const [runsLoadError, setRunsLoadError] = useState<string | null>(null);
 
   const refreshApprovals = useCallback(async () => {
     setApprovals(await listApprovals());
@@ -88,6 +91,52 @@ export default function App() {
       eventSourceRef.current = null;
     };
   }, [refreshApprovals]);
+
+  // Reopen a session: load its runs (newest first), show the latest run's
+  // timeline in the chat, and attach the live stream if the run is still active.
+  useEffect(() => {
+    if (!selectedSession) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const runs = await listRunsForSession(selectedSession.id);
+        if (cancelled) return;
+        if (runs.length > 0) {
+          const latest = runs[0];
+          setCurrentRun(latest);
+          const timeline = await getRunTimeline(latest.id);
+          if (cancelled) return;
+          setEvents(timeline);
+          const active =
+            latest.status === 'running' ||
+            latest.status === 'queued' ||
+            latest.status === 'waiting_approval';
+          if (active) {
+            const unsubscribe = subscribeToEvents(latest.id, (event) => {
+              setEvents((prev) => [...prev, event]);
+              if (event.type === 'run.status') {
+                const status = (event.data as { status?: string }).status;
+                if (isRunStatus(status)) {
+                  setCurrentRun((prev) =>
+                    prev ? { ...prev, status } : prev
+                  );
+                }
+              }
+            });
+            if (!cancelled) eventSourceRef.current = unsubscribe;
+          }
+        }
+      } catch (err: unknown) {
+        if (!cancelled)
+          setRunsLoadError(
+            err instanceof Error ? err.message : String(err)
+          );
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSession]);
 
   const resetSessionRun = useCallback(() => {
     eventSourceRef.current?.();
@@ -117,6 +166,7 @@ export default function App() {
     }
     setCurrentRun(null);
     setEvents([]);
+    setRunsLoadError(null);
     setSelectedSession(session);
   }, [selectedSession]);
 
@@ -231,6 +281,11 @@ export default function App() {
       <main className="flex-1 min-h-0 flex overflow-hidden">
         {activeView === 'chat' && selectedSession && (
           <>
+            {runsLoadError && (
+              <p className="text-xs text-red-700 px-4 py-2 bg-red-50 border border-red-200">
+                Could not load runs: {runsLoadError}
+              </p>
+            )}
             <SessionList
               sessions={sessions}
               selected={selectedSession}

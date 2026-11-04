@@ -52,6 +52,14 @@ export async function listRuns(): Promise<Run[]> {
   return res.json();
 }
 
+export async function listRunsForSession(sessionId: string): Promise<Run[]> {
+  const res = await fetch(`${API_BASE}/sessions/${sessionId}/runs`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`Failed to list runs: ${res.statusText}`);
+  return res.json();
+}
+
 export async function getRunTimeline(runId: string): Promise<StreamEvent[]> {
   const res = await fetch(`${API_BASE}/runs/${runId}/timeline`, { headers: authHeaders() });
   if (!res.ok) throw new Error(`Failed to get run timeline: ${res.statusText}`);

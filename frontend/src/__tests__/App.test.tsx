@@ -37,6 +37,10 @@ function mockSessions(list: unknown[]) {
     ok: true,
     json: async () => [],
   } as Response);
+  vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+    ok: true,
+    json: async () => [],
+  } as Response);
 }
 
 describe('App', () => {
@@ -79,6 +83,7 @@ describe('App', () => {
     fetchMock
       .mockResolvedValueOnce({ ok: true, json: async () => [session, other] } as Response)
       .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
       .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'r1', status: 'running' }) } as Response)
       .mockImplementationOnce(async (_url, init) => ({
         ok: true,
@@ -111,7 +116,7 @@ describe('App', () => {
 
     fireEvent.click(screen.getAllByText('RTEMS-2 lwIP upgrade')[0]);
     expect(screen.queryByText('a-1')).not.toBeInTheDocument();
-    const streamInit = fetchMock.mock.calls[3][1];
+    const streamInit = fetchMock.mock.calls[4][1];
     expect(streamInit?.signal?.aborted).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: /Approvals/ }));
     expect(await screen.findByText('a-1')).toBeInTheDocument();

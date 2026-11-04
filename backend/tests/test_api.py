@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 from datetime import datetime, timedelta
 from threading import Event
 from decimal import Decimal
@@ -224,6 +224,60 @@ def test_authentication_and_session_crud(api_factory, client_factory):
     assert listed.status_code == 200
     assert [session["id"] for session in listed.json()] == [session_id]
     assert listed.json()[0]["repo"] == "example/repo"
+
+
+def test_list_runs_for_session_newest_first(api_factory, client_factory):
+    app = api_factory(executor=SuccessfulExecutor())
+    client = client_factory(app)
+
+    session_id = create_session(client)
+
+    # Create three runs in the session
+    run_ids = []
+    for i in range(3):
+        start = client.post(
+            f"/api/sessions/{session_id}/messages",
+            headers=AUTH,
+            json={"text": f"message {i}"},
+        )
+        assert start.status_code == 202
+        run_ids.append(start.json()["id"])
+
+    # List runs for the session: newest first
+    runs = client.get(f"/api/sessions/{session_id}/runs", headers=AUTH)
+    assert runs.status_code == 200
+    body = runs.json()
+    assert len(body) == 3
+    assert [r["id"] for r in body] == [run_ids[2], run_ids[1], run_ids[0]]
+    assert all(r["session_id"] == session_id for r in body)
+
+
+def test_list_runs_for_session_404_for_unknown_session(api_factory, client_factory):
+    app = api_factory()
+    client = client_factory(app)
+
+    response = client.get(
+        "/api/sessions/11111111-1111-1111-1111-111111111111/runs", headers=AUTH
+    )
+    assert response.status_code == 404
+
+
+def test_list_runs_for_session_is_user_scoped(api_factory, client_factory):
+    app = api_factory(executor=SuccessfulExecutor())
+    client = client_factory(app)
+
+    # Session owned by the demo user
+    session_id = create_session(client)
+    client.post(
+        f"/api/sessions/{session_id}/messages",
+        headers=AUTH,
+        json={"text": "owned run"},
+    )
+
+    # A second client without the demo token cannot see the session's runs
+    other = {"Authorization": "Bearer wrong-token"}
+    response = client.get(f"/api/sessions/{session_id}/runs", headers=other)
+    assert response.status_code == 401
 
 
 def test_authentication_requires_configured_demo_token(client_factory):
@@ -922,3 +976,5 @@ def test_concurrent_first_requests_on_a_clean_db_do_not_race(api_factory, client
         statuses = list(pool.map(
             lambda _: client.get("/api/sessions", headers=AUTH).status_code, range(20)))
     assert statuses == [200] * 20
+
+

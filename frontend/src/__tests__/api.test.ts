@@ -8,6 +8,7 @@ import {
   getRunTimeline,
   listApprovals,
   listRuns,
+  listRunsForSession,
   subscribeToEvents,
   parseSse,
   listSessions,
@@ -320,5 +321,57 @@ describe('listSessions', () => {
     expect(globalThis.fetch).toHaveBeenCalledWith(`${baseUrl}/sessions`, {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${demoToken}` },
     });
+  });
+});
+
+describe('listRunsForSession', () => {
+  it('gets /sessions/{id}/runs with bearer auth', async () => {
+    const mockRuns: Run[] = [
+      {
+        id: 'r1',
+        session_id: 's1',
+        trigger: 'ui',
+        repo: 'vishal7pandey/rtems',
+        status: 'succeeded',
+        mode: 'autonomous',
+        network: 'offline',
+        base_ref: 'main',
+        jira_key: null,
+        base_sha: null,
+        branch: null,
+        sandbox_image_digest: null,
+        model_aliases: {},
+        skill_versions: {},
+        prompt_hash: null,
+        budgets: {},
+        started_at: null,
+        ended_at: null,
+        usd: 0,
+        input_tokens: 0,
+        output_tokens: 0,
+        human_touches: 0,
+        artifacts: [],
+        run_record: {},
+        cancel_requested_at: null,
+        error: null,
+        created_at: '2026-11-04T08:00:00Z',
+      },
+    ];
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockRuns,
+    } as Response);
+    await expect(listRunsForSession('s1')).resolves.toEqual(mockRuns);
+    expect(globalThis.fetch).toHaveBeenCalledWith(`${baseUrl}/sessions/s1/runs`, {
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${demoToken}` },
+    });
+  });
+
+  it('throws when response is not ok', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+      ok: false,
+      statusText: 'Not Found',
+    } as Response);
+    await expect(listRunsForSession('s1')).rejects.toThrow('Failed to list runs');
   });
 });

@@ -991,6 +991,32 @@ def create_app(
             )
         )
 
+    @app.get(
+        "/api/sessions/{session_id}/runs",
+        response_model=list[RunResponse],
+    )
+    def list_runs_for_session(
+        session_id: UUID,
+        limit: int = Query(default=50, ge=1, le=100),
+        db: DBSession = Depends(get_db),
+        user: User = Depends(_authenticated_user),
+    ) -> list[Run]:
+        session = db.scalar(
+            select(Session).where(Session.id == session_id, Session.user_id == user.id)
+        )
+        if session is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
+            )
+        return list(
+            db.scalars(
+                select(Run)
+                .where(Run.session_id == session_id)
+                .order_by(Run.created_at.desc())
+                .limit(limit)
+            )
+        )
+
     @app.post(
         "/api/sessions/{session_id}/messages",
         response_model=RunResponse,

@@ -2,7 +2,9 @@ import asyncio
 import hmac
 import json
 import logging
+import os
 import re
+from pathlib import Path
 from collections import Counter, defaultdict
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -31,6 +33,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.middleware.cors import CORSMiddleware
 
 from anvil.api.config import Settings, get_settings
+from anvil.logs import set_log_context
 from anvil.api.database import SessionFactory, create_session_factory, get_db
 from anvil.api.executor import RunExecutor
 from anvil.api.metrics import (
@@ -536,8 +539,11 @@ async def _execute_run(app: FastAPI, run_id: UUID, message: str) -> None:
     try:
         await run_in_threadpool(_mark_run_started, session_factory, run_id)
         run_payload = await run_in_threadpool(_load_run_payload, session_factory, run_id)
+        set_log_context(run_id=str(run_id))
         async for event in executor.start(run_payload, message):
             await run_in_threadpool(_persist_executor_event, session_factory, run_id, event)
+            if event.get("type") == "run.status":
+                logger.info("run %s status=%s", run_id, event.get("data", {}).get("status"))
             if (
                 event.get("type") == "run.status"
                 and event.get("data", {}).get("status") == "waiting_approval"
@@ -963,6 +969,9 @@ def create_app(
     start_intake_loop: bool = True,
 ) -> FastAPI:
     configured_settings = settings or get_settings()
+    from anvil.logs import configure_logging
+
+    configure_logging(Path(os.environ.get("ANVIL_LOGS_DIR") or Path(__file__).resolve().parents[3] / "logs"))
     configured_database_url = database_url or configured_settings.database_dsn
     engine, session_factory = create_session_factory(
         configured_database_url

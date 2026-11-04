@@ -281,10 +281,15 @@ class DeepAgentExecutor:
         return mapper
 
     async def start(self, run: dict[str, Any], message: str) -> AsyncIterator[dict[str, Any]]:
+        from anvil.logs import record_commands, set_log_context
+
+        set_log_context(run_id=run.get("run_id"), session_id=run.get("session_id"),
+                        agent=run.get("trigger", "").split(":")[0])
         mapper = self._mapper(run)
         yield mapper.event("run.status", {"status": "running"})
         try:
             sandbox = await asyncio.to_thread(self.sandbox_for, run)
+            record_commands(sandbox, run["run_id"])  # full output to private/runs/<id>/commands/ (ANVIL-84)
             checkout = await asyncio.to_thread(self.checkout, sandbox, run)
         except Exception as exc:  # noqa: BLE001 - surfaced to the user as a failed run
             yield mapper.event("message", {"role": "system", "text": f"Setup failed: {exc}"})

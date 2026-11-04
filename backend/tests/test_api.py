@@ -894,3 +894,17 @@ def test_events_drop_nul_bytes_postgres_jsonb_rejects():
 
     data = {"name": "grep", "output": "match\x00in binary", "list": ["a\x00b", 1, None], "n\x00k": True}
     assert _strip_nul(data) == {"name": "grep", "output": "matchin binary", "list": ["ab", 1, None], "nk": True}
+
+
+def test_anvil_interactive_label_starts_an_interactive_run(api_factory, client_factory):
+    # TC3 (ANVIL-50): a review's per-finding accept/reject gate is the interactive approval gate.
+    def candidates(*, max_results):
+        return [{"key": "RTEMS-3", "summary": "CRA review", "description": "Code base: main",
+                 "labels": ["anvil", "anvil-interactive"]}]
+
+    app = api_factory(executor=SuccessfulExecutor(), jira_candidates=candidates,
+                      jira_transition=lambda key, target: None, start_intake_loop=False)
+    client = client_factory(app)
+    run_id = client.post("/api/intake/jira/poll", headers=AUTH).json()["run_ids"][0]
+    run = client.get(f"/api/runs/{run_id}", headers=AUTH).json()
+    assert run["mode"] == "interactive" and run["network"] == "offline"

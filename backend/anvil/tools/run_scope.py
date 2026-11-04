@@ -43,8 +43,11 @@ def run_tools(run: dict[str, Any], sandbox: Any) -> list[Any]:
         """
         return github.github_checks(repo, pr, wait_seconds=wait_seconds, poll_seconds=poll_seconds)
 
-    def github_code_scanning_alerts(pr: int) -> list[dict[str, Any]]:
-        """Open code-scanning alerts (CodeQL, cppcheck, ...) on your PR, to fix before review."""
+    def github_code_scanning_alerts(pr: int | None = None) -> list[dict[str, Any]]:
+        """Open code-scanning alerts (CodeQL, cppcheck, ...) on your PR, to fix before review; without a
+        PR, the alerts on this run's base branch (the input for a review, e.g. a CRA assessment)."""
+        if pr is None:
+            return github.github_code_scanning_alerts(repo, branch=base)
         return github.github_code_scanning_alerts(repo, pr)
 
     def github_pr_state(pr: int, wait_seconds: int = 0, poll_seconds: int = 30) -> dict[str, Any]:

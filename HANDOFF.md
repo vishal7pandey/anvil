@@ -76,12 +76,14 @@ base:` line points at a local path runs fully offline.
 - `ANVIL_CONTEXT_WINDOW` — tokens of the model behind the gateway aliases. With it the agent
   summarizes older context at 85% of the window; without it, the 170k default. Each compaction
   emits a `context.compacted` run event (UI, logs, `python -m anvil.analyze <run_id>`).
-- Time guard: under a case's `as_of` boundary, KB documents dated after it are hidden, and
-  **undated** documents are hidden too (ANVIL-68) — so evidence written mid-run can't leak across
-  cases. `export-snapshot` skips `source="local"` pages unless you pass `--include-local`.
-- Shared locks: files in `C:\Dev\comms\locks\` serialize laptop-wide resources (e.g.
-  `rtems-build.lock` before a real RTEMS build). A file saying `agent: none` means *free* — the
-  software lock ignores it; a live `agent: <name>` means someone holds it.
+- Time guard: under a case's `as_of` boundary, KB documents dated after it are hidden — and
+  evidence written mid-run is dated *now* (later than `as_of`), so it falls under that rule.
+  Undated pages are hidden by a *second* rule (ANVIL-68). `export-snapshot` skips `source="local"`
+  pages unless you pass `--include-local`.
+- Shared locks: files under `ANVIL_LOCKS_DIR` (default `C:\Dev\comms\locks\` — on a fresh machine,
+  `git_push` creates it) serialize laptop-wide resources (e.g. `rtems-build.lock` before a real
+  RTEMS build). A file saying `agent: none` means *free* — the software lock ignores it; a live
+  `agent: <name>` means someone holds it.
 
 ## Known limits
 

@@ -11,12 +11,16 @@ import {
   createSession,
   listSessions,
   listApprovals,
+  listRunsForSession,
   getRun,
+  getRunTimeline,
   sendMessage,
   subscribeToEvents,
   decideApproval,
   cancelRun,
 } from './lib/api';
+
+const TERMINAL_STATUSES = new Set(['handoff', 'succeeded', 'failed', 'cancelled']);
 import SessionList from './components/SessionList';
 import ChatStream from './components/ChatStream';
 import NewSessionDialog from './components/NewSessionDialog';
@@ -62,33 +66,12 @@ export default function App() {
   const [activeView, setActiveView] = useState<AppView>('chat');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [approvalError, setApprovalError] = useState<string | null>(null);
+  const [runsLoadError, setRunsLoadError] = useState<string | null>(null);
 
   const refreshApprovals = useCallback(async () => {
     setApprovals(await listApprovals());
     setApprovalError(null);
   }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    listSessions()
-      .then((found) => {
-        if (cancelled) return;
-        setSessions(found);
-        setSelectedSession(found[0] ?? null);
-        setLoadError(null);
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) setLoadError(err instanceof Error ? err.message : String(err));
-      });
-    refreshApprovals().catch((err: unknown) => {
-      if (!cancelled) setApprovalError(err instanceof Error ? err.message : String(err));
-    });
-    return () => {
-      cancelled = true;
-      eventSourceRef.current?.();
-      eventSourceRef.current = null;
-    };
-  }, [refreshApprovals]);
 
   const resetSessionRun = useCallback(() => {
     eventSourceRef.current?.();
@@ -108,6 +91,71 @@ export default function App() {
     [resetSessionRun],
   );
 
+  // One event handler for live stream events — the same whether the run was started from this
+  // tab or reattached to when reopening a session (ANVIL-73).
+  const makeEventHandler = useCallback((run: Run, session: Session) => (event: StreamEvent) => {
+    setEvents((prev) => prev.some((e) => e.seq === event.seq) ? prev : [...prev, event]);
+
+    if (event.type === 'approval.request' && isApprovalRequestEvent(event.data)) {
+      const request: ApprovalRequest = {
+        ...event.data,
+        reason: typeof event.data.reason === 'string' ? event.data.reason : null,
+        agent: event.agent ?? 'main',
+      };
+      const approval: ApprovalInboxItem = {
+        ...request,
+        run_id: run.id,
+        session_id: session.id,
+        session_title: session.title,
+        repo: session.repo,
+        run_status: 'waiting_approval',
+        requested_at: event.ts,
+      };
+      setApprovals((previous) => (
+        previous.some((item) => item.approval_id === approval.approval_id)
+          ? previous
+          : [approval, ...previous]
+      ));
+    }
+
+    if (event.type === 'run.status') {
+      const status = event.data.status;
+      if (isRunStatus(status)) {
+        setCurrentRun((prev) => prev ? { ...prev, status } : prev);
+        // Re-fetch the run on terminal status to get updated cost_usd/usd
+        if (status === 'succeeded' || status === 'failed' || status === 'handoff' || status === 'cancelled') {
+          getRun(run.id).then((updated) => {
+            if (updated) setCurrentRun(updated);
+          }).catch(() => {});
+        }
+      }
+    }
+  }, []);
+
+  // Load a session's latest run: timeline into the chat, and if it is still active reattach the
+  // stream at the last seen seq so no event arrives twice (ANVIL-73).
+  const attachToRun = useCallback(async (session: Session) => {
+    try {
+      const runs = await listRunsForSession(session.id);
+      const latest = runs[0];   // the API lists newest first
+      if (!latest) {
+        setRunsLoadError(null);
+        return;
+      }
+      const timeline = await getRunTimeline(latest.id);
+      setCurrentRun(latest);
+      setEvents(timeline);
+      setRunsLoadError(null);
+      if (!TERMINAL_STATUSES.has(latest.status)) {
+        const lastSeq = timeline.length ? timeline[timeline.length - 1].seq : undefined;
+        eventSourceRef.current = subscribeToEvents(latest.id, makeEventHandler(latest, session),
+          { afterSeq: lastSeq });
+      }
+    } catch (err) {
+      setRunsLoadError(err instanceof Error ? err.message : String(err));
+    }
+  }, [makeEventHandler]);
+
   // A run belongs to its session: switching sessions must drop the old run's stream and state,
   // or the panels would show (and approve) another session's run.
   const handleSelectSession = useCallback((session: Session) => {
@@ -119,7 +167,32 @@ export default function App() {
     setCurrentRun(null);
     setEvents([]);
     setSelectedSession(session);
-  }, [selectedSession]);
+    void attachToRun(session);
+  }, [selectedSession, attachToRun]);
+
+  useEffect(() => {
+    let cancelled = false;
+    listSessions()
+      .then((found) => {
+        if (cancelled) return;
+        setSessions(found);
+        const first = found[0] ?? null;
+        setSelectedSession(first);
+        if (first) void attachToRun(first);   // reopening lands on the first session's run (ANVIL-73)
+        setLoadError(null);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : String(err));
+      });
+    refreshApprovals().catch((err: unknown) => {
+      if (!cancelled) setApprovalError(err instanceof Error ? err.message : String(err));
+    });
+    return () => {
+      cancelled = true;
+      eventSourceRef.current?.();
+      eventSourceRef.current = null;
+    };
+  }, [refreshApprovals, attachToRun]);
 
   const handleSendMessage = useCallback(
     async (text: string) => {
@@ -129,47 +202,10 @@ export default function App() {
       const run = await sendMessage(selectedSession.id, text);
       setCurrentRun(run);
       setEvents([]);
-      const unsubscribe = subscribeToEvents(run.id, (event) => {
-        setEvents((prev) => [...prev, event]);
-
-        if (event.type === 'approval.request' && isApprovalRequestEvent(event.data)) {
-          const request: ApprovalRequest = {
-            ...event.data,
-            reason: typeof event.data.reason === 'string' ? event.data.reason : null,
-            agent: event.agent ?? 'main',
-          };
-          const approval: ApprovalInboxItem = {
-            ...request,
-            run_id: run.id,
-            session_id: selectedSession.id,
-            session_title: selectedSession.title,
-            repo: selectedSession.repo,
-            run_status: 'waiting_approval',
-            requested_at: event.ts,
-          };
-          setApprovals((previous) => (
-            previous.some((item) => item.approval_id === approval.approval_id)
-              ? previous
-              : [approval, ...previous]
-          ));
-        }
-
-        if (event.type === 'run.status') {
-          const status = event.data.status;
-          if (isRunStatus(status)) {
-            setCurrentRun((prev) => prev ? { ...prev, status } : prev);
-            // Re-fetch the run on terminal status to get updated cost_usd/usd
-            if (status === 'succeeded' || status === 'failed' || status === 'handoff' || status === 'cancelled') {
-              getRun(run.id).then((updated) => {
-                if (updated) setCurrentRun(updated);
-              }).catch(() => {});
-            }
-          }
-        }
-      });
+      const unsubscribe = subscribeToEvents(run.id, makeEventHandler(run, selectedSession));
       eventSourceRef.current = unsubscribe;
     },
-    [selectedSession],
+    [selectedSession, makeEventHandler],
   );
 
   const handleApprove = useCallback(
@@ -233,6 +269,11 @@ export default function App() {
           </button>
         )}
       </header>
+      {runsLoadError && (
+        <p role="alert" className="bg-amber-50 px-6 py-1.5 text-xs text-amber-800 border-b border-amber-200">
+          Could not load the session's runs: {runsLoadError}
+        </p>
+      )}
       <main className="flex-1 min-h-0 flex overflow-hidden">
         {activeView === 'chat' && selectedSession && (
           <>

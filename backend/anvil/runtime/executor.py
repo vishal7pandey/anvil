@@ -28,6 +28,25 @@ from anvil.runtime.sandbox import DEFAULT_IMAGE, DockerSandbox, SandboxSpec
 from anvil.runtime.stuck import Budgets, StuckDetector
 
 GITHUB_BASE = os.environ.get("ANVIL_GIT_BASE", "https://github.com")
+# Submodule sources fetched from mirrors instead of hosts that can be down at checkout time:
+# "orig=mirror;orig=mirror", applied as git url.<mirror>.insteadOf <orig> in the sandbox. Default:
+# gitlab.rtems.org returned 500s and then timed out on rtems-lwip's rtems_waf submodule and failed
+# the first TC3 run's setup (ANVIL-50); RTEMS's official GitHub mirrors carry the pinned commits.
+GIT_URL_REWRITES = os.environ.get(
+    "ANVIL_GIT_URL_REWRITES", "https://gitlab.rtems.org/rtems/tools/=https://github.com/RTEMS/")
+
+
+def url_rewrites(spec: str = "") -> list[tuple[str, str]]:
+    """(original prefix, mirror prefix) pairs from an "orig=mirror;..." spec; https URLs only."""
+    pairs = []
+    for item in (spec or GIT_URL_REWRITES).split(";"):
+        if not item.strip():
+            continue
+        orig, _, mirror = item.strip().partition("=")
+        if not (orig.startswith("https://") and mirror.startswith("https://")):
+            raise ValueError(f"ANVIL_GIT_URL_REWRITES: '{item}' is not 'https://orig=https://mirror'")
+        pairs.append((orig, mirror))
+    return pairs
 # Graph supersteps, not tool calls: one tool call costs ~3 (model, tools, middleware) and subagents
 # add their own. A safety net only: it must sit well above the tool-call guard (Budgets.max_tool_calls).
 RECURSION_LIMIT = int(os.environ.get("ANVIL_RECURSION_LIMIT", "2000"))
@@ -170,7 +189,9 @@ class DeepAgentExecutor:
             f"git remote set-url origin {shlex.quote(url)}; "
             # Submodules come in while the sandbox still has network: vendored-component upgrades
             # (TC2: lwip-upstream) need the upstream project's tags once the sandbox is offline.
-            f"if [ -f .gitmodules ]; then git submodule update --init --quiet; fi; "
+            + "".join(f"git config --global url.{shlex.quote(m)}.insteadOf {shlex.quote(o)}; "
+                      for o, m in url_rewrites())
+            + f"if [ -f .gitmodules ]; then git submodule update --init --quiet; fi; "
             f"git switch --quiet {shlex.quote(branch)} 2>/dev/null || git switch --quiet -c {shlex.quote(branch)}; "
             f"echo BASE_SHA=$(git rev-parse origin/{shlex.quote(base)}); echo HEAD_SHA=$(git rev-parse HEAD)"
         )

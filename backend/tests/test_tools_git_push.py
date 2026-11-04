@@ -96,6 +96,25 @@ def test_acquire_lock_writes_owner_and_times_out(tmp_path, monkeypatch):
     assert not path.exists()
 
 
+def test_a_free_placeholder_lock_does_not_block(tmp_path, monkeypatch):
+    """The agents' manual protocol leaves `agent: none` files behind; they mean "free", not "held"."""
+    from anvil.tools.locks import acquire_lock
+
+    monkeypatch.setenv("ANVIL_LOCKS_DIR", str(tmp_path))
+    (tmp_path / "rtems-build.lock").write_text(
+        "agent: none\npurpose: rehearsals paused by owner\nsince: 2026-11-04 19:50\nnext: claude\n")
+    with acquire_lock("rtems-build", what="recipe proof", timeout=0, poll=0) as path:
+        assert path.read_text().startswith("anvil-runtime ")          # now really held
+        with pytest.raises(ToolError, match="still held"):
+            with acquire_lock("rtems-build", timeout=0, poll=0):
+                pass
+    # a lock a person holds by hand is still respected
+    (tmp_path / "network-heavy.lock").write_text("agent: devin\npurpose: crawling\n")
+    with pytest.raises(ToolError, match="still held"):
+        with acquire_lock("network-heavy", timeout=0, poll=0):
+            pass
+
+
 @pytest.mark.parametrize("branch", ["main", "feature/x", "anvil/../main", "anvil/x;rm -rf /", "anvil/main"])
 def test_refuses_unsafe_branches(setup, branch):
     with pytest.raises(ToolError, match="refused"):

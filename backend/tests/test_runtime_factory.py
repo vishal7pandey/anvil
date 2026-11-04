@@ -94,7 +94,9 @@ def test_deepagent_executor_receives_host_tools_and_hooks(
             tools_factory: Callable[..., list[Any]],
             push_hook: Callable[..., str],
             report_hook: Callable[..., None],
+            verify_hook: Callable[..., list[str]],
         ) -> None:
+            created["verify_hook"] = verify_hook
             created["db_url"] = db_url
             created["tools_factory"] = tools_factory
             created["push_hook"] = push_hook
@@ -147,19 +149,25 @@ def test_deepagent_executor_receives_host_tools_and_hooks(
     sandbox = object()
     jira_tools = created["tools_factory"](
         sandbox,
-        {"run_id": "jira-run", "jira_key": "RTEMS-1"},
+        {"run_id": "jira-run", "jira_key": "RTEMS-1", "repo": "owner/repo", "base_ref": "tc1/5776-base"},
     )
-    ui_tools = created["tools_factory"](sandbox, {"run_id": "ui-run"})
-    assert jira_tools[:4] == [
-        "jira_tool",
-        "github_tool",
-        "confluence_tool",
-        "publish_evidence_tool",
+    ui_tools = created["tools_factory"](sandbox, {"run_id": "ui-run", "repo": "owner/repo"})
+    names = [getattr(t, "__name__", t) for t in jira_tools]
+    # Outward tools are bound to the run (ANVIL-32): no repo/base/ticket parameter for the agent.
+    assert names == [
+        "git_push", "github_open_pr", "github_checks", "github_code_scanning_alerts", "github_pr_state",
+        "github_merge", "jira_get", "jira_search", "jira_create", "jira_comment", "jira_transition",
+        "jira_set_labels", "confluence_tool", "publish_evidence_tool", "web_search_tool",
     ]
-    assert callable(jira_tools[4])
-    assert jira_tools[5] == "web_search_tool"
-    assert ui_tools[:4] == jira_tools[:4]
-    assert ui_tools[5] == "web_search_tool"
+    ui_names = [getattr(t, "__name__", t) for t in ui_tools]
+    assert "jira_comment" not in ui_names and ui_names[-1] == "web_search_tool"  # no ticket, no ticket writes
+    jira_tools[1]("anvil/rtems-1", "RTEMS-1: fix", "body")  # github_open_pr(branch, title, body)
+    assert drafts.pop() == {"repo": "owner/repo", "branch": "anvil/rtems-1", "title": "RTEMS-1: fix",
+                            "base": "tc1/5776-base", "draft": False}
+    assert jira_tools[0]("anvil/rtems-1")["repo"] == "owner/repo"  # git_push(branch)
+    from anvil.tools.run_scope import verify_outcome
+
+    assert created["verify_hook"] is verify_outcome
     assert websearch_calls == [
         (("blocked.example",), "jira-run"),
         (("blocked.example",), "ui-run"),

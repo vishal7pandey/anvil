@@ -71,6 +71,10 @@ class StuckDetector:
         if state != self._diff_state:
             self._diff_state = state
             self._calls_since_progress = 0
+            # "Same command, same error" only means stuck if nothing changed in between. Rehearsal
+            # 30467063 and TC2 run 6 (ANVIL-32) were stopped while editing between builds that kept
+            # failing on the same last line: that is iteration, not a loop.
+            self.failures.clear()
 
     def observe(self, ev: dict[str, Any]) -> str | None:
         if self.reason:

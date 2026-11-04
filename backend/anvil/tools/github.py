@@ -11,7 +11,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from anvil.tools._atlassian import REPO_ENV
 from anvil.tools.errors import ToolError
 
-NO_CHECKS_GRACE_SECONDS = 180
 _OK = {"success", "neutral", "skipped"}
 
 
@@ -150,15 +149,10 @@ def github_checks(repo: str, pr: int, wait_seconds: int = 900, poll_seconds: int
     Returns state success|failure|pending|none, every check with its conclusion and link, and for
     failed GitHub Actions jobs the tail of the job log so you can fix the cause.
     """
-    name, started = full_name(repo), time.monotonic()
-    deadline = started + wait_seconds
+    name, deadline = full_name(repo), time.monotonic() + wait_seconds
     while True:
         result = _check_state(name, pr, with_logs=False)
         if result["state"] in {"success", "failure"} or time.monotonic() >= deadline:
-            break
-        # No check has registered after a few minutes: CI is not configured for this PR's base branch.
-        # Waiting the full 15 min cost rehearsal 6d9317d3 a third of its budget and then read as green.
-        if result["state"] == "none" and time.monotonic() - started >= NO_CHECKS_GRACE_SECONDS:
             break
         time.sleep(poll_seconds)
     if result["state"] == "none":
@@ -233,27 +227,3 @@ def github_merge(repo: str, pr: int, method: str = "squash") -> dict[str, Any]:
 
 
 GITHUB_TOOLS = [github_open_pr, github_checks, github_code_scanning_alerts, github_merge, github_pr_state]
-
-_open_pr = github_open_pr  # the inner function below shadows the name
-
-
-def bound_open_pr(base: str):
-    """`github_open_pr` with the base branch fixed by the run, not chosen by the agent.
-
-    Rehearsal 6d9317d3 (ANVIL-32) called github_open_pr without a base, so its PR targeted `main`
-    instead of the case base branch: no CI ran, and on a bug-replay mirror `main` holds the withheld fix.
-    """
-
-    def github_open_pr(repo: str, branch: str, title: str, body: str, draft: bool = False) -> dict[str, Any]:
-        """Open a pull request from an `anvil/...` branch into this run's base branch (or return the open one).
-
-        Call git_push first. Title must start with the Jira key.
-        """
-        return _open_pr(repo, branch, title, body, base=base, draft=draft)
-
-    return github_open_pr
-
-
-def agent_github_tools(base: str) -> list:
-    """The GitHub tools an agent gets for a run whose work targets `base`."""
-    return [bound_open_pr(base) if t is github_open_pr else t for t in GITHUB_TOOLS]

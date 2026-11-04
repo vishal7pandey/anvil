@@ -192,25 +192,3 @@ def test_full_name_refuses_empty():
     with pytest.raises(ToolError, match="empty repo"):
         github.full_name("  ")
 
-
-@respx.mock
-def test_agent_open_pr_targets_the_run_base_branch_not_main():
-    respx.get(f"{API}/pulls").respond(json=[])
-    respx.get(f"{API}/branches/anvil%2Frtems-1").respond(json={"name": "anvil/rtems-1"})
-    post = respx.post(f"{API}/pulls").respond(201, json=PR)
-    tools = github.agent_github_tools("tc1/5776-base")
-    open_pr = next(t for t in tools if t.__name__ == "github_open_pr")
-    assert open_pr is not github.github_open_pr and len(tools) == len(github.GITHUB_TOOLS)
-    assert "base" not in open_pr.__code__.co_varnames[: open_pr.__code__.co_argcount]  # agent can't choose
-    open_pr("rtems", "anvil/rtems-1", "RTEMS-1: fix", "body")
-    assert json.loads(post.calls[0].request.content)["base"] == "tc1/5776-base"
-
-
-@respx.mock
-def test_checks_with_no_ci_return_early_with_a_note(monkeypatch):
-    monkeypatch.setattr(github, "NO_CHECKS_GRACE_SECONDS", 0)
-    respx.get(f"{API}/pulls/7").respond(json=PR)
-    respx.get(f"{API}/commits/abc/check-runs").respond(json={"check_runs": []})
-    respx.get(f"{API}/commits/abc/status").respond(json={"statuses": []})
-    out = github.github_checks("rtems", 7, wait_seconds=900)
-    assert out["state"] == "none" and "not a pass" in out["note"]

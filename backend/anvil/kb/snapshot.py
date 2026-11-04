@@ -26,7 +26,7 @@ from sqlalchemy import select, text
 
 from .chunking import content_hash
 from .models import kb_chunks, kb_documents
-from .store import KBStore, _format_vector
+from .store import KBStore, _created_at_from_metadata, _format_vector
 
 log = logging.getLogger(__name__)
 
@@ -144,6 +144,7 @@ def _flush(store: KBStore, pending: list[tuple[dict, list[str]]], report: Import
                 kb_documents.insert().values(
                     source=doc["source"], external_id=doc["external_id"], title=doc["title"], url=doc["url"],
                     content_sha256=doc["content_sha256"], doc_metadata=doc["metadata"] or {},
+                    created_at=_created_at_from_metadata(doc["metadata"]),
                 ).returning(kb_documents.c.id)
             ).scalar_one()
             rows = [{

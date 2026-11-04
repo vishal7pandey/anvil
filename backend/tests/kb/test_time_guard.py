@@ -159,3 +159,31 @@ def test_ingest_writes_created_at_from_metadata(store, clean_tables):
             text("SELECT created_at FROM kb_documents WHERE external_id='6001'")
         ).scalar_one()
     assert created == datetime(2026, 10, 8, 22, 23, 52, tzinfo=timezone.utc)
+
+
+def test_snapshot_import_sets_created_at(store, clean_tables, tmp_path):
+    # Review fix: a KB loaded from data/kb must keep the time guard working (ANVIL-43).
+    import gzip
+    import hashlib
+    import json as js
+
+    from anvil.kb.snapshot import MANIFEST_FILE, SNAPSHOT_FILE, import_snapshot
+
+    lines = [
+        {"source": "gitlab-issue", "external_id": "rtems/rtos/rtems#6002", "title": "x",
+         "url": None, "content_sha256": content_hash("a"),
+         "metadata": {"created_at": "2026-10-08T22:23:52Z"}, "chunks": ["overflow body a"]},
+        {"source": "rtems-docs", "external_id": "d.rst", "title": "y", "url": None,
+         "content_sha256": content_hash("b"), "metadata": {}, "chunks": ["overflow body b"]},
+    ]
+    with gzip.open(tmp_path / SNAPSHOT_FILE, "wt", encoding="utf-8") as fh:
+        fh.writelines(js.dumps(line) + "\n" for line in lines)
+    (tmp_path / MANIFEST_FILE).write_text(
+        js.dumps({"sha256": hashlib.sha256((tmp_path / SNAPSHOT_FILE).read_bytes()).hexdigest()}))
+    report = import_snapshot(store, tmp_path)
+    assert report.documents_added == 2
+    with store.engine.connect() as conn:
+        rows = conn.execute(text(
+            "SELECT external_id, created_at FROM kb_documents ORDER BY external_id")).all()
+    assert rows[0].created_at == datetime(2026, 10, 8, 22, 23, 52, tzinfo=timezone.utc)
+    assert rows[1].created_at is None

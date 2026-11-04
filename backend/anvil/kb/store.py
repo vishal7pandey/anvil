@@ -62,9 +62,9 @@ class SearchHit:
     score: float
 
 
-def _doc_created_at(document: SourceDocument) -> datetime | None:
+def _created_at_from_metadata(metadata: dict | None) -> datetime | None:
     """The upstream creation time recorded by the crawler (ANVIL-43), or None."""
-    value = document.metadata.get("created_at")
+    value = (metadata or {}).get("created_at")
     if not value:
         return None
     if isinstance(value, datetime):
@@ -73,6 +73,11 @@ def _doc_created_at(document: SourceDocument) -> datetime | None:
         return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+def _doc_created_at(document: SourceDocument) -> datetime | None:
+    """The upstream creation time for an ingested document (ANVIL-43)."""
+    return _created_at_from_metadata(document.metadata)
 
 
 class KBStore:

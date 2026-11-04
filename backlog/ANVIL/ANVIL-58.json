@@ -1,0 +1,29 @@
+{
+  "key": "ANVIL-58",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Highest",
+  "summary": "Shareable KB with vectors: snapshot export/import that skips re-embedding",
+  "labels": [
+    "agent-devin",
+    "demo",
+    "friday",
+    "kb",
+    "offline",
+    "team-sync"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:36:42.300+0530",
+  "updated": "2026-11-04T21:12:04.327+0530",
+  "resolved": "2026-11-04T20:12:24.096+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Source: KB review 2026-11-04 (P3).\n\n**Today:** `data/kb` holds text and chunks only. Every machine re-embeds about 5M tokens through the gateway, which needs an OpenAI key and LiteLLM (est. 5-10 min, ~0.10 USD) before the first search. A from-scratch crawl takes 1.7 h or more, but the snapshot already avoids that.\n\n**Design (cleaner option from the review):**\n\n* `export-snapshot --with-vectors` writes the vectors next to the chunks;\n* the manifest records `embedding: {model, dim}`;\n* `import-snapshot` loads the vectors when the model matches, refuses when it doesn't, and still applies the leak guard;\n* the large file stays out of git and is shared via a drive, while the text-only snapshot stays in git.\n\n**Acceptance:**\n\n* importing on a machine with no gateway gives a working `kb_search` (the query embedding still needs the gateway; say so);\n* import time is measured;\n* the leak-guard tests still pass.\n",
+  "comments": [
+    {
+      "created": "2026-11-04T19:22:21.088+0530",
+      "body": "[devin] PR #73 up: https://github.com/vishal7pandey/anvil/pull/73 — export-snapshot --with-vectors writes kb-snapshot-vectors.jsonl.gz (per-chunk pgvector text keyed by content_sha256); manifest records {model, dim, sha256}; import loads vectors when model matches, refuses mismatch/missing/corrupt loudly, leak guard unchanged, text-only still re-embeds. Vectors file gitignored, shared out-of-band. 5 unit tests green. Caveat for SETUP: query embedding still needs the gateway.\n"
+    }
+  ]
+}

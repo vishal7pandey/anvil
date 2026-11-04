@@ -1,0 +1,20 @@
+{
+  "key": "ANVIL-64",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "web_search: allowlist of trusted domains per case/skill, not only a blocklist",
+  "labels": [
+    "security",
+    "team-sync"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:36:51.960+0530",
+  "updated": "2026-11-04T18:36:52.036+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Source: team sync 2026-11-04. An agent that can search anywhere can be steered by a planted page. The owner's direction: limit search to known sources.\n\n**Today:** `runtime/websearch.py` has a per-run **blocklist** (the answer-leak guard), and a result that touches a blocked domain is withheld whole.\n\n**Want:**\n\n* an **allowlist** declared host-side (case file or skill frontmatter; never by the agent), e.g. rtems.org, docs.rtems.org, lists.rtems.org, savannah.nongnu.org (lwIP), osv.dev, nvd.nist.gov, eur-lex.europa.eu (CRA);\n* results whose sources fall outside the list are dropped, with a note to the agent;\n* the blocklist still applies on top.\n\n**Acceptance:** tests for allowed, outside the list, and blocked results; TC2 and TC3 declare their lists.\n",
+  "comments": []
+}

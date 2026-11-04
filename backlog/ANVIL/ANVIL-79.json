@@ -1,0 +1,20 @@
+{
+  "key": "ANVIL-79",
+  "type": "Bug",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Metrics: spend-log lookup scans unindexed JSON and the API answers 503 while spend rows lag",
+  "labels": [
+    "api",
+    "dfmea"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:39:36.728+0530",
+  "updated": "2026-11-04T18:39:36.822+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Source: DFMEA 2026-11-04 (F10). Related: ANVIL-54 (the cost meter shows $0).\n\n**Problems:**\n\n* `load_litellm_spend_totals` filters `LiteLLM_SpendLogs` on `metadata->'spend_logs_metadata'->>'run_id'` with no expression index, so it's a sequential scan that grows with every call on the gateway.\n* The run and metrics endpoints return 503 while LiteLLM hasn't flushed spend rows (async batch), which breaks the dashboard during and right after a run.\n\n**Fix:**\n\n* Add the expression index in initdb / migration.\n* Never 503 for lagging spend: return `cost_status: \"pending\"` with an estimate from token counts, flagged as estimated.\n* Keep one cost source of truth with ANVIL-54.\n\n**Acceptance:**\n\n* a metrics query plan uses the index;\n* a test where token usage exists without spend rows returns 200 with `pending` plus an estimate.\n",
+  "comments": []
+}

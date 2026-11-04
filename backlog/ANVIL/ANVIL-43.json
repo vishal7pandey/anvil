@@ -1,7 +1,7 @@
 {
   "key": "ANVIL-43",
   "type": "Story",
-  "status": "To Do",
+  "status": "Done",
   "priority": "Medium",
   "summary": "Time-based leak guard: during an eval run, KB search hides documents created after the case's as_of date",
   "labels": [
@@ -11,10 +11,15 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-03T23:57:55.908+0530",
-  "updated": "2026-11-04T09:57:19.163+0530",
-  "resolved": null,
+  "updated": "2026-11-04T13:07:25.793+0530",
+  "resolved": "2026-11-04T13:07:25.785+0530",
   "links": [],
   "subtasks": [],
   "description": "[claude] Follow-up to ANVIL-38. Today the KB leak guard is a list of withheld issue/MR/commit IDs plus a content regex. That doesn't scale: a mailing-list thread or a later issue can discuss a fix without naming any listed ID. A bug-replay case already records `as_of` (when the fix landed). Anything created after that date is \"from the future\" for the case.\n\n## Design\n\n* Every KB document carries `created_at` in metadata:\n\n  * GitLab: issue/MR `created_at` (already stored).\n  * Mailing lists: the thread's first message date.\n  * rtems-docs: the file's first commit date, or the commit date of the ingested checkout.\n  * Confluence: created date.\n* `kb_search` gets an optional `before` (date). For a run whose ticket belongs to a case, the executor passes `case.as_of` (the run can be matched to its case by jira_key or base_ref). The agent cannot override it.\n* Keep the ID guard as a second layer.\n* Documents without a date: include them, but log a count of them per search, so gaps are visible.\n\n## Acceptance\n\n* Unit tests: a document dated after `as_of` is never returned with `before` set, and is returned without it.\n* Executor test: a run for RTEMS-1 searches with `before=2026-09-20`.\n* Backfill script for `created_at` on existing rows; counts posted here.\n\nOwner: claude. Size: M. No build lock needed. Do after ANVIL-39's crawl finishes.\n",
-  "comments": []
+  "comments": [
+    {
+      "created": "2026-11-04T11:26:00.298+0530",
+      "body": "[devin] PR #58 open: https://github.com/vishal7pandey/anvil/pull/58 - kb_documents.created_at (gitlab issues/MRs from crawler metadata, NULL=visible for docs/Confluence), backfill CLI ran on shared KB (7,071 rows), search(as_of) filters post-boundary docs in vec+fts CTEs (None = unchanged), make_kb_search binds the case host-side from run case_id/jira_key; kb_search now actually registered as a model tool. 6 new tests + 56 suite pass; evaluate_tc4_acceptance 3/3 at rank 1 on 7,573 docs/14,654 chunks.\n"
+    }
+  ]
 }

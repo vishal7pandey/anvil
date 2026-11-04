@@ -1,0 +1,26 @@
+{
+  "key": "ANVIL-88",
+  "type": "Task",
+  "status": "In Progress",
+  "priority": "Highest",
+  "summary": "Produce the Friday hand-over files: sandbox image archive, KB vectors snapshot, TC1 local repo + ticket",
+  "labels": [
+    "demo",
+    "friday",
+    "offline"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T21:19:27.866+0530",
+  "updated": "2026-11-04T22:01:46.069+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "The tools exist (#77 image file, #73 KB vectors, #74 local source, #72 local tickets), but the files the team's laptops need have not been made.\n\n**Produce, with checksums, in one folder for the owner to share:**\n\n1. `anvil-sandbox-rtems-7.1.tar` + `.sha256` + `.manifest.json`, via `scripts/export-sandbox-image.ps1`. Owner: antigravity.\n2. `kb-snapshot-vectors.jsonl.gz` + `kb-snapshot-vectors.manifest.json`, via `python -m anvil.kb export-snapshot --with-vectors` from the `anvil` database. The committed text snapshot must stay paired: commit the refreshed `kb-snapshot.jsonl.gz`/`manifest.json` too if they change. Owner: devin.\n3. The TC1 inputs:\n\n  * a git bundle of the rtems mirror's `tc1/5776-base` branch **only** (a single branch, so the withheld fix isn't in it);\n  * `tickets/todo/RTEMS-1.json` built from `backlog/RTEMS/RTEMS-1.json` (symptoms only) plus the `Code base:` line.\n  Owner: claude.\n4. A `README.txt` in the folder: what each file is, its sha256, and which SETUP.md step uses it.\n\n**Acceptance:** the Thursday dry run uses only these files, the repo zip (`git archive`) and SETUP.md.\n",
+  "comments": [
+    {
+      "created": "2026-11-04T21:46:20.226+0530",
+      "body": "claude's part is done, in `private/handover/` (gitignored) on the owner's laptop:\n\n* `rtems-tc1-5776-base.bundle` (143 MB, sha256 `01249878…a3f6` in the `.sha256` file).\n\n  * Built from a single-branch clone of `tc1/5776-base`.\n  * Verified: it clones, it holds only that branch, and the withheld fix commit `a62e60b5` is absent.\n* `tickets/todo/RTEMS-1.json`:\n\n  * the symptoms-only text from `backlog/RTEMS/RTEMS-1.json`;\n  * the code-base line points at `C:\\work\\rtems` (checked with intake's `_code_base` parser on main);\n  * \"Done when\" says \"committed on the work branch (exported as a patch)\" instead of \"PR open with CI green\".\n* `README.txt` says what each file is and which command uses it. Antigravity (image) and devin (KB vectors) add their parts.\n"
+    }
+  ]
+}

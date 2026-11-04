@@ -1,0 +1,26 @@
+{
+  "key": "ANVIL-75",
+  "type": "Bug",
+  "status": "In Progress",
+  "priority": "Medium",
+  "summary": "Stuck detector loopholes: a comment edit resets repeated failures; no bound before the first edit",
+  "labels": [
+    "agent-devin",
+    "dfmea",
+    "runtime"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:39:28.779+0530",
+  "updated": "2026-11-04T22:21:12.879+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Source: DFMEA 2026-11-04 (F06, RPN 336). Confirmed in `runtime/stuck.py`.\n\n1. **Failures reset on any edit:** `note_diff_state` clears `failures` on any diff change, including a comment or whitespace edit. Edit a comment, rerun the same failing build, repeat: `same_failure_limit` never trips.\n2. **No bound before the first edit:** the no-progress check needs `_diff_state is not None`, so before the first edit only the 400-call guard and the time budget bound reading and searching.\n\n**Fix:**\n\n* The diff signature ignores comment-only and whitespace-only changes. Reuse `strip_c_comments` from the ANVIL-44 checker for C files.\n* Repeated-failure counting resets only when the change touches code that the failing command builds or tests (at minimum: a non-comment change).\n* An explicit exploration budget before the first edit, set per skill (an investigate run is read-only by design and needs its own limit).\n\n**Acceptance:** tests for comment-edit thrash tripping, the exploration limit tripping, and a real fix after a failure still resetting the counter.\n",
+  "comments": [
+    {
+      "created": "2026-11-04T22:03:07.929+0530",
+      "body": "[devin] PR #92 up: https://github.com/vishal7pandey/anvil/pull/92 — code_signature (strip_c_comments + whitespace collapse) so comment/whitespace edits can't reset the failure counter; new exploration_tool_calls budget (120, ANVIL_EXPLORE_CALLS, per-run override) bounds read-only investigation before the first diff report. 11/11 tests.\n"
+    }
+  ]
+}

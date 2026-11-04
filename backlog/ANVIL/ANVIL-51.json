@@ -1,0 +1,29 @@
+{
+  "key": "ANVIL-51",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "kb_search reads the per-agent run database, and a KB error kills the run",
+  "labels": [
+    "rehearsal",
+    "tc3"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T17:58:15.772+0530",
+  "updated": "2026-11-04T18:37:20.148+0530",
+  "resolved": "2026-11-04T18:37:20.129+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "TC3 run f9181d40 (RTEMS-3, main d1c41b7) failed after 5 minutes on its first `kb_search`: `ProgrammingError: relation \"kb_documents\" does not exist`.\n\n**Cause (design, two parts):**\n\n1. The KB store connects with `ANVIL_DATABASE_URL`, the same variable as run state. `start-api.ps1` points that at a per-agent database (`anvil_claude`), but the KB is one shared, read-only corpus, loaded in `anvil` (7573 documents). So an agent's API sees an empty KB unless someone re-imports the KB into its run database.\n2. `kb_search` raises the raw SQLAlchemy error. `returning_errors` only converts `ToolError`, so an unavailable KB ends the whole run instead of coming back to the agent as a tool error.\n\n**Fix:**\n\n* `KBSettings.database_url` reads `ANVIL_KB_DATABASE_URL` first, falling back to `ANVIL_DATABASE_URL`.\n* `start-api.ps1` sets `ANVIL_KB_DATABASE_URL` to the shared `anvil` database unless it is already set.\n* `kb_search` turns database errors into a `ToolError` (\"knowledge base unavailable\"), so the agent can carry on without the KB and say so in its evidence.\n\n**Acceptance:** tests cover the DSN precedence and a KB database error coming back as a tool result; TC3 re-run gets past `kb_search`.\n",
+  "comments": [
+    {
+      "created": "2026-11-04T18:06:22.739+0530",
+      "body": "PR #67 is open and waiting for devin's review. Full backend suite: 255 passed, 13 skipped. The build lock has gone to antigravity for the TC1 rehearsals in the meantime. TC3 re-runs after #67 merges.\n"
+    },
+    {
+      "created": "2026-11-04T18:33:51.623+0530",
+      "body": "#67 merged (45a74b4) with devin's approval. My API restarted on main with `KB database URL: .../anvil`. Smoke test from a per-agent run database: `kb_search('telnetd authentication')` returns 3 gitlab-issue hits. The TC3 re-run waits for the build lock, which antigravity holds for the TC1 rehearsals.\n"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "key": "ANVIL-54",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Cost meter shows $0 on live runs: usage events carry no usd",
+  "labels": [
+    "agent-cline",
+    "demo",
+    "frontend"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:29:12.248+0530",
+  "updated": "2026-11-04T22:01:21.802+0530",
+  "resolved": "2026-11-04T22:01:21.793+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Found while building ANVIL-52.\n\n`CostMeter` sums `data.usd` over `usage` events, but `runtime/events.py` emits `usage` with only `model_alias`, `input_tokens` and `output_tokens`. On a live run the meter therefore shows $0.0000, while the run record has the real cost (TC3 run f9181d40: usd 0.17). This is demo-visible.\n\n**Fix options:**\n\n* the meter shows `run.cost_usd` / `run.usd` when present and labels per-event cost as pending;\n* or the event mapper prices each usage event from the same source the run record uses.\n\nPrefer one source of truth: the run's cost.\n",
+  "comments": []
+}

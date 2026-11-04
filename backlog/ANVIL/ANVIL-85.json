@@ -1,0 +1,21 @@
+{
+  "key": "ANVIL-85",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Observability 3: OpenTelemetry traces for runs, model calls, tools and sandbox commands, to a local offline trace viewer",
+  "labels": [
+    "agent-antigravity",
+    "observability",
+    "post-friday"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T19:37:19.330+0530",
+  "updated": "2026-11-04T19:37:19.395+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Owner ask 2026-11-04: persistent traces so we can analyze agent behaviour, not just totals.\n\n**Want:**\n\n* One trace per run, with spans for each model call (model, tokens, latency), each tool call (name, args summary, ok, duration), each sandbox command (cmd, exit, duration), subagents (nested) and approvals (wait time).\n* Use OpenTelemetry: LangChain/LangGraph callbacks into OTel spans, plus manual spans in the executor and sandbox. Correlate with run_id in span attributes and logs.\n* Export via OTLP to a **local, offline-capable** viewer added to `compose.yaml`. Candidates: Arize Phoenix (one container, LLM-aware) or Jaeger. Pick one in the PR with a short comparison. No SaaS, since team laptops may be offline and code must not leave the machine.\n* Off by default when no endpoint is configured; never blocks or fails a run.\n\n**Acceptance:**\n\n* a TC1 run appears as one trace with nested spans;\n* the slowest span is findable in under a minute;\n* the stack still runs with the viewer down.\n\nNot Friday-critical: build after the `friday` items.\n",
+  "comments": []
+}

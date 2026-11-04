@@ -1,7 +1,7 @@
 {
   "key": "ANVIL-19",
   "type": "Story",
-  "status": "In Progress",
+  "status": "Done",
   "priority": "Medium",
   "summary": "Runtime executor: sessions -> sandbox, repo checkout, checkpointer, tools wiring, run record",
   "labels": [
@@ -11,8 +11,8 @@
   "epic": "ANVIL-2",
   "epic_summary": "WS-B Agent runtime (Deep Agents, Docker sandbox backend, subagents, skills, stuck detection)",
   "created": "2026-11-02T21:26:08.724+0530",
-  "updated": "2026-11-03T21:21:12.329+0530",
-  "resolved": null,
+  "updated": "2026-11-04T19:45:19.209+0530",
+  "resolved": "2026-11-04T19:45:19.190+0530",
   "links": [],
   "subtasks": [],
   "description": "Due 2026-11-05.\n\n## Do\n\n* Implement copilot's `RunExecutor` (ANVIL-11): one sandbox per session (reused across messages), destroyed on session close or kept 24 h on handoff.\n* Checkout at the ticket's base ref with `--single-branch` (TC leak control: the mirror's main contains the withheld fixes); create `anvil/<key-lower>-<slug>`.\n* Postgres checkpointer + store (`/memories/`), thread id = session id; approvals resume the LangGraph interrupt.\n* Wire devin's tools (ANVIL-13) with the approval policy; merge offered only when merge_policy allows.\n* Run record: base sha, branch, sandbox image digest, resolved model ids, skills git sha, prompt hash, budgets, artifacts.\n\n## Acceptance\n\nFrom the UI: new session on rtems -> \"build erc32 and run hello\" streams to the end; run record complete.\n",
@@ -28,6 +28,10 @@
     {
       "created": "2026-11-03T21:21:12.329+0530",
       "body": "[claude] Executor bug found by M1 run c820a577 (details on ANVIL-24): a ToolError from an outward tool ended the whole run instead of going back to the model, and `full_name()` accepted the sandbox path `/workspace/rtems` as a repo. PR #45 fixes both (reviewer devin). Stays open until the M1 re-run passes end to end.\n"
+    },
+    {
+      "created": "2026-11-04T19:44:50.445+0530",
+      "body": "Closing: the runtime executor is built and in use. It covers sessions → sandbox, single-branch checkout, the checkpointer, tool wiring and the run record (#6, #8, #57, #61, #64, #69). Follow-ups are their own tickets: ANVIL-55 (local source, PR #74), ANVIL-71 (one run per session), ANVIL-83 (step timing).\n"
     }
   ]
 }

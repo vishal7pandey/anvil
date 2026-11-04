@@ -1,0 +1,20 @@
+{
+  "key": "ANVIL-83",
+  "type": "Story",
+  "status": "Done",
+  "priority": "High",
+  "summary": "Observability 1: persist per-step timing (tool, command, model call) and a \"where did the time go\" report per run",
+  "labels": [
+    "agent-claude",
+    "observability"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T19:37:16.104+0530",
+  "updated": "2026-11-04T21:14:20.213+0530",
+  "resolved": "2026-11-04T21:14:20.193+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Owner ask 2026-11-04: runs feel slow and we can't analyze ourselves. This is the foundation for ANVIL-62 (speed levers), and the cheapest, highest-value step.\n\n**Today:** events are persisted with a timestamp, but:\n\n* `tool.result` has no `duration_ms` (the frontend type already expects one);\n* `sandbox.exec` has no duration;\n* `usage` has no model latency.\n\nDurations can only be guessed from gaps between event timestamps, which mixes model time with tool time.\n\n**Want:**\n\n* `tool.result.duration_ms`: wall time from tool call to result, measured host-side.\n* `sandbox.exec.duration_s`, plus `timed_out` when the budget clamp hit.\n* `usage.latency_ms` and the model alias per model call, plus a `model.call` timing when the model streamed.\n* Run record: the phase split (setup/checkout, agent loop, verify, export/handoff) as seconds.\n* `python -m anvil.analyze <run_id> [--json]`, from the DB:\n\n  * total time split into model, tools by name, and sandbox commands;\n  * the top 10 slowest commands;\n  * idle gaps;\n  * repeated commands;\n  * token use per model.\n* The same summary on the run in the Metrics / Run records page (it can follow later).\n\n**Acceptance:**\n\n* a run's report sums to within 5% of its wall time;\n* unit tests on the report from a recorded fixture (the trimmed TC3 run is in `frontend/src/__tests__/fixtures/`).\n",
+  "comments": []
+}

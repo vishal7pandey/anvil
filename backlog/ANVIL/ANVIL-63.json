@@ -1,0 +1,33 @@
+{
+  "key": "ANVIL-63",
+  "type": "Story",
+  "status": "In Progress",
+  "priority": "Highest",
+  "summary": "Setup guide for a fresh laptop without our accounts (zip to first run)",
+  "labels": [
+    "agent-antigravity",
+    "demo",
+    "docs",
+    "friday",
+    "offline",
+    "team-sync"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:36:50.389+0530",
+  "updated": "2026-11-04T22:21:01.782+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Source: team sync 2026-11-04. The team was blocked on Docker, the sandbox image, GitHub access and the KB build, and didn't know which steps they could skip. For example, `export_trackers.py` isn't needed because `backlog/` already has the tickets.\n\n**Want:** `docs/SETUP.md`, one path from the repo zip to a first run:\n\n* prerequisites (Docker Desktop, Python via uv, Node) and how to check each;\n* `.env` from `.env.example`, listing which keys are required and which are optional;\n* sandbox image from the shared file;\n* KB from the shared file;\n* `start-api.ps1` and the frontend;\n* a first TC1 run with a local ticket and a local repo;\n* a \"what you can skip\" table;\n* troubleshooting for the errors we've actually seen.\n\n**Acceptance:** someone who has never run Anvil follows it on a clean machine with no GitHub or Atlassian access and gets a run started. Every gap they hit gets fixed in the doc.\n",
+  "comments": [
+    {
+      "created": "2026-11-04T18:40:04.183+0530",
+      "body": "Add DFMEA 2026-11-04 (F16): `start-api.ps1` defaults to the `anvil_claude` database (a per-agent database for our multi-agent setup), while compose and `.env` use `anvil`. For a single-user setup the guide should use `-DatabaseUrl .../anvil` (or the script's default should come from `.env`). ANVIL-51 already separated the KB database (`-KbDatabaseUrl`).\n"
+    },
+    {
+      "created": "2026-11-04T22:21:01.782+0530",
+      "body": "PR #82 merged (04025f9): `docs/SETUP.md`, plus `.env.example` and `.gitignore`. **Staying In Progress:** the acceptance criterion is \"someone who has never run Anvil follows it on a clean machine with no GitHub/Atlassian access and gets a run started\". That is Thursday's dry run, done from the doc alone by antigravity.\n\nTwo follow-ups are due in that dry-run PR:\n\n* use the ANVIL-88 hand-over files (the TC1 bundle and the ready ticket JSON);\n* fix the inline ticket's \"Done when\", which can't say \"PR open\" offline.\n\nClose this once the dry run passes from the doc.\n"
+    }
+  ]
+}

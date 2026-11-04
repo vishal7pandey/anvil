@@ -24,9 +24,10 @@ branch = "tc1/5806-base"
 # no sha: the base does not exist yet; claude builds it with `build-base --push` after review.
 
 [base.overlay]
-# Factory infrastructure added on top of the pre-fix tree: CI, pre-commit, scanners. Taken from
-# the tc1/5776-base infra snapshot so both cases run the identical toolchain.
-ref = "tc1/5776-base"
+# Factory infrastructure added on top of the pre-fix tree: CI, pre-commit, scanners. The shared
+# infra/anvil-ci ref triggers on tc1/** and case/** and builds sptests too (the tc1/5776-base
+# snapshot only triggers on main + tc1/5776-base and builds psxtests only).
+ref = "infra/anvil-ci"
 paths = [".github", ".pre-commit-config.yaml", "sonar-project.properties"]
 
 [ticket]

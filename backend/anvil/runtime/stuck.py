@@ -36,9 +36,9 @@ class Budgets:
     # 30 tripped mid-investigation), so this is generous.
     no_progress_tool_calls: int = field(default_factory=lambda: _env_int("ANVIL_NO_PROGRESS_CALLS", 80))
     # Pre-first-diff bound (ANVIL-75, F06): read/grep-only runs never produce a diff report, so the
-    # no-progress rule never armed — only the 400-call guard and the clock bound pure reading.
-    # A run can override this via run["exploration_limit"] (an investigate run is read-only by
-    # design and needs its own limit).
+    # no-progress rule never armed. Since `execute` itself is a progress tool, this mostly bounds
+    # runs that never run a command at all — a backstop, smaller than the DFMEA estimate. Per-run
+    # override via run["exploration_limit"] (an investigate run is read-only by design).
     exploration_tool_calls: int = field(default_factory=lambda: _env_int("ANVIL_EXPLORE_CALLS", 120))
     ci_red_rounds: int = 3
 

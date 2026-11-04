@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from langchain_core.messages import AIMessage, ToolMessage
 
 from deepagents.backends.protocol import ExecuteResponse
@@ -183,3 +184,30 @@ def test_exploration_budget_bounds_runs_with_no_diff_report():
     d2.note_diff_state("x")
     for _ in range(5):
         assert d2.observe({"type": "tool.call", "data": {}}) is None
+
+
+def test_diff_state_prefers_run_internal_and_signs_content():
+    from anvil.runtime.executor import DeepAgentExecutor
+    from anvil.runtime.stuck import code_signature
+
+    calls = {}
+
+    class Sb:
+        def run_internal(self, cmd, *, timeout=None):
+            calls["internal"] = True
+            return SimpleNamespace(output="diff --git a/f.c\n+int x = 1;\n", exit_code=0)
+
+        def execute(self, cmd, *, timeout=None):
+            raise AssertionError("diff_state must not use the model-facing execute")
+
+        def execute_never(self, cmd, *, timeout=None):
+            pass
+
+    class StubSb:
+        def execute(self, cmd, *, timeout=None):
+            calls["stub"] = True
+            return SimpleNamespace(output="same", exit_code=0)
+
+    assert DeepAgentExecutor.diff_state(Sb(), "/w") == code_signature("diff --git a/f.c\n+int x = 1;\n")
+    assert calls["internal"] and not calls.get("stub")
+    assert DeepAgentExecutor.diff_state(StubSb(), "/w") == code_signature("same")

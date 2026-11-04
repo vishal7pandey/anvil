@@ -429,10 +429,14 @@ class DeepAgentExecutor:
         # repeated-failure counter (ANVIL-75).
         from anvil.runtime.stuck import code_signature
 
-        res = sandbox.execute(
+        # run_internal (ANVIL-89) returns the complete output — the model's head+tail cut would
+        # otherwise salt the signature with a unique spill filename on every call; plain execute
+        # on stub sandboxes. Untracked files are per-file sha1sum'd, not cat'd (content reads
+        # cost too much; a comment edit inside a brand-new file resetting is an accepted edge).
+        runner = getattr(sandbox, "run_internal", None) or sandbox.execute
+        res = runner(
             f"cd {shlex.quote(path)} 2>/dev/null && (git diff HEAD; git status --porcelain; "
-            f"for f in $(git ls-files -o --exclude-standard); do echo \"== $f\"; cat \"$f\"; done)",
-            timeout=60)
+            f"git ls-files -o --exclude-standard -z | xargs -0 -r sha1sum)", timeout=60)
         return code_signature(res.output or "")
 
     @staticmethod

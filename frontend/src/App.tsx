@@ -11,6 +11,7 @@ import {
   createSession,
   listSessions,
   listApprovals,
+  getRun,
   sendMessage,
   subscribeToEvents,
   decideApproval,
@@ -157,6 +158,12 @@ export default function App() {
           const status = event.data.status;
           if (isRunStatus(status)) {
             setCurrentRun((prev) => prev ? { ...prev, status } : prev);
+            // Re-fetch the run on terminal status to get updated cost_usd/usd
+            if (status === 'succeeded' || status === 'failed' || status === 'handoff' || status === 'cancelled') {
+              getRun(run.id).then((updated) => {
+                if (updated) setCurrentRun(updated);
+              }).catch(() => {});
+            }
           }
         }
       });

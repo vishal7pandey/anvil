@@ -21,7 +21,7 @@ commits = ["a62e60b5", "f2ad71ee", "af256031", "338bab40", "80b1ba90"]
 
 [base]
 branch = "tc1/5806-base"
-# no sha: the base does not exist yet; claude builds it with `build-base --push` after review.
+sha = "05d595e8fb273021576c6d55242e5222d568b0d7"   # built 2026-11-04 by build-base --push
 
 [base.overlay]
 # Factory infrastructure added on top of the pre-fix tree: CI, pre-commit, scanners. The shared
@@ -32,6 +32,7 @@ paths = [".github", ".pre-commit-config.yaml", "sonar-project.properties"]
 
 [ticket]
 project = "RTEMS"
+key = "RTEMS-7"
 labels = ["anvil", "classic-api", "tc1"]
 summary = "Counter conversions return wrong values above a few seconds"
 body_file = "rtems-5806.ticket.md"

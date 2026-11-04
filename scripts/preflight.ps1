@@ -196,6 +196,8 @@ if (-not (Test-Path $lockFile)) {
         $lockOwner = $matches[1].Trim()
         if ($lockOwner -eq $Presenter -or $lockOwner -eq "presenter") {
             Write-CheckPass "Build Lock" "Lock held by presenter ($lockOwner)"
+        } elseif ($lockOwner -eq "none" -or $lockOwner -eq "") {
+            Write-CheckPass "Build Lock" "No active agent lock; free placeholder present (agent: $lockOwner)"
         } else {
             $lockPurpose = ""
             if ($lockContent -match "(?m)^purpose:\s*(.*)$") { $lockPurpose = $matches[1].Trim() }

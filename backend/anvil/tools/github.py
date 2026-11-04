@@ -113,8 +113,25 @@ def _log_tail(name: str, job_id: int, chars: int = 3000) -> str:
         return f"(log unavailable: {e})"
 
 
+def required_checks(name: str, branch: str) -> list[str] | None:
+    """The status checks the branch's protection requires, or None when it requires none."""
+    try:
+        rsc = _gh("GET", f"/repos/{name}/branches/{quote(branch, safe='')}/protection/required_status_checks")
+    except ToolError as exc:
+        if "HTTP 404" in str(exc):
+            return None
+        raise
+    names = list(rsc.get("contexts") or []) + [c["context"] for c in rsc.get("checks") or []]
+    return list(dict.fromkeys(names)) or None
+
+
 def _check_state(name: str, pr: int, with_logs: bool) -> dict[str, Any]:
-    sha = _gh("GET", f"/repos/{name}/pulls/{pr}")["head"]["sha"]
+    pull = _gh("GET", f"/repos/{name}/pulls/{pr}")
+    sha = pull["head"]["sha"]
+    # Which checks gate a merge is the repository's decision (branch protection on the PR's base), not
+    # ours: SonarCloud's gate fails every agent PR on "coverage on new code < 80%", a metric this
+    # pipeline never measures (TC1 rehearsals, ANVIL-32). Without protection, every check gates.
+    required = required_checks(name, pull["base"]["ref"])
     runs = _gh("GET", f"/repos/{name}/commits/{sha}/check-runs", params={"per_page": 100})["check_runs"]
     statuses = _gh("GET", f"/repos/{name}/commits/{sha}/status")["statuses"]
     checks = [
@@ -124,12 +141,15 @@ def _check_state(name: str, pr: int, with_logs: bool) -> dict[str, Any]:
         {"name": s["context"], "status": "completed" if s["state"] != "pending" else "in_progress", "conclusion": {"pending": None}.get(s["state"], s["state"]), "url": s.get("target_url"), "summary": s.get("description") or ""}
         for s in statuses
     ]
-    failing = [c for c in checks if c["status"] == "completed" and c["conclusion"] not in _OK]
+    gating = [c for c in checks if required is None or c["name"] in required]
+    failed = [c for c in checks if c["status"] == "completed" and c["conclusion"] not in _OK]
+    failing = [c for c in failed if c in gating]
+    missing = [r for r in required or [] if r not in {c["name"] for c in checks}]
     if not checks:
         state = "none"
     elif failing:
         state = "failure"
-    elif any(c["status"] != "completed" for c in checks):
+    elif missing or any(c["status"] != "completed" for c in gating):
         state = "pending"
     else:
         state = "success"
@@ -140,14 +160,17 @@ def _check_state(name: str, pr: int, with_logs: bool) -> dict[str, Any]:
     for c in checks:
         c.pop("_id", None)
         c.pop("_app", None)
-    return {"pr": pr, "head_sha": sha, "state": state, "checks": checks, "failing": [c["name"] for c in failing]}
+    return {"pr": pr, "head_sha": sha, "state": state, "checks": checks, "failing": [c["name"] for c in failing],
+            "required": required, "advisory_failing": [c["name"] for c in failed if c not in gating]}
 
 
 def github_checks(repo: str, pr: int, wait_seconds: int = 900, poll_seconds: int = 20) -> dict[str, Any]:
-    """Wait (up to wait_seconds) for all CI checks on a PR's head commit to finish.
+    """Wait (up to wait_seconds) for the CI checks that gate a PR to finish.
 
-    Returns state success|failure|pending|none, every check with its conclusion and link, and for
-    failed GitHub Actions jobs the tail of the job log so you can fix the cause.
+    The gating checks are those the base branch's protection requires (all checks if it requires
+    none). Returns state success|failure|pending|none, every check with its conclusion and link,
+    `advisory_failing` for failed checks that don't gate, and for failed GitHub Actions jobs the tail
+    of the job log so you can fix the cause.
     """
     name, deadline = full_name(repo), time.monotonic() + wait_seconds
     while True:

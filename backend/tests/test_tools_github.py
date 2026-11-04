@@ -10,7 +10,8 @@ from anvil.tools import github, sonar
 from anvil.tools.errors import ToolError
 
 API = "https://api.github.com/repos/vishal7pandey/rtems"
-PR = {"number": 7, "html_url": "https://github.com/vishal7pandey/rtems/pull/7", "head": {"sha": "abc", "ref": "anvil/rtems-1-fix"}}
+PR = {"number": 7, "html_url": "https://github.com/vishal7pandey/rtems/pull/7", "head": {"sha": "abc", "ref": "anvil/rtems-1-fix"},
+      "base": {"ref": "tc1/5776-base"}}
 
 
 @pytest.fixture(autouse=True)
@@ -31,9 +32,14 @@ def mock_files(*names):
     respx.get(f"{API}/pulls/7/files").mock(side_effect=lambda req: httpx.Response(200, json=pages.get(req.url.params["page"], [])))
 
 
-def mock_checks(runs, statuses=()):
+def mock_checks(runs, statuses=(), required=None):
     mock_files("cpukit/score/src/x.c")
     respx.get(f"{API}/pulls/7").respond(json=PR)
+    protection = respx.get(f"{API}/branches/tc1%2F5776-base/protection/required_status_checks")
+    if required is None:
+        protection.respond(404, json={"message": "Branch not protected"})
+    else:
+        protection.respond(json={"contexts": required, "checks": [{"context": c} for c in required]})
     respx.get(f"{API}/commits/abc/check-runs").respond(json={"check_runs": runs})
     respx.get(f"{API}/commits/abc/status").respond(json={"statuses": list(statuses)})
 
@@ -192,3 +198,18 @@ def test_full_name_refuses_empty():
     with pytest.raises(ToolError, match="empty repo"):
         github.full_name("  ")
 
+
+@respx.mock
+def test_required_checks_gate_and_other_failures_are_advisory():
+    # SonarCloud fails every agent PR on new-code coverage the pipeline never measures (ANVIL-32);
+    # the base branch requires build-test and CodeQL, so the PR is green with Sonar advisory.
+    mock_checks([run("build-test", id=1), run("CodeQL", id=2), run("SonarCloud", conclusion="failure", id=3)],
+                required=["build-test", "CodeQL"])
+    out = github.github_checks("rtems", 7, wait_seconds=0)
+    assert out["state"] == "success" and out["advisory_failing"] == ["SonarCloud"] and out["failing"] == []
+
+
+@respx.mock
+def test_a_required_check_that_has_not_reported_is_pending():
+    mock_checks([run("build-test", id=1)], required=["build-test", "CodeQL"])
+    assert github.github_checks("rtems", 7, wait_seconds=0)["state"] == "pending"

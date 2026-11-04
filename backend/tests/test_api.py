@@ -922,3 +922,29 @@ def test_concurrent_first_requests_on_a_clean_db_do_not_race(api_factory, client
         statuses = list(pool.map(
             lambda _: client.get("/api/sessions", headers=AUTH).status_code, range(20)))
     assert statuses == [200] * 20
+
+
+def test_one_active_run_per_session(api_factory, client_factory):
+    # ANVIL-71: runs in a session share its sandbox and checkout; a second message while one is
+    # active is refused (409, naming the run) instead of starting a parallel run on the same tree.
+    executor = WaitingExecutor()
+    app = api_factory(executor=executor)
+    client = client_factory(app)
+    session_id = create_session(client)
+    first = client.post(f"/api/sessions/{session_id}/messages", headers=AUTH, json={"text": "one"})
+    assert first.status_code == 202
+    assert executor.started.wait(timeout=5)
+
+    second = client.post(f"/api/sessions/{session_id}/messages", headers=AUTH, json={"text": "two"})
+    assert second.status_code == 409
+    assert first.json()["id"] in second.json()["detail"]
+
+    other = create_session(client)  # another session is independent
+    executor.started.clear()
+    assert client.post(f"/api/sessions/{other}/messages", headers=AUTH, json={"text": "x"}).status_code == 202
+
+    client.post(f"/api/runs/{first.json()['id']}/cancel", headers=AUTH)
+    client.get(f"/api/runs/{first.json()['id']}/events", headers=AUTH)  # drain to the terminal status
+    assert client.get(f"/api/runs/{first.json()['id']}", headers=AUTH).json()["status"] == "cancelled"
+    again = client.post(f"/api/sessions/{session_id}/messages", headers=AUTH, json={"text": "three"})
+    assert again.status_code == 202

@@ -120,6 +120,16 @@ def create_executor_from_environment() -> RunExecutor | None:
             markdown = handoff.get("markdown")
             if not isinstance(markdown, str) or not markdown:
                 raise ValueError("Handoff report requires a structured note or Markdown fallback")
+        if run.get("trigger", "").startswith("local:"):
+            # The handoff note goes into the ticket JSON, not real Jira (ANVIL-56); the patch
+            # path from the local export rides in `url`/details as usual.
+            from anvil.tickets import LocalTracker
+
+            tracker = LocalTracker.from_env()
+            if tracker is not None:
+                tracker.comment(jira_key, markdown)
+                tracker.set_labels(jira_key, add=["anvil-needs-human"])
+                return
         jira_comment(jira_key, markdown)
         jira_set_labels(jira_key, add=["anvil-needs-human"])
 

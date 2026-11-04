@@ -3,6 +3,7 @@ import pytest
 
 from scripts.reset_demo import (
     BASELINE_TICKETS,
+    get_baseline_tickets,
     main,
     reset_confluence_rtkb,
     reset_containers,
@@ -12,24 +13,43 @@ from scripts.reset_demo import (
 )
 
 
+def test_get_baseline_tickets_includes_cases():
+    tickets = get_baseline_tickets()
+    # Baseline 1..6 must be present
+    for i in range(1, 7):
+        assert f"RTEMS-{i}" in tickets
+        assert tickets[f"RTEMS-{i}"]["status"] == "To Do"
+
+    # Case ticket RTEMS-7 must be present
+    assert "RTEMS-7" in tickets
+    assert tickets["RTEMS-7"]["status"] == "To Do"
+    # Case labels must NOT include 'anvil'
+    assert "anvil" not in tickets["RTEMS-7"]["labels"]
+    assert "classic-api" in tickets["RTEMS-7"]["labels"]
+    assert "tc1" in tickets["RTEMS-7"]["labels"]
+
+
 def test_reset_jira_transitions_labels_and_deletes_extra():
     with patch("anvil.tools.jira.jira_get") as mock_get, \
          patch("anvil.tools.jira.jira_transition") as mock_trans, \
          patch("anvil.tools._atlassian.request") as mock_req:
 
+        baseline_map = get_baseline_tickets()
+
         # RTEMS-1 is In Progress with anvil label
         mock_get.side_effect = lambda key: {
             "key": key,
             "status": "In Progress" if key == "RTEMS-1" else "To Do",
-            "labels": ["posix", "tc1", "anvil", "anvil-in-progress"] if key == "RTEMS-1" else BASELINE_TICKETS[key]["labels"],
+            "labels": ["posix", "tc1", "anvil", "anvil-in-progress"] if key == "RTEMS-1" else baseline_map.get(key, {}).get("labels", []),
         }
-        # Extra issues: RTEMS-7 created by agent (with cra label), and RTEMS-9 without agent label
+        # Extra issues: RTEMS-7 is protected case ticket; RTEMS-8 created by agent (with cra label); RTEMS-9 without agent label
         def fake_req(method, path, **kwargs):
             if path == "/rest/api/3/search/jql":
                 return {
                     "issues": [
                         {"id": "1", "key": "RTEMS-1", "fields": {"summary": "Baseline 1", "labels": ["posix", "tc1"]}},
-                        {"id": "7", "key": "RTEMS-7", "fields": {"summary": "Remediation story", "labels": ["cra", "tc3"]}},
+                        {"id": "7", "key": "RTEMS-7", "fields": {"summary": "Counter conversions", "labels": ["classic-api", "tc1"]}},
+                        {"id": "8", "key": "RTEMS-8", "fields": {"summary": "Remediation story", "labels": ["cra", "tc3"]}},
                         {"id": "9", "key": "RTEMS-9", "fields": {"summary": "Unrelated issue", "labels": ["docs"]}},
                     ],
                     "isLast": True,
@@ -50,8 +70,14 @@ def test_reset_jira_transitions_labels_and_deletes_extra():
             for _ in [1]
         )
 
-        # RTEMS-7 should be deleted (has cra/tc3 label)
+        # RTEMS-8 should be deleted (has cra/tc3 label, unmanaged)
         assert any(
+            call("DELETE", "/rest/api/3/issue/RTEMS-8") in mock_req.mock_calls
+            for _ in [1]
+        )
+
+        # RTEMS-7 must NOT be deleted (protected case ticket)
+        assert not any(
             call("DELETE", "/rest/api/3/issue/RTEMS-7") in mock_req.mock_calls
             for _ in [1]
         )
@@ -59,6 +85,51 @@ def test_reset_jira_transitions_labels_and_deletes_extra():
         # RTEMS-9 should NOT be deleted (no agent label)
         assert not any(
             call("DELETE", "/rest/api/3/issue/RTEMS-9") in mock_req.mock_calls
+            for _ in [1]
+        )
+
+
+def test_reset_jira_case_ticket_above_six_is_reset_not_deleted():
+    with patch("anvil.tools.jira.jira_get") as mock_get, \
+         patch("anvil.tools.jira.jira_transition") as mock_trans, \
+         patch("anvil.tools._atlassian.request") as mock_req:
+
+        baseline_map = get_baseline_tickets()
+
+        # RTEMS-7 is In Progress with anvil label
+        mock_get.side_effect = lambda key: {
+            "key": key,
+            "status": "In Progress" if key == "RTEMS-7" else "To Do",
+            "labels": ["classic-api", "tc1", "anvil", "anvil-in-progress"] if key == "RTEMS-7" else baseline_map.get(key, {}).get("labels", []),
+        }
+
+        def fake_req(method, path, **kwargs):
+            if path == "/rest/api/3/search/jql":
+                return {
+                    "issues": [
+                        {"id": "7", "key": "RTEMS-7", "fields": {"summary": "Counter conversions", "labels": ["classic-api", "tc1", "anvil"]}},
+                    ],
+                    "isLast": True,
+                }
+            return {}
+
+        mock_req.side_effect = fake_req
+
+        success = reset_jira(dry_run=False)
+        assert success is True
+
+        # RTEMS-7 must be transitioned to To Do
+        mock_trans.assert_called_once_with("RTEMS-7", "To Do")
+
+        # RTEMS-7 labels must be reset to clean baseline (minus anvil)
+        assert any(
+            call("PUT", "/rest/api/3/issue/RTEMS-7", json={"fields": {"labels": ["classic-api", "tc1"], "assignee": None}}) in mock_req.mock_calls
+            for _ in [1]
+        )
+
+        # RTEMS-7 must never be deleted
+        assert not any(
+            call("DELETE", "/rest/api/3/issue/RTEMS-7") in mock_req.mock_calls
             for _ in [1]
         )
 

@@ -207,9 +207,9 @@ if (-not (Test-Path $lockFile)) {
 }
 
 # -----------------------------------------------------------------------------
-# Check 6: RTEMS Jira Tickets Baseline (RTEMS-1..6)
+# Check 6: RTEMS Jira Tickets Baseline (RTEMS-1..6 + cases)
 # -----------------------------------------------------------------------------
-Write-Host "`n6. Checking Jira Demo Tickets Baseline (RTEMS-1..6)..." -ForegroundColor White
+Write-Host "`n6. Checking Jira Demo & Case Tickets Baseline..." -ForegroundColor White
 $jiraResetOutput = uv run --no-sync --directory $backend python scripts/reset_demo.py --dry-run --jira 2>&1
 $needsReset = $jiraResetOutput | Where-Object { $_ -match "\[DRY RUN\] Would" }
 if ($LASTEXITCODE -ne 0) {
@@ -218,7 +218,7 @@ if ($LASTEXITCODE -ne 0) {
     $driftSummary = ($needsReset | Select-Object -First 2) -join "; "
     Write-CheckFail "Jira Baseline" "RTEMS tickets drifted from baseline ($driftSummary)" ".\scripts\reset-demo.ps1 -Jira"
 } else {
-    Write-CheckPass "Jira Baseline" "RTEMS-1..6 are in baseline state (To Do, correct baseline labels, RTEMS-7+ purged)"
+    Write-CheckPass "Jira Baseline" "RTEMS demo and case tickets are in baseline state (To Do, correct baseline labels, extra tickets purged)"
 }
 
 # -----------------------------------------------------------------------------

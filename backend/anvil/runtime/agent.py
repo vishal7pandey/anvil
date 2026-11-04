@@ -12,6 +12,7 @@ from langchain.agents.middleware import TodoListMiddleware
 from langchain_openai import ChatOpenAI
 
 from anvil.runtime import prompts
+from anvil.runtime.compaction import model_profile, observed_summarization
 from anvil.runtime.sandbox import DockerSandbox
 
 Mode = Literal["interactive", "autonomous"]
@@ -86,12 +87,15 @@ def subagent_specs(fast_model: Any) -> list[dict[str, Any]]:
 
 
 def _model(config: RunConfig, alias: str) -> ChatOpenAI:
+    # A profile (ANVIL_CONTEXT_WINDOW) switches compaction to fraction thresholds (ANVIL-93).
     return ChatOpenAI(model=alias, base_url=config.gateway_url, api_key=config.gateway_key, stream_usage=True,
-                      extra_body={"metadata": {"spend_logs_metadata": {"run_id": config.run_id}}})
+                      extra_body={"metadata": {"spend_logs_metadata": {"run_id": config.run_id}}},
+                      profile=model_profile())
 
 
 def build_agent(config: RunConfig, sandbox: DockerSandbox, *, tools: Sequence[Any] = (),
                 on_handoff: Callable[[dict[str, str]], None] | None = None,
+                on_compact: Callable[[dict[str, Any]], None] | None = None,
                 skills: list[str] | None = None,
                 checkpointer: Any = None, store: Any = None) -> Any:
     handoffs: list[dict[str, str]] = []
@@ -114,11 +118,14 @@ def build_agent(config: RunConfig, sandbox: DockerSandbox, *, tools: Sequence[An
     # No FilesystemPermission here: deepagents rejects path permissions on backends with `execute`
     # (a shell can bypass them). "Never edit .github/workflows" is enforced where it can't be
     # bypassed: git_push refuses such diffs, and the GitHub token has no Workflows permission.
+    main = _model(config, config.main_model)
+    # Same name as deepagents' default, so it replaces it in place: same compaction, now reported (ANVIL-93).
+    compaction = [observed_summarization(main, backend, on_compact)] if on_compact else []
     return create_deep_agent(
-        model=_model(config, config.main_model),
+        model=main,
         tools=[*tools, handoff],
         # write_todos: deepagents adds it only for its Codex profile; our gateway alias needs it explicitly.
-        middleware=[TodoListMiddleware()],
+        middleware=[TodoListMiddleware(), *compaction],
         system_prompt=prompts.MAIN,
         skills=skills,
         subagents=subagents,

@@ -104,7 +104,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.command == "export-snapshot":
-            print(json.dumps(export_snapshot(store, args.out, with_vectors=args.with_vectors), indent=2))
+            print(json.dumps(export_snapshot(store, args.out, with_vectors=args.with_vectors, include_local=args.include_local), indent=2))
             return 0
 
         if args.command == "import-snapshot":
@@ -112,7 +112,16 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.command == "search":
-            hits = store.search(args.query, k=args.k, sources=args.sources or None)
+            as_of_dt = None
+            if getattr(args, "as_of", None):
+                from datetime import datetime
+                as_of_dt = datetime.fromisoformat(args.as_of.replace("Z", "+00:00"))
+            hits = store.search(
+                args.query,
+                k=args.k,
+                sources=args.sources or None,
+                as_of=as_of_dt,
+            )
             print(
                 json.dumps(
                     [
@@ -187,6 +196,8 @@ def _build_parser() -> argparse.ArgumentParser:
     exp.add_argument("--out", type=Path, default=DEFAULT_SNAPSHOT_DIR)
     exp.add_argument("--with-vectors", action="store_true",
                      help="also write the pgvector text per chunk (ANVIL-58; large file, shared out-of-band)")
+    exp.add_argument("--include-local", action="store_true",
+                     help="include local fixture documents in snapshot (ANVIL-68; skipped by default)")
     imp = sub.add_parser("import-snapshot", help="load a snapshot and re-embed it with the configured model")
     imp.add_argument("--from", dest="src", type=Path, default=DEFAULT_SNAPSHOT_DIR)
 
@@ -196,6 +207,10 @@ def _build_parser() -> argparse.ArgumentParser:
     search.add_argument(
         "--sources", nargs="*",
         choices=["rtems-docs", "gitlab-issue", "gitlab-mr", "mailing-list", "confluence", "local"],
+    )
+    search.add_argument(
+        "--as-of",
+        help="ISO 8601 timestamp cutoff (ANVIL-68, e.g. 2026-10-30T00:00:00Z)",
     )
     return parser
 
@@ -210,9 +225,23 @@ def _resolve_docs_dir(args: argparse.Namespace, settings: KBSettings) -> Path:
         clone_to.parent.mkdir(parents=True, exist_ok=True)
         log.info("cloning %s into %s", RTEMS_DOCS_URL, clone_to)
         subprocess.run(
-            ["git", "clone", "--depth", "1", RTEMS_DOCS_URL, str(clone_to)],
+            ["git", "clone", RTEMS_DOCS_URL, str(clone_to)],
             check=True,
         )
+    else:
+        try:
+            check_shallow = subprocess.run(
+                ["git", "rev-parse", "--is-shallow-repository"],
+                cwd=clone_to,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if check_shallow.returncode == 0 and check_shallow.stdout.strip().lower() == "true":
+                log.info("unshallowing %s for commit dates", clone_to)
+                subprocess.run(["git", "fetch", "--unshallow"], cwd=clone_to, check=False)
+        except Exception as exc:
+            log.warning("failed to check/unshallow %s: %s", clone_to, exc)
     return clone_to
 
 
@@ -248,10 +277,9 @@ def _ingest_gitlab(args: argparse.Namespace, settings: KBSettings, store: KBStor
 
 
 def _backfill_created_at(store: KBStore) -> dict[str, object]:
-    """Set ``created_at`` from ``doc_metadata`` for GitLab issues/MRs (ANVIL-43).
+    """Set ``created_at`` from ``doc_metadata`` across all sources (ANVIL-43, ANVIL-68).
 
-    Idempotent: only touches rows where ``created_at IS NULL``. Docs/Confluence have no upstream
-    creation date and stay NULL = always visible.
+    Idempotent: only touches rows where ``created_at IS NULL`` and metadata contains a date.
     """
     from sqlalchemy import text
 
@@ -259,11 +287,15 @@ def _backfill_created_at(store: KBStore) -> dict[str, object]:
         result = conn.execute(
             text(
                 "UPDATE kb_documents "
-                "SET created_at = (doc_metadata->>'created_at')::timestamptz "
+                "SET created_at = COALESCE("
+                "    (doc_metadata->>'created_at')::timestamptz, "
+                "    (doc_metadata->>'createdAt')::timestamptz"
+                ") "
                 "WHERE created_at IS NULL "
-                "AND source IN ('gitlab-issue', 'gitlab-mr') "
-                "AND doc_metadata ? 'created_at' "
-                "AND doc_metadata->>'created_at' IS NOT NULL"
+                "AND ("
+                "    (doc_metadata ? 'created_at' AND doc_metadata->>'created_at' IS NOT NULL) "
+                "    OR (doc_metadata ? 'createdAt' AND doc_metadata->>'createdAt' IS NOT NULL)"
+                ")"
             )
         )
         updated = result.rowcount

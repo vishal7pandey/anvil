@@ -11,6 +11,7 @@ export type EventType =
   | 'approval.request'
   | 'subagent'
   | 'usage'
+  | 'context.compacted'
   | 'artifact';
 
 export interface StreamEvent {

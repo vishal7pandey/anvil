@@ -141,7 +141,7 @@ def _run_metrics(
         and str(run.id) not in spend_totals
     ]
     now = utc_now()
-    waiting_for_spend_logs: list[Run] = []
+    waiting_for_spend_run_ids: set[UUID] = set()
     for run in missing_spend_logs:
         usage_timestamps = [
             _as_utc(event.ts)
@@ -153,24 +153,16 @@ def _run_metrics(
             default=_as_utc(run.ended_at or run.started_at or run.created_at),
         )
         if now - last_usage_at <= SPEND_LOG_GRACE_PERIOD:
-            waiting_for_spend_logs.append(run)
-
-    if waiting_for_spend_logs:
-        logger.error(
-            "LiteLLM spend logs are missing for %d runs with token usage",
-            len(waiting_for_spend_logs),
-        )
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="LiteLLM spend logs are not yet available for runs with token usage",
-            headers={"Retry-After": "1"},
-        )
+            waiting_for_spend_run_ids.add(run.id)
 
     missing_spend_run_ids = {run.id for run in missing_spend_logs}
     metrics: dict[UUID, dict[str, Any]] = {}
     for run in runs:
         run_events = events_by_run[run.id]
-        spend_is_missing = run.id in missing_spend_run_ids
+        has_spend = str(run.id) in spend_totals
+        is_pending = run.id in waiting_for_spend_run_ids
+        spend_is_missing = (run.id in missing_spend_run_ids) and not is_pending
+
         wall_time_seconds = None
         if run.started_at is not None:
             ended_at = _as_utc(run.ended_at) if run.ended_at is not None else now
@@ -189,9 +181,29 @@ def _run_metrics(
             and "failure" in str(event.data.get("output", "")).casefold()
             for event in run_events
         )
-        spend = spend_totals.get(str(run.id), SpendTotals(0, Decimal("0")))
-        model_calls = None if spend_is_missing else spend.model_calls
-        usd = None if spend_is_missing else float(spend.usd)
+
+        if has_spend:
+            spend = spend_totals[str(run.id)]
+            model_calls = spend.model_calls
+            usd = float(spend.usd)
+            cost_status = "available"
+            cost_estimated = False
+        elif is_pending:
+            model_calls = sum(1 for e in run_events if e.type == "usage")
+            usd = None
+            cost_status = "pending"
+            cost_estimated = False
+        elif spend_is_missing:
+            model_calls = None
+            usd = None
+            cost_status = "missing"
+            cost_estimated = False
+        else:
+            model_calls = 0
+            usd = 0.0
+            cost_status = "available"
+            cost_estimated = False
+
         metrics[run.id] = {
             "wall_time_seconds": wall_time_seconds,
             "model_calls": model_calls,
@@ -199,7 +211,8 @@ def _run_metrics(
             "output_tokens": run.output_tokens,
             "usd": usd,
             "cost_usd": usd,
-            "cost_status": "missing" if spend_is_missing else "available",
+            "cost_status": cost_status,
+            "cost_estimated": cost_estimated,
             "human_touches": run.human_touches + human_messages,
             "ci_rounds": ci_rounds,
             "outcome": run.status,
@@ -773,10 +786,18 @@ def _get_or_create_intake_run(
             return existing.id, message, existing.status == "queued"
 
         repo_value = issue.get("repo") or code_base_repo or "vishal7pandey/rtems"
+        # normalize_repository validates both shapes: owner/repo, or a local project in any shape (ANVIL-91).
+        repo_checked = normalize_repository(repo_value)
+        if base_ref is None:
+            # Only a local path may leave the branch out: its current branch (or 'main' for a snapshot).
+            from anvil.runtime import source as _source
+
+            if not _source.is_local(repo_checked):
+                raise ValueError("a GitHub code base needs its branch: 'Code base: branch <ref> of github.com/<o>/<r>'")
+            base_ref = _source.default_base(repo_checked)
         session = Session(
             user_id=user_id,
-            # normalize_repository validates both shapes since ANVIL-55 (paths must exist as git repos).
-            repo=normalize_repository(repo_value),
+            repo=repo_checked,
             environment="local",
             mode=_jira_mode(issue),
             merge_policy="human",
@@ -812,31 +833,58 @@ def _get_or_create_intake_run(
 # "Code base: branch `tc1/5776-base` of github.com/vishal7pandey/rtems." anywhere in the ticket
 # (backticks and the "of github.com/..." part optional). Answer-leak control: a TC ticket's base
 # branch is what keeps the withheld fix out of the sandbox, so never guess it.
-# "of" accepts github.com/<owner>/<repo> or an absolute local path (ANVIL-56 offline path); a path
-# with spaces is not supported, say so in the ticket docs.
+# "of" accepts github.com/<owner>/<repo> or an absolute local path (ANVIL-56 offline path). A local
+# path with spaces is written in double quotes (ANVIL-91).
 _CODE_BASE = re.compile(
     r"code base:\s*(?:branch\s+)?`?(?P<ref>[A-Za-z0-9._/-]+?)`?"
     r"(?:\s+of\s+(?:(?:https?://)?github\.com/(?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?"
-    r"|(?P<path>(?:[A-Za-z]:[\\/]|/)\S+)))?"
+    r"|\"(?P<qpath>(?:[A-Za-z]:[\\/]|/)[^\"\n]+)\"|(?P<path>(?:[A-Za-z]:[\\/]|/)\S+)))?"
     r"(?=[\s.,;)]|$)",
+    re.IGNORECASE,
+)
+# A local path without a branch (ANVIL-91): "Code base: C:\work\app" or 'Code base: "C:\My Projects\app"'.
+# The base is then the working copy's current branch (or 'main' for a folder/archive snapshot).
+_CODE_BASE_PATH_ONLY = re.compile(
+    r"code base:\s*(?:of\s+)?(?:\"(?P<qpath>(?:[A-Za-z]:[\\/]|/)[^\"\n]+)\"|(?P<path>(?:[A-Za-z]:[\\/]|/)\S+))",
     re.IGNORECASE,
 )
 
 _LOCAL_PATH = re.compile(r"^(?:[A-Za-z]:[\\/]|/)")
 
 
+def _session_base(repo: str) -> str:
+    """Base branch for a UI message: a local project's current branch (ANVIL-91: a junior's repo may be
+    on master or anything else); 'main' for a GitHub repo, as before."""
+    from anvil.runtime import source
+
+    if source.is_local(repo):
+        try:
+            return source.default_base(repo)
+        except ValueError:
+            return "main"  # the checkout reports the real problem (missing path) as a failed setup
+    return "main"
+
+
 def _is_local_path(value: str | None) -> bool:
     return bool(value) and bool(_LOCAL_PATH.match(value))
 
 
-def _code_base(description: str) -> tuple[str | None, str]:
-    """(repo or None, base ref) from the ticket's "Code base:" line; ValueError if there is none."""
+def _code_base(description: str) -> tuple[str | None, str | None]:
+    """(repo or None, base ref or None) from the ticket's "Code base:" line; ValueError if there is none.
+
+    A GitHub repo always needs its branch (answer-leak control: never guess a TC base). A local path
+    may leave the branch out (ref None: the project's current branch, ANVIL-91)."""
+    path_only = _CODE_BASE_PATH_ONLY.search(description)
+    if path_only is not None:
+        path = (path_only.group("qpath") or (path_only.group("path") or "").rstrip(".,;")).strip()
+        return path or None, None
     match = _CODE_BASE.search(description)
     if match is None:
         raise ValueError(
             "Jira intake candidate has no 'Code base: branch <ref> of github.com/<owner>/<repo>' line"
         )
-    return (match.group("repo") or (match.group("path") or "").rstrip(".,;")) or None, match.group("ref")
+    local = match.group("qpath") or (match.group("path") or "").rstrip(".,;")
+    return (match.group("repo") or local.strip()) or None, match.group("ref")
 
 
 def _jira_labels(issue: dict[str, Any]) -> list[str]:
@@ -1140,7 +1188,7 @@ def create_app(
             mode=session.mode,
             input_text=payload.text,
             network="offline",
-            base_ref="main",
+            base_ref=_session_base(session.repo),
             run_record={"scenario": payload.scenario} if payload.scenario else {},
         )
         db.add(run)
@@ -1208,16 +1256,26 @@ def create_app(
         ]
         # Sum what is known and say how much is not: one run without spend rows (e.g. from before
         # spend-log tagging) must not turn every total into "n/a".
-        priced = [item for item in run_metrics if item["cost_status"] != "missing"]
-        runs_missing_cost = len(run_metrics) - len(priced)
+        priced = [item for item in run_metrics if item["usd"] is not None]
+        runs_missing_cost = sum(1 for item in run_metrics if item["cost_status"] == "missing")
+        runs_pending_cost = sum(1 for item in run_metrics if item["cost_status"] == "pending")
         outcomes = Counter(run.status for run in runs)
         total_wall_time = sum(wall_times)
         if run_metrics and not priced:
-            cost_status, model_calls, usd = "missing", None, None
+            if runs_pending_cost > 0:
+                cost_status = "pending"
+            else:
+                cost_status = "missing"
+            model_calls, usd = None, None
+            cost_estimated = False
         else:
-            cost_status = "partial" if runs_missing_cost else "available"
-            model_calls = sum(item["model_calls"] for item in priced)
-            usd = sum(item["usd"] for item in priced)
+            if runs_missing_cost > 0 or runs_pending_cost > 0:
+                cost_status = "partial"
+            else:
+                cost_status = "available"
+            cost_estimated = False
+            model_calls = sum(item["model_calls"] for item in priced if item["model_calls"] is not None)
+            usd = sum(item["usd"] for item in priced if item["usd"] is not None)
         return {
             "from": from_,
             "to": to,
@@ -1233,6 +1291,7 @@ def create_app(
             "usd": usd,
             "cost_usd": usd,
             "cost_status": cost_status,
+            "cost_estimated": cost_estimated,
             "runs_missing_cost": runs_missing_cost,
             "human_touches": sum(item["human_touches"] for item in run_metrics),
             "ci_rounds": sum(item["ci_rounds"] for item in run_metrics),

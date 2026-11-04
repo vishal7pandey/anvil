@@ -113,6 +113,28 @@ def repo_path(repo: str) -> str:
     return f"/workspace/{validate_repo(repo).split('/')[1]}"
 
 
+def _task_message(run: dict[str, Any], message: str, checkout: dict[str, Any]) -> str:
+    """The user message the agent sees: ticket text, repo/branch context, and — when the run's case
+    declares a [build] section — that recipe as the code base's build and test commands (ANVIL-90)."""
+    task = (f"{message}\n\n[Anvil context] Repository {run['repo']} is checked out at {checkout['path']} "
+            f"on branch {checkout['branch']} (base {checkout['base_ref']} @ {checkout['base_sha']}).")
+    if run.get("jira_key"):
+        task += f" Jira ticket: {run['jira_key']}."
+    if checkout.get("source_kind") in ("folder", "archive"):
+        task += (" The code base is a snapshot of a project folder without its own git history: "
+                 "commit your work on this branch as usual; it is exported as a patch.")
+    if checkout.get("uncommitted_changes"):
+        task += (f" Note: the original working copy has {checkout['uncommitted_changes']} uncommitted "
+                 f"change(s) that are not part of this checkout.")
+    from anvil.cases import case_for_run
+
+    case = case_for_run(run)
+    if case is not None and case.build:
+        steps = "; ".join(f"{name}: `{cmd}`" for name, cmd in case.build.items())
+        task += f" The build and test commands for this code base are: {steps}."
+    return task
+
+
 def graph_config(run: dict[str, Any]) -> dict[str, Any]:
     """The graph's checkpoint thread is the run, not the session (ANVIL-72).
 
@@ -259,7 +281,10 @@ class DeepAgentExecutor:
         has to be fetched, and nothing in it may be pushed.
         """
         repo = source.validate_local(run["repo"])
-        base = validate_ref(run.get("base_ref") or "main", "base_ref")
+        # No branch given: a working copy's current branch, or 'main' for a folder/archive snapshot (ANVIL-91).
+        base = validate_ref(run.get("base_ref") or source.default_base(repo), "base_ref")
+        run["base_ref"] = base  # the export diffs against the same base
+        kind, uncommitted = source.local_kind(repo), source.uncommitted_changes(repo)
         branch = work_branch(run)
         path = repo_path(repo)
         sandbox.set_network(None)
@@ -274,7 +299,8 @@ class DeepAgentExecutor:
         if failed:
             raise RuntimeError(f"could not upload skills: {failed}")
         return {"repo": repo, "path": path, "base_ref": base, "branch": branch, "network": "offline",
-                "source": "local", "skills": [p for p, _ in files if p.endswith("SKILL.md")],
+                "source": "local", "source_kind": kind, "uncommitted_changes": uncommitted,
+                "skills": [p for p, _ in files if p.endswith("SKILL.md")],
                 "skills_hash": skills_hash(files), "base_sha": found.get("BASE_SHA"), "head_sha": found.get("HEAD_SHA")}
 
     def export_local(self, sandbox: DockerSandbox, run: dict[str, Any], path: str, branch: str) -> dict[str, Any]:
@@ -315,10 +341,7 @@ class DeepAgentExecutor:
             yield mapper.event("run.status", {"status": "failed"})
             return
         yield mapper.event("run.record", self.run_record(run, checkout))
-        task = (f"{message}\n\n[Anvil context] Repository {run['repo']} is checked out at {checkout['path']} "
-                f"on branch {checkout['branch']} (base {checkout['base_ref']} @ {checkout['base_sha']}).")
-        if run.get("jira_key"):
-            task += f" Jira ticket: {run['jira_key']}."
+        task = _task_message(run, message, checkout)
         async for ev in self._stream(run, sandbox, mapper, {"messages": [{"role": "user", "content": task}]}):
             yield ev
 
@@ -343,6 +366,7 @@ class DeepAgentExecutor:
         cancel = self._cancel.setdefault(run["run_id"], asyncio.Event())
         self._live[run["run_id"]] = sandbox
         handoffs: list[dict[str, str]] = []
+        compactions: list[dict[str, Any]] = []   # reported by the summarization middleware (ANVIL-93)
         # Commands run in the run's repo checkout, for the agent and its subagents alike.
         if hasattr(sandbox, "set_workdir"):
             sandbox.set_workdir(repo_path(run["repo"]))
@@ -350,7 +374,8 @@ class DeepAgentExecutor:
         config = RunConfig(run_id=run["run_id"], repo=run["repo"], mode=run.get("mode", "interactive"),
                            merge_policy=run.get("merge_policy", "human"))
         agent = self.agent_factory(config, sandbox, tools=self.tools_factory(sandbox, run),
-                                   on_handoff=handoffs.append, checkpointer=checkpointer, store=store,
+                                   on_handoff=handoffs.append, on_compact=compactions.append,
+                                   checkpointer=checkpointer, store=store,
                                    skills=[SANDBOX_SKILLS])
         waiting = False
         budgets = self.budgets
@@ -369,6 +394,8 @@ class DeepAgentExecutor:
                 if cancel.is_set():
                     yield mapper.event("run.status", {"status": "cancelled"})
                     return
+                while compactions:
+                    yield mapper.event("context.compacted", compactions.pop(0))
                 for ev in mapper.map(item):
                     waiting = waiting or ev["type"] == "approval.request"
                     if ev["type"] == "sandbox.exec" and hasattr(sandbox, "take_timing"):

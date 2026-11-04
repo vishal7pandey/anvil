@@ -191,6 +191,12 @@ export default function ChatItemView({ item }: { item: ChatItem }) {
         </div>
       );
     }
+    case 'note':
+      return (
+        <div className="flex justify-center">
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-0.5 text-xs text-slate-500">{item.text}</span>
+        </div>
+      );
     case 'error':
       return (
         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2">

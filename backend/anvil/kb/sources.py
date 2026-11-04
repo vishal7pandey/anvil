@@ -13,7 +13,9 @@ from html.parser import HTMLParser
 import logging
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
+import subprocess
 from typing import Any
 from urllib.parse import quote
 
@@ -40,12 +42,77 @@ class SourceDocument:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+def _git_commit_dates_for_dir(root: Path) -> dict[str, str]:
+    """Map relative posix path inside root -> latest ISO committer date from git history.
+
+    Leaves files undated if the repository is a shallow clone to avoid stamping all
+    files with the shallow tip commit date (ANVIL-68).
+    """
+    dates: dict[str, str] = {}
+    root = root.resolve()
+    try:
+        top_res = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if top_res.returncode != 0:
+            return dates
+        repo_root = Path(top_res.stdout.strip()).resolve()
+
+        shallow_res = subprocess.run(
+            ["git", "rev-parse", "--is-shallow-repository"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if shallow_res.returncode == 0 and shallow_res.stdout.strip().lower() == "true":
+            log.warning(
+                "git repository at %s is shallow; leaving documents undated to avoid tip date pollution",
+                repo_root,
+            )
+            return dates
+
+        res = subprocess.run(
+            ["git", "log", "--name-only", "--format=COMMIT:%cI", "--", str(root)],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if res.returncode == 0:
+            current_date: str | None = None
+            for line in res.stdout.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                if line.startswith("COMMIT:"):
+                    current_date = line[len("COMMIT:") :].strip()
+                elif current_date:
+                    file_path = (repo_root / line).resolve()
+                    try:
+                        rel = file_path.relative_to(root).as_posix()
+                        if rel not in dates:
+                            dates[rel] = current_date
+                    except ValueError:
+                        pass
+        else:
+            log.warning("git log failed for %s (exit %d): %s", root, res.returncode, res.stderr.strip())
+    except Exception as exc:
+        log.warning("failed to extract git commit dates for %s: %s", root, exc)
+    return dates
+
+
 def documents_from_docs_dir(
     root: Path, repo_url: str | None = None
 ) -> Iterator[SourceDocument]:
     root = root.resolve()
     if not root.is_dir():
         raise FileNotFoundError(f"docs directory not found: {root}")
+    git_dates = _git_commit_dates_for_dir(root)
     for path in sorted(root.rglob("*")):
         if not path.is_file() or path.suffix.lower() not in DOC_SUFFIXES:
             continue
@@ -62,13 +129,31 @@ def documents_from_docs_dir(
         if not text.strip():
             continue
         rel_posix = relative.as_posix()
+        metadata: dict[str, Any] = {"path": rel_posix}
+        commit_date = git_dates.get(rel_posix)
+        if not commit_date:
+            try:
+                f_res = subprocess.run(
+                    ["git", "log", "-1", "--format=%cI", "--", path.name],
+                    cwd=path.parent,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                if f_res.returncode == 0 and f_res.stdout.strip():
+                    commit_date = f_res.stdout.strip()
+            except Exception as exc:
+                log.warning("failed to extract git commit date for %s: %s", path, exc)
+        if commit_date:
+            metadata["created_at"] = commit_date
+
         yield SourceDocument(
             source=DOCS_SOURCE,
             external_id=rel_posix,
             title=_title_from_text(text, path.name),
             url=f"{repo_url.rstrip('/')}/blob/main/{rel_posix}" if repo_url else None,
             text=text,
-            metadata={"path": rel_posix},
+            metadata=metadata,
         )
 
 
@@ -263,6 +348,32 @@ def fetch_confluence_pages(
             skipped += 1
             continue
 
+        # Confluence timestamp extraction (ANVIL-68):
+        # Prefers true page creation timestamp (createdAt / createdDate).
+        # Falling back to versionCreatedAt or lastModified represents a modification timestamp
+        # rather than initial page creation, but errs toward hiding post-fix content (conservative
+        # leak guard under as_of).
+        ver = page.get("version")
+        ver_created = ver.get("createdAt") if isinstance(ver, dict) else None
+        hist = item.get("history")
+        hist_created = hist.get("createdDate") if isinstance(hist, dict) else None
+
+        created_at = (
+            page.get("createdAt")
+            or page.get("created_at")
+            or page.get("versionCreatedAt")
+            or ver_created
+            or hist_created
+            or item.get("lastModified")
+            or item.get("created_at")
+        )
+        metadata: dict[str, Any] = {
+            "space": space_key,
+            "version": page.get("version"),
+        }
+        if created_at:
+            metadata["created_at"] = str(created_at)
+
         documents.append(
             SourceDocument(
                 source=CONFLUENCE_SOURCE,
@@ -270,10 +381,7 @@ def fetch_confluence_pages(
                 title=title,
                 url=page.get("url") or item.get("url"),
                 text=full_text,
-                metadata={
-                    "space": space_key,
-                    "version": page.get("version"),
-                },
+                metadata=metadata,
             )
         )
 

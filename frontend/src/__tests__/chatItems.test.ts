@@ -10,6 +10,17 @@ function ev(type: string, data: Record<string, unknown>, agent: string | null = 
 }
 
 describe('toChatItems', () => {
+  it('shows a compaction as a one-line note in order, with its event behind it', () => {
+    const items = toChatItems([
+      ev('message', { role: 'assistant', text: 'working' }),
+      ev('context.compacted', { cutoff_index: 42, summary_chars: 3100, history_file: '/workspace/.anvil/conversation_history/t.md' }),
+      ev('message', { role: 'assistant', text: 'continuing' }),
+    ]);
+    expect(items.map((i) => i.kind)).toEqual(['assistant', 'note', 'assistant']);
+    expect(items[1]).toMatchObject({ kind: 'note', text: 'Context compacted: 42 earlier messages summarized' });
+    expect(itemEvents(items[1])).toHaveLength(1);
+  });
+
   it('folds token deltas into one assistant message and lets the final message win', () => {
     const items = toChatItems([
       ev('message.delta', { role: 'assistant', text: 'Rea' }),

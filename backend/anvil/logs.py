@@ -78,21 +78,33 @@ def record_commands(sandbox: Any, run_id: Any) -> None:
     The event tail stays exactly as before; a log line (`sandbox command N -> path`, tagged with
     the run) is the link from the record stream to the full output file.
     """
-    seq = itertools.count(1)
-    original: Callable[..., Any] = sandbox.execute
     target = runs_dir(str(run_id)) / "commands"
+    target.mkdir(parents=True, exist_ok=True)
+    # Resume-safe numbering (review on #83): an approval-resumed run re-wraps the sandbox, so seed
+    # the counter past the files the first part already wrote instead of overwriting them.
+    existing = [int(p.stem) for p in target.glob("*.log") if p.stem.isdigit()]
+    seq = itertools.count(max(existing, default=0) + 1)
 
-    def execute(command: str, *, timeout: int | None = None) -> Any:
-        res = original(command, timeout=timeout)
+    def write(command: str, output: str, exit_code: Any) -> None:
         n = next(seq)
         try:
-            target.mkdir(parents=True, exist_ok=True)
             path = target / f"{n:04d}.log"
-            path.write_text(f"$ {command}\n\n(exit {res.exit_code})\n\n{res.output or ''}",
-                            encoding="utf-8")
+            path.write_text(f"$ {command}\n\n(exit {exit_code})\n\n{output or ''}", encoding="utf-8")
             log.info("sandbox command %s -> %s | %s", n, path, (command or "")[:120])
         except OSError as exc:
             log.warning("could not write command output for run %s: %s", run_id, exc)
+
+    if hasattr(sandbox, "on_exec"):
+        # Real DockerSandbox: the hook fires inside execute with the FULL output, before the
+        # agent-visible truncation (review on #83).
+        sandbox.on_exec = write
+        return
+
+    original: Callable[..., Any] = sandbox.execute
+
+    def execute(command: str, *, timeout: int | None = None) -> Any:
+        res = original(command, timeout=timeout)
+        write(command, res.output or "", res.exit_code)
         return res
 
     sandbox.execute = execute

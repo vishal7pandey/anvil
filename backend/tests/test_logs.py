@@ -46,3 +46,26 @@ def test_record_commands_writes_full_output(tmp_path, monkeypatch):
     assert one.startswith("$ first") and "out:first" in one and len(one) > 9000
     assert (tmp_path / "runs" / "r-77" / "commands" / "0002.log").exists()
     assert calls == ["first", "second"]  # output returned unchanged
+
+
+def test_record_commands_resumes_numbering_after_restart(tmp_path, monkeypatch):
+    """An approval-resumed run re-wraps the sandbox; it must not overwrite part one's logs."""
+    monkeypatch.setenv("ANVIL_RUNS_DIR", str(tmp_path / "runs"))
+    d = tmp_path / "runs" / "r-9" / "commands"
+    d.mkdir(parents=True)
+    (d / "0001.log").write_text("first")
+    (d / "0002.log").write_text("second")
+
+    class Sb:
+        on_exec = None
+
+        def execute(self, command, *, timeout=None):
+            if self.on_exec:
+                self.on_exec(command, "full-" + command, 0)
+            return SimpleNamespace(output="tail", exit_code=0)
+
+    sb = Sb()
+    record_commands(sb, "r-9")
+    sb.execute("third")
+    assert (d / "0001.log").read_text() == "first"
+    assert "third" in (d / "0003.log").read_text()

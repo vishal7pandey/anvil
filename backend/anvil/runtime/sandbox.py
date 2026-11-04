@@ -94,6 +94,9 @@ class DockerSandbox(BaseSandbox):
         self.deadline: float | None = None
         # (command, duration, timed_out) per execute, taken by the executor for sandbox.exec events.
         self.exec_log: list[dict] = []
+        # Optional host hook: called with (command, FULL decoded output, exit_code) before the
+        # output is truncated for the agent (ANVIL-84 writes commands/NNNN.log through it).
+        self.on_exec: Any = None
 
     # -- lifecycle -------------------------------------------------------------------------
 
@@ -176,6 +179,11 @@ class DockerSandbox(BaseSandbox):
         except APIError as exc:
             return ExecuteResponse(output=f"sandbox error: {exc.explanation or exc}", exit_code=None)
         raw = result.output or b""
+        if self.on_exec is not None:
+            try:
+                self.on_exec(command, raw.decode("utf-8", errors="replace"), result.exit_code)
+            except Exception:  # noqa: BLE001 - logging must never break a command result
+                pass
         truncated = len(raw) > MAX_OUTPUT_BYTES
         if truncated:
             raw = raw[-MAX_OUTPUT_BYTES:]  # keep the tail: build errors are at the end

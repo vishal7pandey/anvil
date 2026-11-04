@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Self
 
 from sqlalchemy import (
@@ -59,6 +60,24 @@ class SearchHit:
     url: str | None
     content: str
     score: float
+
+
+def _created_at_from_metadata(metadata: dict | None) -> datetime | None:
+    """The upstream creation time recorded by the crawler (ANVIL-43), or None."""
+    value = (metadata or {}).get("created_at")
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _doc_created_at(document: SourceDocument) -> datetime | None:
+    """The upstream creation time for an ingested document (ANVIL-43)."""
+    return _created_at_from_metadata(document.metadata)
 
 
 class KBStore:
@@ -147,6 +166,7 @@ class KBStore:
                         url=document.url,
                         content_sha256=digest,
                         doc_metadata=document.metadata,
+                        created_at=_doc_created_at(document),
                         fetched_at=func.now(),
                     )
                 )
@@ -164,6 +184,7 @@ class KBStore:
                         url=document.url,
                         content_sha256=digest,
                         doc_metadata=document.metadata,
+                        created_at=_doc_created_at(document),
                     )
                     .returning(kb_documents.c.id)
                 ).scalar_one()
@@ -212,7 +233,14 @@ class KBStore:
         k: int = 8,
         candidate_limit: int = 50,
         sources: Sequence[str] | None = None,
+        as_of: str | None = None,
     ) -> list[SearchHit]:
+        """Hybrid vector + full-text search.
+
+        ``as_of`` (ISO date/datetime) is the case's leak boundary: documents created after it are
+        "from the future" and hidden (ANVIL-43). NULL ``created_at`` is always visible. When
+        ``as_of`` is None the filter is inert and results are unchanged (normal TC4 path).
+        """
         query = query.strip()
         if not query:
             return []
@@ -229,6 +257,7 @@ class KBStore:
             "deny": list(self.settings.excluded_issue_ids),
             "cand": max(candidate_limit, k),
             "k": k,
+            "as_of": as_of,
         }
         statement = text(_SEARCH_SQL).bindparams(
             bindparam("deny", type_=ARRAY(String)),
@@ -278,10 +307,17 @@ WITH excluded AS (
     SELECT id FROM kb_documents
     WHERE source = 'gitlab-issue' AND external_id = ANY(:deny)
 ),
+visible_docs AS (
+    SELECT id FROM kb_documents
+    WHERE CAST(:as_of AS timestamptz) IS NULL
+       OR created_at IS NULL
+       OR created_at <= CAST(:as_of AS timestamptz)
+),
 vec AS (
     SELECT c.id, row_number() OVER (ORDER BY c.embedding <=> CAST(:qvec AS vector)) AS rn
     FROM kb_chunks c
     WHERE c.document_id NOT IN (SELECT id FROM excluded)
+      AND c.document_id IN (SELECT id FROM visible_docs)
     ORDER BY c.embedding <=> CAST(:qvec AS vector)
     LIMIT :cand
 ),
@@ -291,6 +327,7 @@ fts AS (
     ) AS rn
     FROM kb_chunks c
     WHERE c.document_id NOT IN (SELECT id FROM excluded)
+      AND c.document_id IN (SELECT id FROM visible_docs)
       AND to_tsvector('english', c.content) @@ websearch_to_tsquery('english', :q)
     ORDER BY ts_rank_cd(to_tsvector('english', c.content), websearch_to_tsquery('english', :q)) DESC
     LIMIT :cand

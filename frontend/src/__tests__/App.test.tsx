@@ -126,6 +126,46 @@ describe('App', () => {
     expect(screen.getByText('No pending approvals.')).toBeInTheDocument();
   });
 
+  it('polls approvals periodically so a new server approval appears without reloading', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const fetchMock = vi.mocked(globalThis.fetch);
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => [] } as Response);
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => [] } as Response);
+      const newApproval = {
+        approval_id: 'appr-polled-99',
+        run_id: 'r-99',
+        action: 'jira_comment',
+        args: { markdown: 'Proposed fix ready' },
+        reason: 'Requires human approval',
+        agent: 'anvil-agent',
+        session_id: 's-99',
+        session_title: 'Demo Session',
+        repo: 'vishal7pandey/rtems',
+        run_status: 'waiting_approval',
+        requested_at: '2026-11-05T04:00:00Z',
+      };
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => [newApproval] } as Response);
+
+      const { unmount } = render(<App />);
+
+      fireEvent.click(screen.getByRole('button', { name: /Approvals/ }));
+      expect(await screen.findByText('No pending approvals.')).toBeInTheDocument();
+
+      await vi.advanceTimersByTimeAsync(3000);
+
+      expect(await screen.findByText('appr-polled-99')).toBeInTheDocument();
+      expect(screen.getByText('jira_comment {"markdown":"Proposed fix ready"}')).toBeInTheDocument();
+
+      unmount();
+      const callsBefore = fetchMock.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(6000);
+      expect(fetchMock.mock.calls.length).toBe(callsBefore);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('New Session dialog shows repo hint and field descriptions', async () => {
     mockSessions([]);
     render(<App />);

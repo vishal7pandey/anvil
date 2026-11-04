@@ -16,11 +16,21 @@ from anvil.tools import git_push as git_push_module
 from anvil.tools import github, jira
 
 
+def _case_required_checks(run: dict[str, Any]) -> list[str] | None:
+    """The checks that gate this run's PR when its base branch has no protection: the case's
+    [ci] required_checks (owner decision 2026-11-04: SonarCloud is advisory). None = every check gates."""
+    from anvil.cases import case_for_run
+
+    case = case_for_run(run)
+    return list(case.required_checks) if case and case.required_checks else None
+
+
 def run_tools(run: dict[str, Any], sandbox: Any) -> list[Any]:
     """The outward tools for one run: repo, base branch and ticket bound from the run record."""
     repo: str = run["repo"]
     base: str = run.get("base_ref") or "main"
     key: str | None = run.get("jira_key")
+    required = _case_required_checks(run)
     push = git_push_module.make_git_push(sandbox)
 
     def git_push(branch: str) -> dict[str, Any]:
@@ -41,7 +51,8 @@ def run_tools(run: dict[str, Any], sandbox: Any) -> list[Any]:
         Returns state success|failure|pending|none with every check, and log tails for failed jobs.
         `none` means no CI ran: that is not a pass.
         """
-        return github.github_checks(repo, pr, wait_seconds=wait_seconds, poll_seconds=poll_seconds)
+        return github.github_checks(repo, pr, wait_seconds=wait_seconds, poll_seconds=poll_seconds,
+                                    default_required=required)
 
     def github_code_scanning_alerts(pr: int | None = None) -> list[dict[str, Any]]:
         """Open code-scanning alerts (CodeQL, cppcheck, ...) on your PR, to fix before review; without a
@@ -129,7 +140,8 @@ def _pr_problems(run: dict[str, Any], pr: dict[str, Any], base: str) -> list[str
     problems = []
     if pr["base"]["ref"] != base:
         problems.append(f"PR #{pr['number']} targets `{pr['base']['ref']}`, not the run's base branch `{base}`")
-    checks = github.github_checks(run["repo"], pr["number"], wait_seconds=0)
+    checks = github.github_checks(run["repo"], pr["number"], wait_seconds=0,
+                                  default_required=_case_required_checks(run))
     if checks["state"] != "success":
         failing = ", ".join(checks.get("failing") or []) or "-"
         problems.append(f"CI on PR #{pr['number']} is `{checks['state']}` (failing: {failing}), not green")

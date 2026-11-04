@@ -37,6 +37,12 @@ labels = ["anvil", "classic-api", "tc1"]
 summary = "Counter conversions return wrong values above a few seconds"
 body_file = "rtems-5806.ticket.md"
 
+
+# CI checks that gate the agent's PR (owner decision 2026-11-04). SonarCloud stays advisory: its gate
+# fails every PR on new-code coverage, which this pipeline does not measure. Branch protection on the
+# base branch, if any, takes precedence.
+[ci]
+required_checks = ["build-test", "CodeQL (C/C++)"]
 [scoring]
 target_files = ["cpukit/sapi/src/cpucounterconverter.c"]
 test_files = ["testsuites/sptests/spcpucounter01/init.c"]

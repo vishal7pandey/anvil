@@ -14,6 +14,7 @@ import os
 import re
 import shlex
 from collections.abc import AsyncIterator, Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -352,7 +353,10 @@ class DeepAgentExecutor:
                                    on_handoff=handoffs.append, checkpointer=checkpointer, store=store,
                                    skills=[SANDBOX_SKILLS])
         waiting = False
-        detector = StuckDetector(self.budgets)
+        budgets = self.budgets
+        if run.get("exploration_limit"):
+            budgets = replace(self.budgets, exploration_tool_calls=int(run["exploration_limit"]))
+        detector = StuckDetector(budgets)
         # The detector checks the time budget between events; the deadline makes the sandbox enforce
         # it inside a long command too (ANVIL-41). Cleared in `finally` so the handoff can still run.
         sandbox.deadline = detector.deadline
@@ -443,12 +447,21 @@ class DeepAgentExecutor:
 
     @staticmethod
     def diff_state(sandbox: DockerSandbox, path: str) -> str:
-        # Tracked edits, plus the content of untracked files that aren't ignored (a rewritten config.ini
-        # is progress; build/ output is gitignored and is not).
-        res = host_run(sandbox, 
+        # Tracked edits, plus untracked non-ignored file contents (a rewritten config.ini is
+        # progress; build/ output is gitignored and is not). Normalized by code_signature so a
+        # comment-only or whitespace-only edit signs identically and cannot reset the
+        # repeated-failure counter (ANVIL-75).
+        from anvil.runtime.stuck import code_signature
+
+        # run_internal (ANVIL-89) returns the complete output — the model's head+tail cut would
+        # otherwise salt the signature with a unique spill filename on every call; plain execute
+        # on stub sandboxes. Untracked files are per-file sha1sum'd, not cat'd (content reads
+        # cost too much; a comment edit inside a brand-new file resetting is an accepted edge).
+        runner = getattr(sandbox, "run_internal", None) or sandbox.execute
+        res = runner(
             f"cd {shlex.quote(path)} 2>/dev/null && (git diff HEAD; git status --porcelain; "
-            f"git ls-files -o --exclude-standard -z | xargs -0 -r sha1sum) | sha1sum", timeout=60)
-        return res.output.strip()[:40]
+            f"git ls-files -o --exclude-standard -z | xargs -0 -r sha1sum)", timeout=60)
+        return code_signature(res.output or "")
 
     @staticmethod
     def auto_note(run: dict[str, Any], reason: str, recent: list[dict[str, Any]]) -> dict[str, str]:

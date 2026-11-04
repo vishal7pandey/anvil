@@ -15,6 +15,9 @@
 
 .PARAMETER DatabaseUrl
     Postgres database connection string. Defaults to anvil_claude (or anvil).
+.PARAMETER KbDatabaseUrl
+    Database holding the shared, read-only knowledge base (kb_documents/kb_chunks). Defaults to
+    anvil. Kept apart from DatabaseUrl so a per-agent run database still sees the KB (ANVIL-51).
 .PARAMETER Port
     Port to listen on. Defaults to 8000.
 .PARAMETER HostAddress
@@ -26,6 +29,7 @@
 #>
 param(
     [string]$DatabaseUrl = "postgresql+psycopg://anvil:anvil@localhost:5433/anvil_claude",
+    [string]$KbDatabaseUrl = "postgresql+psycopg://anvil:anvil@localhost:5433/anvil",
     [int]$Port = 8000,
     [string]$HostAddress = "127.0.0.1",
     [string]$LogFile = "api-8000.log",
@@ -44,6 +48,7 @@ Write-Host "Repository root: $repoRoot"
 Write-Host "Backend dir:     $backendDir"
 Write-Host "Target:          http://${HostAddress}:${Port}"
 Write-Host "Database URL:    $DatabaseUrl"
+Write-Host "KB database URL: $KbDatabaseUrl"
 Write-Host "Log file:        $logPath"
 
 # 1. Check Git origin/main alignment
@@ -123,6 +128,7 @@ Write-Host "  [PASS] Demo token:      [configured]" -ForegroundColor Green
 # 4. Configure runtime environment
 $env:ANVIL_EXECUTOR = "deepagent"
 $env:ANVIL_DATABASE_URL = $DatabaseUrl
+$env:ANVIL_KB_DATABASE_URL = $KbDatabaseUrl
 $env:PYTHONUNBUFFERED = "1"
 
 # 5. Stop any existing listener on target port
@@ -159,7 +165,7 @@ $runCmd = Join-Path $PSScriptRoot "run-api.cmd"
 
 # Start detached background process via WMI to break away from any terminating job/session
 $res = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
-    CommandLine = "cmd.exe /c `"`"$runCmd`" `"$HostAddress`" $Port `"$DatabaseUrl`"`""
+    CommandLine = "cmd.exe /c `"`"$runCmd`" `"$HostAddress`" $Port `"$DatabaseUrl`" `"$KbDatabaseUrl`"`""
     CurrentDirectory = $backendDir
 }
 

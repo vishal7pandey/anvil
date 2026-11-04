@@ -166,14 +166,19 @@ def _knowledge_tools(run: dict[str, Any], tracker: Any = None) -> list[Any]:
 
     def _index(source: str, external_id: str, title: str, url: str | None, text: str) -> bool:
         try:
+            from datetime import datetime, timezone
+
             from anvil.kb.sources import SourceDocument
             from anvil.kb.tool import get_store
 
             report = get_store().ingest([
                 SourceDocument(source=source, external_id=external_id, title=title,
-                               url=url, text=text)])
+                               url=url, text=text,
+                               metadata={"created_at": datetime.now(timezone.utc)
+                                         .strftime("%Y-%m-%dT%H:%M:%SZ")})])
             return (report.documents_added + report.documents_updated) > 0
-        except Exception:  # noqa: BLE001 - KB may be down; the page write already succeeded
+        except Exception as exc:  # noqa: BLE001 - KB may be down; the page write already succeeded
+            log.warning("KB write-back for %s %s failed: %s", source, external_id, exc)
             return False
 
     local_run = is_local(run["repo"]) or (run.get("trigger") or "").startswith("local:")

@@ -60,6 +60,15 @@ class _RecStore:
         return IngestReport(len(got), 0, 0, 0, 0)
 
 
+@pytest.fixture(autouse=True)
+def _no_real_kb(monkeypatch):
+    """write_page with no injected store calls get_store() — point it at a recorder so tests never
+    touch the real dev KB (review on #95: three pages landed in the exported snapshot)."""
+    rec = _RecStore()
+    monkeypatch.setattr("anvil.kb.tool.get_store", lambda: rec)
+    return rec
+
+
 def test_write_page_indexes_into_the_kb_at_once(tmp_path):
     rec = _RecStore()
     k = LocalKnowledge(tmp_path, store=rec)

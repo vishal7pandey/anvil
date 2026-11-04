@@ -62,6 +62,26 @@ base:` line points at a local path runs fully offline.
   the model + hash pair matches). Only *query* embeddings still need the LiteLLM gateway.
 - The sandbox image travels as `anvil-sandbox-rtems-7.1.tar` + sha256 manifest;
   `scripts\import-sandbox-image.ps1` verifies and loads it.
+- Evidence the agent writes lands in the **local knowledge folder** — `ANVIL_KNOWLEDGE_DIR` (default
+  `kb/local/`, gitignored) — as Markdown pages, one per space folder. Each page is also indexed into
+  the KB at once, so a later run's `kb_search` finds it without any reset. To load an existing
+  folder of pages: `uv run python -m anvil.kb ingest-local --dir <folder>`
+  (seed: `docs/confluence/RTKB`).
+
+## Tunables a junior may need
+
+- `ANVIL_WEB_ALLOWLIST` — comma-separated trusted sources for `web_search` on caseless runs
+  (e.g. `docs.rtems.org,pubs.opengroup.org`). Inside a case, its `[web] allow` list decides instead;
+  TC3 has no list yet (ANVIL-50). Pages the search opens or cites outside the list are withheld.
+- `ANVIL_CONTEXT_WINDOW` — tokens of the model behind the gateway aliases. With it the agent
+  summarizes older context at 85% of the window; without it, the 170k default. Each compaction
+  emits a `context.compacted` run event (UI, logs, `python -m anvil.analyze <run_id>`).
+- Time guard: under a case's `as_of` boundary, KB documents dated after it are hidden, and
+  **undated** documents are hidden too (ANVIL-68) — so evidence written mid-run can't leak across
+  cases. `export-snapshot` skips `source="local"` pages unless you pass `--include-local`.
+- Shared locks: files in `C:\Dev\comms\locks\` serialize laptop-wide resources (e.g.
+  `rtems-build.lock` before a real RTEMS build). A file saying `agent: none` means *free* — the
+  software lock ignores it; a live `agent: <name>` means someone holds it.
 
 ## Known limits
 
@@ -73,6 +93,9 @@ base:` line points at a local path runs fully offline.
 - The ticket key selects the case (`RTEMS-1` binds the TC1 case: KB time-guard + acceptance checks).
 - Query-side KB embeddings need the gateway (document vectors are imported, queries are not).
 - The sandbox is amd64 Linux; Windows hosts run it through Docker Desktop/WSL2.
+- `confluence_search` on the local folder is substring matching, not CQL; `kb_search` is the ranked
+  path once a page is indexed.
+- Uncommitted changes in a local working copy are reported on the run but not copied.
 
 ## Run it
 

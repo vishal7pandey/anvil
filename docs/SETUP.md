@@ -61,7 +61,10 @@ Due to file size and offline requirements, these assets are distributed separate
 2. **Knowledge Base Vectors Sidecar (`data/kb/`)**:
    - `kb-snapshot-vectors.jsonl.gz`
    - `kb-snapshot-vectors.manifest.json`
-   - Pins `snapshot_sha256: 971c6b64978372e352ff1c0b065248a97488817da73b74d1f334723b2ec45598`, matching `data/kb/manifest.json`.
+   - The vectors manifest's `snapshot_sha256` must equal `data/kb/manifest.json`'s `sha256`. Verify with:
+     ```powershell
+     (Get-FileHash data\kb\kb-snapshot.jsonl.gz).Hash.ToLower()
+     ```
 3. **Local Target Source Code**:
    - A local clone or archive of `vishal7pandey/rtems` placed at e.g. `C:\work\rtems` with branch `tc1/5776-base`.
 4. **Local Knowledge Base Seed (`docs/confluence/RTKB` or `kb/local/`)**:
@@ -98,8 +101,10 @@ ANVIL_KNOWLEDGE_DIR=
 # Inside a case, its [web] allow list takes precedence.
 ANVIL_WEB_ALLOWLIST=
 
-# Context Window (tokens; optional, defaults to 170000)
-# Compaction triggers at 85% of window; emits context.compacted event and chat note.
+# Context Window (tokens; optional)
+# Unset: summarizes older messages at 170,000 tokens (absolute), keeping the last 6 messages.
+# Set: summarizes older messages at 85% of the value, keeping the last 10%.
+# Emits context.compacted event and chat note.
 ANVIL_CONTEXT_WINDOW=
 
 # Optional Demo Auth Token (leave empty for unauthenticated local demo)
@@ -157,8 +162,11 @@ uv run --directory backend python -m anvil.kb import-snapshot --from ..\data\kb
 
 **Vectors Sidecar Verification & Operation:**
 * When `kb-snapshot-vectors.manifest.json` and `kb-snapshot-vectors.jsonl.gz` reside in `data\kb\`, `import-snapshot` validates that:
-  - `model` matches `text-embedding-3-small` and `dim` matches `1536`.
-  - `snapshot_sha256` in the vectors manifest strictly matches `manifest.json` (`971c6b64978372e352ff1c0b065248a97488817da73b74d1f334723b2ec45598`).
+  - `model` matches the configured `ANVIL_EMBED_MODEL` (default: `anvil-embed`, LiteLLM's embedding gateway alias; a different model is refused with instructions to re-export or re-embed) and `dim` matches `1536`.
+  - `snapshot_sha256` in `kb-snapshot-vectors.manifest.json` strictly equals `sha256` in `manifest.json`. You can verify this equality manually:
+    ```powershell
+    (Get-FileHash data\kb\kb-snapshot.jsonl.gz).Hash.ToLower()
+    ```
   - The SHA-256 hash of `kb-snapshot-vectors.jsonl.gz` matches its manifest entry.
 * If all match, it loads all chunk vectors directly into `kb_chunks`, requiring **0 gateway embedding calls** during bootstrap.
 * If the vectors sidecar is omitted, `import-snapshot` embeds each chunk on the fly via the LiteLLM gateway (`http://127.0.0.1:4000`).
@@ -172,7 +180,7 @@ To load a directory of local Confluence-shaped Markdown pages into the knowledge
 uv run --directory backend python -m anvil.kb ingest-local --dir ..\docs\confluence\RTKB
 ```
 
-Imported local pages are tagged with `source = "local"` and are immediately searchable via `kb_search`. Note that `export-snapshot` omits `source="local"` pages by default (use `--include-local` to include them).
+Imported local pages are tagged with `source = "local"` and are immediately searchable via `kb_search` on ordinary caseless runs. Under a benchmark case with an `as_of` boundary, they are hidden because their creation date (`now()`) is newer than `as_of`. Note that `export-snapshot` omits `source="local"` pages by default (use `--include-local` to include them).
 
 ---
 
@@ -267,7 +275,7 @@ Open your browser to `http://localhost:5173`.
    * The container clones locally from `C:\work\rtems` on branch `tc1/5776-base` (or extracts snapshot if pointing to a folder/archive).
    * **KB Time Guard:** The agent queries the KB via `kb_search`. Under a case with an `as_of` timestamp (e.g. TC1), documents dated after `as_of` AND **undated** documents (`created_at IS NULL` - ANVIL-68) are hidden, ensuring no post-baseline or local evidence leaks into evaluation.
    * **Web Allowlist:** Any `web_search` calls enforce trusted domain restrictions from the case's `[web] allow` list (or `ANVIL_WEB_ALLOWLIST` for caseless runs). Pages outside the allowlist are withheld.
-   * **Context Compaction:** If session history exceeds 85% of `ANVIL_CONTEXT_WINDOW` (default: 170k tokens), older turns are summarized, preserving the last 10% of messages. A `context.compacted` event is recorded and a note **"Context compacted"** is displayed in the chat view.
+   * **Context Compaction:** When `ANVIL_CONTEXT_WINDOW` is set, older turns are summarized once usage reaches 85% of the window (keeping the last 10% of messages). When unset, summarization triggers at 170,000 tokens (absolute), keeping the last 6 messages. A `context.compacted` event is recorded and a note **"Context compacted"** is displayed in the chat view.
    * **Local Knowledge Writeback:** Any evidence or documentation written by the agent is stored under `ANVIL_KNOWLEDGE_DIR` (default: `kb/local/<space>/<title>.md`) and indexed immediately into the KB for subsequent searches.
    * It reproduces the defect on the SPARC/ERC32 simulator (`sis`).
    * It applies code modifications, recompiles via `./waf`, and executes regression tests.
@@ -329,7 +337,7 @@ Code base: branch `tc1/5776-base` of C:\work\rtems
 **A:** Evaluation cases enforce a strict historical time guard (`as_of`). Documents created after the cutoff—and documents with no recorded creation date (`created_at IS NULL` - ANVIL-68)—are hidden to prevent benchmark leaks. Newly ingested local documents without an explicit past timestamp are hidden under case runs.
 
 ### Q: What triggers "Context compacted" in the chat timeline?
-**A:** When token usage reaches 85% of `ANVIL_CONTEXT_WINDOW` (or 170k tokens by default), the runtime condenses older conversation turns into a summary while keeping the latest 10% of messages intact. It logs a `context.compacted` event and displays "Context compacted" in the session chat.
+**A:** If `ANVIL_CONTEXT_WINDOW` is set, compaction triggers when conversational tokens hit 85% of that window, summarizing earlier turns and preserving the last 10%. If unset, compaction triggers at 170,000 tokens (absolute), preserving the last 6 messages. In both cases, a `context.compacted` event is logged and "Context compacted" renders in the session chat.
 
 ### Q: How does `import-snapshot` verify the vectors sidecar?
-**A:** It inspects `data\kb\kb-snapshot-vectors.manifest.json` and verifies that its `snapshot_sha256` exactly matches `manifest.json` (`971c6b64...`), that the model is `text-embedding-3-small`, dim is `1536`, and that the SHA-256 hash of `kb-snapshot-vectors.jsonl.gz` matches. If any check fails, it fails loudly without modifying the database.
+**A:** It inspects `data\kb\kb-snapshot-vectors.manifest.json` and verifies that its `snapshot_sha256` matches `manifest.json`'s `sha256`, that `model` matches `ANVIL_EMBED_MODEL` (default: `anvil-embed`), `dim` is `1536`, and that the SHA-256 hash of `kb-snapshot-vectors.jsonl.gz` matches. If any check fails, it fails loudly without modifying the database.

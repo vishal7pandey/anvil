@@ -1,0 +1,28 @@
+{
+  "key": "ANVIL-56",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Highest",
+  "summary": "Local ticket tracker: JSON tickets in status folders as an alternative to Jira",
+  "labels": [
+    "agent-devin",
+    "demo",
+    "friday",
+    "offline",
+    "team-sync"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:36:39.081+0530",
+  "updated": "2026-11-04T21:12:01.847+0530",
+  "resolved": "2026-11-04T20:12:21.656+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Source: team sync 2026-11-04. The team has no Jira (or not ours), and the demo must run without it.\n\n**Design:** a tracker interface with two backends, Jira (today) and local.\n\n* **Local backend:** a folder per status (`todo/`, `in-progress/`, `done/`). One JSON file per ticket, same schema as `backlog/` (key, summary, description, acceptance criteria, labels, comments). Status is the folder; a transition moves the file.\n* **Intake:** polls `todo/` for tickets labelled `anvil`.\n* **Agent tools:** `jira_get`, `jira_comment`, `jira_transition`, `jira_create` and `jira_search` route to the configured backend. Names stay the same (or get neutral `ticket_*` aliases) so skills don't change.\n* The approval gate on create stays.\n\n**Acceptance:**\n\n* dropping a TC1 ticket JSON into `todo/` starts a run;\n* the run's comment lands in the file;\n* the file ends in `in-progress/` or `done/`;\n* with Jira credentials unset, nothing tries to reach Atlassian.\n",
+  "comments": [
+    {
+      "created": "2026-11-04T19:17:06.439+0530",
+      "body": "[devin] PR #72 up: https://github.com/vishal7pandey/anvil/pull/72 — LocalTracker (ANVIL_TICKETS_DIR, todo/in-progress/done JSON files, backlog schema); intake polls it alongside Jira, Jira only when ATLASSIAN_* set; local runs get trigger local:<key>, path verbatim in Run.repo, offline network; jira_* tools bind to the store for local runs, no GitHub tools. Interface note for ANVIL-55: repo_path() must basename a local path. 6 new tests + 50 regression green.\n"
+    }
+  ]
+}

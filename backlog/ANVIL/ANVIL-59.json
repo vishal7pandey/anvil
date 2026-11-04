@@ -1,0 +1,21 @@
+{
+  "key": "ANVIL-59",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "High",
+  "summary": "KB write-backs are searchable at once (TC4 self-learning without a reset)",
+  "labels": [
+    "demo",
+    "kb",
+    "team-sync"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:36:44.025+0530",
+  "updated": "2026-11-04T18:36:44.083+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Source: KB review 2026-11-04 (P2).\n\n**Today:** `confluence_write` creates the page only. The page reaches pgvector only when `reset_demo.py` runs `ingest-confluence`, so run 2 can't find run 1's post-mortem inside the demo.\n\n**Want:** after an approved `confluence_write` (or the local-folder write, ANVIL-60), ingest that one page into the KB. `store.ingest()` already updates changed documents. The ingest keeps the leak guard and the page's date.\n\n**Acceptance:** run 1 writes a post-mortem; a `kb_search` straight after returns it, with no reset step.\n",
+  "comments": []
+}

@@ -1,20 +1,26 @@
 {
   "key": "ANVIL-47",
   "type": "Task",
-  "status": "To Do",
+  "status": "In Progress",
   "priority": "Medium",
   "summary": "Sandbox container lifecycle: remove finished-run sandboxes after their evidence is saved (10+ stale anvil-sbx-* tonight)",
   "labels": [
     "M4",
-    "agent-claude"
+    "agent-antigravity",
+    "dfmea"
   ],
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-03T23:58:02.728+0530",
-  "updated": "2026-11-03T23:58:02.787+0530",
+  "updated": "2026-11-04T22:01:31.891+0530",
   "resolved": null,
   "links": [],
   "subtasks": [],
   "description": "[claude] On 2026-11-03 there were 10+ `anvil-sbx-*` containers up, some 8 h old. The laptop has ~7 GB for Docker, shared by three agents. Preflight check 8 (#44) fails until someone cleans up by hand, and there's no rule for what may be removed.\n\n## Policy\n\n* **Succeeded / failed / cancelled:** remove the sandbox N hours after the terminal status (default 2 h, configurable). The diff is already captured: the agent.diff/score for dry runs, the pushed branch for API runs.\n* **Handoff:** keep until the handoff note is posted and the WIP branch is pushed, then apply the same N-hour rule. The note names the sandbox, so a human can still inspect it in that window.\n* **Dry-run sandboxes** (`anvil-sbx-dry-*`): removed by the dry-run script at exit unless `--keep`.\n* Implement it as a periodic sweep in the API (like the intake loop) plus `reset_demo.py --containers`.\n\n## Acceptance\n\n* A unit test on the policy.\n* After a run is terminal for N hours, its container is gone.\n* Handoff sandboxes survive until the note is posted.\n\nOwner: claude. Size: S/M. Do after the demo-critical items.\n",
-  "comments": []
+  "comments": [
+    {
+      "created": "2026-11-04T18:40:00.543+0530",
+      "body": "DFMEA 2026-11-04 (F07, RPN 192) found the same thing independently: sandboxes start as `sleep infinity`, and `DockerSandbox.stop(remove=True)` is never called after a run. Its design suggestion: a reaper in the API lifespan that removes a sandbox once its run is terminal and its evidence is saved, keeps handoff sandboxes for 24 h, and removes labelled orphans with no live run. This ticket has priority over the post-demo items, because a laptop full of stale sandboxes breaks rehearsals.\n"
+    }
+  ]
 }

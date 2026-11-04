@@ -29,6 +29,7 @@ copies `<path>` into `Run.repo` verbatim.
 
 from __future__ import annotations
 
+from anvil.runtime.sandbox import host_run
 import io
 import os
 import re
@@ -244,7 +245,7 @@ def export_result(sandbox: Any, run: dict[str, Any], path: str, branch: str) -> 
     q = shlex.quote
     base = q(f"origin/{run.get('base_ref') or 'main'}")
     tmp = "/tmp/anvil-export"
-    res = sandbox.execute(
+    res = host_run(sandbox, 
         f"cd {q(path)} && rm -rf {tmp} && mkdir -p {tmp} && n=$(git rev-list --count {base}..{q(branch)}) && "
         f"echo COMMITS=$n && if [ \"$n\" -gt 0 ]; then "
         f"git format-patch --quiet --stdout {base}..{q(branch)} > {tmp}/result.patch && "

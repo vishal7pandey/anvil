@@ -1,0 +1,21 @@
+{
+  "key": "ANVIL-66",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Component-upgrade input: a version registry so the agent finds outdated components itself",
+  "labels": [
+    "post-demo",
+    "tc2",
+    "team-sync"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:36:56.183+0530",
+  "updated": "2026-11-04T18:36:56.247+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Source: team sync 2026-11-04. Open question: is the TC2 input \"upgrade X to version Y\", or does the agent find what's outdated? An SBOM gives the current versions only; the latest versions are external.\n\n**Want:**\n\n* A registry file per repo listing each vendored component, its current version (from the SBOM / import manifest), its upstream source (an allowlisted URL or mirror) and the approved target version.\n* An optional tool fills in \"latest\" from allowlisted sources only.\n* The component-upgrade skill reads the registry, plans one upgrade per component, and runs the case's acceptance check for each.\n* Decide (owner): is a ticket \"upgrade lwIP to 2.2.1\" (today's TC2) or \"bring components up to date\"? The registry supports both.\n\n**Acceptance:** for rtems-lwip, the registry says lwIP 2.1.x → 2.2.1, and the agent derives the TC2 task from it.\n",
+  "comments": []
+}

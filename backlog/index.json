@@ -13,7 +13,7 @@
  {
   "key": "ANVIL-2",
   "type": "Epic",
-  "status": "To Do",
+  "status": "In Progress",
   "priority": "Medium",
   "summary": "WS-B Agent runtime (Deep Agents, Docker sandbox backend, subagents, skills, stuck detection)",
   "labels": [
@@ -24,7 +24,7 @@
  {
   "key": "ANVIL-3",
   "type": "Epic",
-  "status": "To Do",
+  "status": "In Progress",
   "priority": "Medium",
   "summary": "WS-C Control API (FastAPI, sessions, runs, SSE events, approvals)",
   "labels": [
@@ -68,7 +68,7 @@
  {
   "key": "ANVIL-7",
   "type": "Epic",
-  "status": "To Do",
+  "status": "In Progress",
   "priority": "Medium",
   "summary": "WS-G Knowledge base (TC4) + TC1 eval harness",
   "labels": [
@@ -175,7 +175,7 @@
  {
   "key": "ANVIL-16",
   "type": "Epic",
-  "status": "To Do",
+  "status": "Done",
   "priority": "Medium",
   "summary": "WS-H Demo scenarios + QA (TC2 upgrade, end-to-end browser tests, rehearsal)",
   "labels": [
@@ -209,7 +209,7 @@
  {
   "key": "ANVIL-19",
   "type": "Story",
-  "status": "In Progress",
+  "status": "Done",
   "priority": "Medium",
   "summary": "Runtime executor: sessions -> sandbox, repo checkout, checkpointer, tools wiring, run record",
   "labels": [
@@ -221,7 +221,7 @@
  {
   "key": "ANVIL-20",
   "type": "Story",
-  "status": "In Progress",
+  "status": "Done",
   "priority": "Medium",
   "summary": "Stuck detection, handoff and budgets",
   "labels": [
@@ -245,7 +245,7 @@
  {
   "key": "ANVIL-22",
   "type": "Story",
-  "status": "In Progress",
+  "status": "Done",
   "priority": "Medium",
   "summary": "TC1 eval harness + answer-leak controls",
   "labels": [
@@ -269,7 +269,7 @@
  {
   "key": "ANVIL-24",
   "type": "Story",
-  "status": "In Progress",
+  "status": "Done",
   "priority": "Medium",
   "summary": "API: Jira intake loop, approvals resume, cancel, executor wiring",
   "labels": [
@@ -473,7 +473,7 @@
  {
   "key": "ANVIL-41",
   "type": "Task",
-  "status": "To Do",
+  "status": "Done",
   "priority": "High",
   "summary": "Decide the TC1 run time budget (now 45 min) from the TC1 run timings, before the recorded rehearsals",
   "labels": [
@@ -497,7 +497,7 @@
  {
   "key": "ANVIL-43",
   "type": "Story",
-  "status": "To Do",
+  "status": "Done",
   "priority": "Medium",
   "summary": "Time-based leak guard: during an eval run, KB search hides documents created after the case's as_of date",
   "labels": [
@@ -509,7 +509,7 @@
  {
   "key": "ANVIL-44",
   "type": "Story",
-  "status": "To Do",
+  "status": "Done",
   "priority": "Medium",
   "summary": "TC2 as a case spec (component-upgrade): declare the rtems-lwip withheld set so rtems-lwip can enter the KB safely",
   "labels": [
@@ -526,7 +526,9 @@
   "summary": "KB: mailing-list archive loader (pipermail devel/users/bugs, one document per thread)",
   "labels": [
    "M4",
-   "agent-cline"
+   "agent-cline",
+   "kb",
+   "post-demo"
   ],
   "epic": null
  },
@@ -545,12 +547,13 @@
  {
   "key": "ANVIL-47",
   "type": "Task",
-  "status": "To Do",
+  "status": "In Progress",
   "priority": "Medium",
   "summary": "Sandbox container lifecycle: remove finished-run sandboxes after their evidence is saved (10+ stale anvil-sbx-* tonight)",
   "labels": [
    "M4",
-   "agent-claude"
+   "agent-antigravity",
+   "dfmea"
   ],
   "epic": null
  },
@@ -568,7 +571,7 @@
  {
   "key": "ANVIL-49",
   "type": "Task",
-  "status": "To Do",
+  "status": "Done",
   "priority": "Medium",
   "summary": "Reset + preflight protect every case ticket (cases/*.toml ticket.key), not only RTEMS-1..6",
   "labels": [
@@ -578,13 +581,584 @@
   "epic": null
  },
  {
-  "key": "RTEMS-1",
+  "key": "ANVIL-50",
+  "type": "Task",
+  "status": "To Do",
+  "priority": "High",
+  "summary": "TC3 readiness: make the CRA review runnable end to end (intake mode, device code base, scan inputs, acceptance)",
+  "labels": [
+   "M3",
+   "agent-claude"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-51",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "kb_search reads the per-agent run database, and a KB error kills the run",
+  "labels": [
+   "rehearsal",
+   "tc3"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-52",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Chat stream shows a run, not its event log: render model + layout fixes for the demo",
+  "labels": [
+   "demo",
+   "frontend"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-53",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Post-demo workspace redesign: plan, narrative, inspector (diff + terminal), control bar",
+  "labels": [
+   "frontend",
+   "post-demo"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-54",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Cost meter shows $0 on live runs: usage events carry no usd",
+  "labels": [
+   "agent-cline",
+   "demo",
+   "frontend"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-55",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Highest",
+  "summary": "Local workspace as a session source: run on a folder on disk, no GitHub needed",
+  "labels": [
+   "agent-claude",
+   "demo",
+   "friday",
+   "offline",
+   "team-sync"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-56",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Highest",
+  "summary": "Local ticket tracker: JSON tickets in status folders as an alternative to Jira",
+  "labels": [
+   "agent-devin",
+   "demo",
+   "friday",
+   "offline",
+   "team-sync"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-57",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Highest",
+  "summary": "Sandbox image without GitHub: ship the RTEMS 7.1 image as a file (docker save/load)",
+  "labels": [
+   "agent-antigravity",
+   "demo",
+   "friday",
+   "offline",
+   "team-sync"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-58",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Highest",
+  "summary": "Shareable KB with vectors: snapshot export/import that skips re-embedding",
+  "labels": [
+   "agent-devin",
+   "demo",
+   "friday",
+   "kb",
+   "offline",
+   "team-sync"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-59",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "High",
+  "summary": "KB write-backs are searchable at once (TC4 self-learning without a reset)",
+  "labels": [
+   "demo",
+   "kb",
+   "team-sync"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-60",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Local knowledge folder as a KB source and write-back target (no Atlassian)",
+  "labels": [
+   "demo",
+   "kb",
+   "offline",
+   "team-sync"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-61",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "New Session dialog a first-time user can complete without help",
+  "labels": [
+   "agent-cline",
+   "demo",
+   "friday",
+   "frontend",
+   "team-sync"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-62",
+  "type": "Story",
+  "status": "In Progress",
+  "priority": "Medium",
+  "summary": "Where does a run's time go: per-phase timing, then the biggest speed levers",
+  "labels": [
+   "demo",
+   "team-sync"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-63",
+  "type": "Story",
+  "status": "In Progress",
+  "priority": "Highest",
+  "summary": "Setup guide for a fresh laptop without our accounts (zip to first run)",
+  "labels": [
+   "agent-antigravity",
+   "demo",
+   "docs",
+   "friday",
+   "offline",
+   "team-sync"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-64",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "web_search: allowlist of trusted domains per case/skill, not only a blocklist",
+  "labels": [
+   "security",
+   "team-sync"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-65",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "CRA scanning with open-source tools: the agent runs the scanners and imports their reports",
+  "labels": [
+   "post-demo",
+   "tc3",
+   "team-sync"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-66",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Component-upgrade input: a version registry so the agent finds outdated components itself",
+  "labels": [
+   "post-demo",
+   "tc2",
+   "team-sync"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-67",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "KB: faster import and incremental refresh from a snapshot",
+  "labels": [
+   "kb",
+   "post-demo",
+   "team-sync"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-68",
+  "type": "Bug",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "KB time guard misses rtems-docs and Confluence documents: they carry no date",
+  "labels": [
+   "kb",
+   "leak-guard",
+   "team-sync"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-69",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "KB: configurable embedding model and dimension (on-prem / local embeddings)",
+  "labels": [
+   "kb",
+   "post-demo",
+   "team-sync"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-70",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Route a ticket to its repo from ticket metadata when one tracker spans many repos",
+  "labels": [
+   "post-demo",
+   "team-sync"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-71",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "High",
+  "summary": "One active run per session: a second message while a run is going starts a parallel run on the same sandbox",
+  "labels": [
+   "agent-claude",
+   "concurrency",
+   "demo",
+   "dfmea",
+   "friday"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-72",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "High",
+  "summary": "Graph checkpoints are keyed by session, not run: a new run inherits the previous run's state",
+  "labels": [
+   "agent-claude",
+   "demo",
+   "dfmea",
+   "friday",
+   "runtime"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-73",
+  "type": "Bug",
+  "status": "In Progress",
+  "priority": "High",
+  "summary": "Reopening a session shows nothing: load the session's runs and replay the latest run's events",
+  "labels": [
+   "agent-cline",
+   "demo",
+   "dfmea",
+   "friday",
+   "frontend"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-74",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "High",
+  "summary": "The main prompt orders `pre-commit run --all-files`, which the sandbox refuses: one owned way to lint changed files",
+  "labels": [
+   "agent-claude",
+   "demo",
+   "dfmea",
+   "friday",
+   "runtime"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-75",
   "type": "Bug",
   "status": "In Progress",
   "priority": "Medium",
+  "summary": "Stuck detector loopholes: a comment edit resets repeated failures; no bound before the first edit",
+  "labels": [
+   "agent-devin",
+   "dfmea",
+   "runtime"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-76",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Polling tools (github_checks, github_pr_state) sleep up to 15 min, ignoring cancel and the run deadline",
+  "labels": [
+   "agent-claude",
+   "dfmea",
+   "runtime"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-77",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Calling handoff doesn't end the run: the agent can keep working until it stops on its own",
+  "labels": [
+   "agent-devin",
+   "dfmea",
+   "runtime"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-78",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "First requests on a clean database can fail with 500: demo user created per request (users_pkey race)",
+  "labels": [
+   "agent-devin",
+   "api",
+   "demo",
+   "dfmea",
+   "friday"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-79",
+  "type": "Bug",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Metrics: spend-log lookup scans unindexed JSON and the API answers 503 while spend rows lag",
+  "labels": [
+   "api",
+   "dfmea"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-80",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Jira intake loop retries every 60 s forever when Jira is unset or failing",
+  "labels": [
+   "api",
+   "dfmea",
+   "offline"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-81",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "git_push: the shared host bare clone is locked only on first clone, not on fetch/push",
+  "labels": [
+   "concurrency",
+   "dfmea"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-82",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Deterministic vendor re-import tool (three-way merge) for component upgrades",
+  "labels": [
+   "dfmea",
+   "post-demo",
+   "tc2"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-83",
+  "type": "Story",
+  "status": "Done",
+  "priority": "High",
+  "summary": "Observability 1: persist per-step timing (tool, command, model call) and a \"where did the time go\" report per run",
+  "labels": [
+   "agent-claude",
+   "observability"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-84",
+  "type": "Story",
+  "status": "Done",
+  "priority": "High",
+  "summary": "Observability 2: persistent, structured, run-correlated logs (no overwrite on restart) and full command output per run",
+  "labels": [
+   "agent-devin",
+   "observability"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-85",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Observability 3: OpenTelemetry traces for runs, model calls, tools and sandbox commands, to a local offline trace viewer",
+  "labels": [
+   "agent-antigravity",
+   "observability",
+   "post-friday"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-86",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Observability 4: team flow metrics: PR lead time, review wait, and comms response time for the build agents",
+  "labels": [
+   "agent-cline",
+   "observability"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-87",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Highest",
+  "summary": "Offline chain integration test without an LLM: local ticket → intake → local repo in a real sandbox → patch file + ticket comment",
+  "labels": [
+   "agent-devin",
+   "demo",
+   "friday",
+   "offline"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-88",
+  "type": "Task",
+  "status": "In Progress",
+  "priority": "Highest",
+  "summary": "Produce the Friday hand-over files: sandbox image archive, KB vectors snapshot, TC1 local repo + ticket",
+  "labels": [
+   "demo",
+   "friday",
+   "offline"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-89",
+  "type": "Story",
+  "status": "In Progress",
+  "priority": "High",
+  "summary": "Speed: subagents consume 5M input tokens per TC1 run; give them a narrow brief and bounded context",
+  "labels": [
+   "agent-claude",
+   "speed"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-90",
+  "type": "Task",
+  "status": "In Progress",
+  "priority": "Medium",
+  "summary": "Known build recipe: [build] section in cases/*.toml wired into the run prompt",
+  "labels": [
+   "agent-devin",
+   "friday",
+   "speed"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-91",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Highest",
+  "summary": "Point the factory at a local project in any shape: plain folder, git repo on any branch, archive, path with spaces",
+  "labels": [
+   "agent-claude",
+   "handoff",
+   "offline"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-92",
+  "type": "Task",
+  "status": "To Do",
+  "priority": "Highest",
+  "summary": "Junior hand-over by tomorrow morning: refresh backlog/Confluence export, HANDOFF.md, verified repo zip",
+  "labels": [
+   "agent-devin",
+   "friday",
+   "handoff"
+  ],
+  "epic": null
+ },
+ {
+  "key": "RTEMS-1",
+  "type": "Bug",
+  "status": "To Do",
+  "priority": "Medium",
   "summary": "Mutex reports EBUSY / crashes after a failed pthread_mutex_init with an invalid priority ceiling",
   "labels": [
-   "anvil",
    "posix",
    "tc1"
   ],

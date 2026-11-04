@@ -1,0 +1,21 @@
+{
+  "key": "ANVIL-91",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Highest",
+  "summary": "Point the factory at a local project in any shape: plain folder, git repo on any branch, archive, path with spaces",
+  "labels": [
+    "agent-claude",
+    "handoff",
+    "offline"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T22:29:26.593+0530",
+  "updated": "2026-11-04T22:29:26.817+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] Owner, 2026-11-05: the juniors get the codebase tomorrow morning and must be able to point the factory at **their own project folder, in whatever shape or form**, not only a GitHub repo.\n\nANVIL-55 (#74) handles one shape: a git working copy at an absolute path with no spaces, on the branch the ticket names. Gaps found on main:\n\n* **a plain folder** (no `.git`) is refused;\n* **UI sessions hardcode **`base_ref=\"main\"` (`app.py` `create_run`), so a repo on `master` or any other branch fails;\n* **paths with spaces** are refused, and the ticket's `Code base:` line can't express them;\n* `.zip` / `.tar.gz` archives are not accepted;\n* **uncommitted changes** in a working copy are silently ignored;\n* **folder names** outside `[A-Za-z0-9_.-]` are refused.\n\n**Design:** the host normalises any source into the same thing #74 already ships, a shallow single-branch `.git`.\n\n* **Git working copy:** as today, but the default base is the repo's **current branch** (UI and intake when no branch is given). Uncommitted changes are **reported** in the run record and the agent's task, and are not copied by default; an explicit opt-in snapshots them as one extra commit.\n* **Plain folder:** the host makes a temporary git repo from it (one snapshot commit; respects a `.gitignore` if present, and skips `.git`, `node_modules`, `__pycache__`, `.venv`, `build/`), then continues as above. The patch and bundle apply to that snapshot.\n* **Archive (**`.zip`, `.tar.gz`, `.tgz`): extracted safely (no absolute paths, `..` or links) into a temp folder, then treated as a plain folder.\n* **Any path, including spaces:** the path is only ever used in host `subprocess` argument lists, never in a shell. The sandbox directory name is a sanitised slug of the folder name. Tickets may quote the path: `Code base: branch main of \"C:\\My Projects\\app\"`, and the branch is optional.\n\n**Acceptance:**\n\n* tests for each shape (plain folder, archive, a repo on `master` with no branch given, a path with spaces, a working copy with uncommitted changes reported);\n* an end-to-end run in the real sandbox for a plain folder, with its patch applying back with `git apply`;\n* SETUP.md documents the shapes.\n",
+  "comments": []
+}

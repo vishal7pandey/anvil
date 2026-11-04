@@ -1,7 +1,7 @@
 {
   "key": "ANVIL-7",
   "type": "Epic",
-  "status": "To Do",
+  "status": "In Progress",
   "priority": "Medium",
   "summary": "WS-G Knowledge base (TC4) + TC1 eval harness",
   "labels": [
@@ -10,7 +10,7 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-02T19:38:11.255+0530",
-  "updated": "2026-11-02T21:07:56.591+0530",
+  "updated": "2026-11-04T22:21:10.668+0530",
   "resolved": null,
   "links": [],
   "subtasks": [],

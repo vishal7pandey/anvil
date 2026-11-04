@@ -6,6 +6,7 @@ LangGraph thread per session (Postgres checkpointer), events in the docs/02 cont
 
 from __future__ import annotations
 
+from anvil.runtime.sandbox import host_run
 import asyncio
 import contextlib
 import hashlib
@@ -141,13 +142,19 @@ class DeepAgentExecutor:
                  tools_factory: ToolsFactory | None = None, agent_factory: AgentFactory = build_agent,
                  docker_client: docker.DockerClient | None = None, budgets: Budgets | None = None,
                  push_hook: PushHook | None = None, report_hook: ReportHook | None = None,
-                 verify_hook: VerifyHook | None = None) -> None:
+                 verify_hook: VerifyHook | None = None, owner_id: str | None = None) -> None:
         self.budgets = budgets
         self.verify_hook = verify_hook
         self.push_hook = push_hook
         self.report_hook = report_hook
         self.image = image or os.environ.get("ANVIL_SANDBOX_IMAGE", DEFAULT_IMAGE)
         self.db_url = db_url or os.environ.get("ANVIL_DATABASE_URL", "postgresql://anvil:anvil@localhost:5433/anvil")
+        self.owner_id = (
+            owner_id
+            or os.environ.get("ANVIL_INSTANCE_ID")
+            or os.environ.get("ANVIL_OWNER_ID")
+            or (self.db_url.rsplit("/", 1)[-1].split("?")[0] if "/" in self.db_url else "default")
+        )
         self.tools_factory = tools_factory or (lambda _sb, _run: [])
         self.agent_factory = agent_factory
         self._docker = docker_client
@@ -187,8 +194,18 @@ class DeepAgentExecutor:
         try:
             return DockerSandbox.attach(name, client=self.docker)
         except NotFound:
-            return DockerSandbox.start(SandboxSpec(image=self.image, name=name, labels={
-                "anvil.session_id": str(run["session_id"]), "anvil.repo": run["repo"]}), client=self.docker)
+            return DockerSandbox.start(
+                SandboxSpec(
+                    image=self.image,
+                    name=name,
+                    labels={
+                        "anvil.session_id": str(run["session_id"]),
+                        "anvil.repo": run["repo"],
+                        "anvil.owner": self.owner_id,
+                    },
+                ),
+                client=self.docker,
+            )
 
     def checkout(self, sandbox: DockerSandbox, run: dict[str, Any]) -> dict[str, Any]:
         """Clone only the base branch (answer-leak control: other refs may hold withheld fixes)."""
@@ -214,7 +231,7 @@ class DeepAgentExecutor:
             f"echo BASE_SHA=$(git rev-parse origin/{shlex.quote(base)}); echo HEAD_SHA=$(git rev-parse HEAD)"
         )
         sandbox.set_network("bridge")  # needed for the first clone; dropped again below for offline runs
-        res = sandbox.execute(script, timeout=1800)
+        res = host_run(sandbox, script, timeout=1800)
         if res.exit_code != 0:
             # Say what failed even when the command printed nothing (rehearsal 3e7db2f9: "checkout failed: ").
             raise RuntimeError(f"checkout failed (exit {res.exit_code}): "
@@ -249,7 +266,7 @@ class DeepAgentExecutor:
         path = repo_path(repo)
         sandbox.set_network(None)
         sandbox.upload_tar("/workspace", source.local_copy_tar(repo, base))
-        res = sandbox.execute(source.local_checkout_script(path, base, branch), timeout=900)
+        res = host_run(sandbox, source.local_checkout_script(path, base, branch), timeout=900)
         if res.exit_code != 0:
             raise RuntimeError(f"local checkout failed (exit {res.exit_code}): "
                                f"{res.output[-1500:].strip() or 'no output'}")
@@ -438,7 +455,7 @@ class DeepAgentExecutor:
     def diff_state(sandbox: DockerSandbox, path: str) -> str:
         # Tracked edits, plus the content of untracked files that aren't ignored (a rewritten config.ini
         # is progress; build/ output is gitignored and is not).
-        res = sandbox.execute(
+        res = host_run(sandbox, 
             f"cd {shlex.quote(path)} 2>/dev/null && (git diff HEAD; git status --porcelain; "
             f"git ls-files -o --exclude-standard -z | xargs -0 -r sha1sum) | sha1sum", timeout=60)
         return res.output.strip()[:40]
@@ -472,7 +489,7 @@ class DeepAgentExecutor:
         if push_wip:
             key = run.get("jira_key") or "ANVIL"
             message = f"{key}: WIP handoff (Anvil run {run['run_id']})"
-            commit = await asyncio.to_thread(sandbox.execute, (
+            commit = await asyncio.to_thread(host_run, sandbox, (
                 f"cd {shlex.quote(path)} && git add -A && git commit -q --no-verify --allow-empty -m {shlex.quote(message)} "
                 f"&& git branch -f {shlex.quote(wip)} HEAD && git rev-parse HEAD"), timeout=120)
             if commit.exit_code == 0 and source.is_local(run["repo"]):

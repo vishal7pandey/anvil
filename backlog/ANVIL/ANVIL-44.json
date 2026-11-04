@@ -1,7 +1,7 @@
 {
   "key": "ANVIL-44",
   "type": "Story",
-  "status": "To Do",
+  "status": "Done",
   "priority": "Medium",
   "summary": "TC2 as a case spec (component-upgrade): declare the rtems-lwip withheld set so rtems-lwip can enter the KB safely",
   "labels": [
@@ -11,10 +11,23 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-03T23:57:57.942+0530",
-  "updated": "2026-11-03T23:57:58.036+0530",
-  "resolved": null,
+  "updated": "2026-11-04T19:45:32.805+0530",
+  "resolved": "2026-11-04T19:45:32.786+0530",
   "links": [],
   "subtasks": [],
   "description": "[claude] TC2 (RTEMS-2, lwIP 2.1.3 → 2.2.1 on rtems-lwip `tc2/upgrade-base-leon3`) is still hand-built. Because nothing declares what it withholds, `rtems/pkg/rtems-lwip` is deliberately left out of the KB crawl (ANVIL-39): its merge requests contain the upstream upgrade, i.e. the TC2 answer.\n\n## Steps\n\n* `cases/rtems-lwip-upgrade-2.2.1.toml`, kind `component-upgrade`:\n\n  * repo `vishal7pandey/rtems-lwip`;\n  * upstream reference commit(s) / MR(s) of the 2.2.1 import, under `[upstream]`;\n  * base branch `tc2/upgrade-base-leon3` + overlay;\n  * ticket = RTEMS-2's text;\n  * `as_of`;\n  * scoring: files plus the `#ifdef __rtems__` patch-marker gate.\n* The loader accepts `kind = \"component-upgrade\"`. The scorer for this kind can come later; record it as a follow-up.\n* Then add `rtems/pkg/rtems-lwip` to `KB_GITLAB_PROJECTS` and crawl it. Verify that a search for the upgrade MR returns nothing.\n\n## Acceptance\n\n* The case file loads.\n* `python -m anvil.cases withheld` includes the TC2 MR/commits.\n* rtems-lwip issues/MRs are in the KB without the withheld ones (counts posted).\n\nOwner: claude. Size: M. Depends on: TC2 run 6 outcome (ANVIL-21) only for the scoring part.\n",
-  "comments": []
+  "comments": [
+    {
+      "created": "2026-11-04T13:06:20.358+0530",
+      "body": "[claude] **Scope added, from TC2 run 7** (see ANVIL-21): a run that bumped only the submodule pointer and a version header reported success. The host check from #57 (PR into base + green CI) would have passed it.\n\n**Add task-level acceptance to case specs, run host-side by **`verify_outcome` after the agent finishes:\n\n* `[acceptance]` in `cases/<id>.toml`, by kind:\n\n  * **component-upgrade:** for each file in the import manifest (`file-import.json`), the vendored copy equals the file at the target upstream tag, apart from hunks inside the declared local-patch markers (`__rtems__`). New upstream files must be present.\n  * **defect-fix:** the case's test target fails on the base commit and passes on the head commit, in a clean sandbox (no agent state).\n* A failed check → handoff with the failing items, never `succeeded`.\n* `dry_run.py` and `tc1_dry_run.py` call the same verification, so dry runs and real runs are judged alike.\n* Tests: run 7's diff (pointer + init.h only) is rejected; the upstream reference result is accepted.\n"
+    },
+    {
+      "created": "2026-11-04T17:51:48.588+0530",
+      "body": "PR #63 merged (9ee2219) with devin's approval. `marker_only_lines` now compares code only, using a stateful C comment scanner (string literals and code-plus-trailing-comment handled; devin's exploit cases are parametrized tests). With this, TC2 run 8 passes the acceptance check 245/245, and the known-bad variants (run 7, the retag, the inversion, the disguised inversion) still fail. Next: one full-path TC2 run to confirm before the agent upgrade becomes the primary TC2 path (proposal on ANVIL-21).\n"
+    },
+    {
+      "created": "2026-11-04T19:44:57.943+0530",
+      "body": "Closing: TC2 is a case spec with host-side acceptance (#60). The comment scanner is in #63. Validated against the real lwIP history: run 8 passes, and the bad variants fail. Whether the agent upgrade becomes the primary TC2 path is decided on ANVIL-21. A deterministic re-import tool is ANVIL-82 (after the demo).\n"
+    }
+  ]
 }

@@ -1,0 +1,20 @@
+{
+  "key": "ANVIL-89",
+  "type": "Story",
+  "status": "In Progress",
+  "priority": "High",
+  "summary": "Speed: subagents consume 5M input tokens per TC1 run; give them a narrow brief and bounded context",
+  "labels": [
+    "agent-claude",
+    "speed"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T21:19:29.963+0530",
+  "updated": "2026-11-04T22:01:48.492+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "From ANVIL-62 / `anvil.analyze` on rehearsal 2 (48 min):\n\n* `anvil-fast` made 197 calls with **5.15M input tokens**, against 53 calls and 1.27M for the main model;\n* `task` (subagent) steps took 7.7 min;\n* model time overall was 18 min (38%).\n\n**Investigate, then fix (claude):**\n\n* What does a subagent call actually carry: skills, the full tool outputs it reads, its own growing history?\n* Which subagent (investigator / builder / reviewer) takes the tokens?\n\n**Likely fixes:**\n\n* cap tool-output size in subagent context (summarize or truncate large reads);\n* give each subagent a narrow brief plus the paths it needs, not open-ended exploration;\n* keep the builder off file reads entirely (it runs commands).\n\nMeasure before and after with `anvil.analyze` on a scripted or short real run.\n\n**Acceptance:** fast-model input tokens per TC1 run reduced by at least half, with no loss in the outcome. Measured, not estimated.\n",
+  "comments": []
+}

@@ -1,7 +1,7 @@
 {
   "key": "ANVIL-24",
   "type": "Story",
-  "status": "In Progress",
+  "status": "Done",
   "priority": "Medium",
   "summary": "API: Jira intake loop, approvals resume, cancel, executor wiring",
   "labels": [
@@ -11,8 +11,8 @@
   "epic": "ANVIL-3",
   "epic_summary": "WS-C Control API (FastAPI, sessions, runs, SSE events, approvals)",
   "created": "2026-11-02T21:26:17.206+0530",
-  "updated": "2026-11-03T23:46:06.727+0530",
-  "resolved": null,
+  "updated": "2026-11-04T19:45:27.412+0530",
+  "resolved": "2026-11-04T19:45:27.388+0530",
   "links": [],
   "subtasks": [],
   "description": "Due 2026-11-06. Builds on ANVIL-11.\n\n## Do\n\n* Background task every 60 s: `jira_intake_candidates()` (devin, anvil.tools.jira) -> create session + run (trigger `jira:<key>`, mode autonomous, merge_policy from label `anvil-merge-agent` else human, repo + base branch from the ticket's \"Code base:\" line) -> `jira_transition(key, \"In Progress\")`. Off switch via env.\n* `POST /api/approvals/{id}` resumes the run through the executor; `POST /api/runs/{id}/cancel` -> status `cancelled` (contract updated in PR #6).\n* Plug in claude's executor (ANVIL-18) behind the `RunExecutor` interface.\n\n## Acceptance\n\nLabelling RTEMS-1 `anvil` starts a run within 60 s, visible in the UI; approve/reject and cancel work end to end.\n",
@@ -68,6 +68,10 @@
     {
       "created": "2026-11-03T23:46:06.727+0530",
       "body": "[claude] Fixed the second intake bug, found by devin. A re-labelled ticket reused its previous finished run (RTEMS-4 → failed 7e81c6a2), so no new run started. PR #50 (merged): intake reuses only a non-terminal run, so a relabel after a finished run is a retry. The API on :8000 was restarted on main 26d4bb3 with #45 and #50. Next: devin's RTEMS-4 re-run (ANVIL-20), then the RTEMS-1 M1 re-run when the build lock comes back to claude.\n"
+    },
+    {
+      "created": "2026-11-04T19:44:55.141+0530",
+      "body": "Closing: the API's Jira intake loop, approval resume, cancel and executor wiring are built (#9, #38, #50, #62). The local ticket source is ANVIL-56 (PR #72), and intake backoff is ANVIL-81.\n"
     }
   ]
 }

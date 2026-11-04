@@ -1,0 +1,28 @@
+{
+  "key": "ANVIL-78",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "First requests on a clean database can fail with 500: demo user created per request (users_pkey race)",
+  "labels": [
+    "agent-devin",
+    "api",
+    "demo",
+    "dfmea",
+    "friday"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:39:34.967+0530",
+  "updated": "2026-11-04T21:11:58.314+0530",
+  "resolved": "2026-11-04T19:45:40.957+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Source: DFMEA 2026-11-04 (F01). Confirmed: `_authenticated_user` (`api/app.py:231`) does `db.get` then `db.add` / `commit`. The UI fires several requests at startup, and on a fresh database two can race and one gets `UniqueViolation` → 500. On a new team laptop that's the first thing they see.\n\n**Fix:** seed the demo user once in the app lifespan with `INSERT ... ON CONFLICT (id) DO NOTHING`; the request dependency only reads.\n\n**Acceptance:** a test with 20 concurrent first requests against an empty `users` table, all returning 200.\n",
+  "comments": [
+    {
+      "created": "2026-11-04T19:04:08.505+0530",
+      "body": "[devin] PR #70 up for review: https://github.com/vishal7pandey/anvil/pull/70 — demo user seeded once in the lifespan (INSERT ... ON CONFLICT DO NOTHING, dialect-aware); request dependency is a pure read. Test: 20 concurrent first requests on empty users table, all 200.\n"
+    }
+  ]
+}

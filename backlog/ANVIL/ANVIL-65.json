@@ -1,0 +1,21 @@
+{
+  "key": "ANVIL-65",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "CRA scanning with open-source tools: the agent runs the scanners and imports their reports",
+  "labels": [
+    "post-demo",
+    "tc3",
+    "team-sync"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:36:54.089+0530",
+  "updated": "2026-11-04T18:36:54.161+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Source: team sync 2026-11-04. The owner asked for free, open-source alternatives to commercial composition-analysis scanners: the tools do the scanning, the agent triggers them, imports the reports and drafts the remediation.\n\n**Today:** Syft (SBOM) in the sandbox, osv-scanner (online runs only), and CodeQL alerts via GitHub code scanning.\n\n**Want (research first, then wire up):**\n\n* C SAST in the sandbox: cppcheck and flawfinder, maybe semgrep's C rules;\n* SCA / vulnerabilities: grype on the Syft SBOM;\n* every tool runs offline with pinned versions baked into the image, and outputs SARIF or JSON;\n* one `scan` step in the cra-review skill imports the reports into a normalized findings list cited as evidence;\n* a short comparison table (what each tool finds, licence, offline-capable).\n\n**Acceptance:** a TC3 run cites findings from at least one SAST and one SCA tool by file:line / CVE, with no network.\n",
+  "comments": []
+}

@@ -110,14 +110,57 @@ def normalize(text: str) -> list[str]:
     return out
 
 
-_COMMENT_ONLY = re.compile(r"^\s*(?:/\*.*\*/|//.*|/\*.*|\*.*|.*\*/)\s*$")
+def strip_c_comments(text: str) -> str:
+    """The text with C comments removed and line breaks kept, tracking state across lines.
+
+    Whether `foo */` is code depends on the lines before it, so this is a scan, not a per-line regex
+    (devin's review of #63): `stale_call(); /* */` keeps `stale_call();`, `*p = f();` stays code, and
+    comment markers inside string or character literals are text.
+    """
+    out: list[str] = []
+    i, n = 0, len(text)
+    state = "code"  # code | line | block | str | chr
+    while i < n:
+        c, nxt = text[i], text[i + 1] if i + 1 < n else ""
+        if state == "code":
+            if c == "/" and nxt == "/":
+                state, i = "line", i + 2
+                continue
+            if c == "/" and nxt == "*":
+                state, i = "block", i + 2
+                out.append(" ")
+                continue
+            if c in "\"'":
+                state = "str" if c == '"' else "chr"
+            out.append(c)
+        elif state == "line":
+            if c == "\n":
+                state = "code"
+                out.append(c)
+        elif state == "block":
+            if c == "*" and nxt == "/":
+                state, i = "code", i + 2
+                continue
+            if c == "\n":
+                out.append(c)
+        else:  # inside a string or character literal
+            out.append(c)
+            if c == "\\" and nxt:
+                out.append(nxt)
+                i += 2
+                continue
+            if (state == "str" and c == '"') or (state == "chr" and c == "'") or c == "\n":
+                state = "code"
+        i += 1
+    return "".join(out)
 
 
 def marker_only_lines(text: str, marker: str) -> set[str]:
-    """Code lines compiled only when `marker` is defined. Comment-only lines don't compile, so they
-    can't hide old code (TC2 run 8 added a one-line comment next to an existing patch)."""
-    lines = set(normalize(strip_marker(text, marker, defined=True))) - set(normalize(strip_marker(text, marker)))
-    return {line for line in lines if not _COMMENT_ONLY.match(line)}
+    """Code lines compiled only when `marker` is defined, comments removed first: a comment doesn't
+    compile, so it can't hide old code (TC2 run 8 added a comment next to an existing patch), while
+    code with a comment on the same line is still code."""
+    code = strip_c_comments(text)
+    return set(normalize(strip_marker(code, marker, defined=True))) - set(normalize(strip_marker(code, marker)))
 
 
 def marker_blocks(text: str, marker: str) -> int:

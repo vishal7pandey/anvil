@@ -35,6 +35,12 @@ labels = ["anvil", "posix", "tc1"]
 summary = "Mutex reports EBUSY / crashes after a failed pthread_mutex_init with an invalid priority ceiling"
 body_file = "rtems-5776.ticket.md"
 
+
+# CI checks that gate the agent's PR (owner decision 2026-11-04). SonarCloud stays advisory: its gate
+# fails every PR on new-code coverage, which this pipeline does not measure. Branch protection on the
+# base branch, if any, takes precedence.
+[ci]
+required_checks = ["build-test", "CodeQL (C/C++)"]
 [scoring]
 target_files = ["cpukit/posix/src/mutexinit.c"]
 test_files = ["testsuites/psxtests/psx05/init.c"]

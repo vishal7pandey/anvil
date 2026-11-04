@@ -125,13 +125,14 @@ def required_checks(name: str, branch: str) -> list[str] | None:
     return list(dict.fromkeys(names)) or None
 
 
-def _check_state(name: str, pr: int, with_logs: bool) -> dict[str, Any]:
+def _check_state(name: str, pr: int, with_logs: bool, default_required: list[str] | None = None) -> dict[str, Any]:
     pull = _gh("GET", f"/repos/{name}/pulls/{pr}")
     sha = pull["head"]["sha"]
     # Which checks gate a merge is the repository's decision (branch protection on the PR's base), not
     # ours: SonarCloud's gate fails every agent PR on "coverage on new code < 80%", a metric this
     # pipeline never measures (TC1 rehearsals, ANVIL-32). Without protection, every check gates.
-    required = required_checks(name, pull["base"]["ref"])
+    # Branch protection wins; otherwise the caller's default (a case's [ci] required_checks).
+    required = required_checks(name, pull["base"]["ref"]) or default_required
     runs = _gh("GET", f"/repos/{name}/commits/{sha}/check-runs", params={"per_page": 100})["check_runs"]
     statuses = _gh("GET", f"/repos/{name}/commits/{sha}/status")["statuses"]
     checks = [
@@ -164,7 +165,8 @@ def _check_state(name: str, pr: int, with_logs: bool) -> dict[str, Any]:
             "required": required, "advisory_failing": [c["name"] for c in failed if c not in gating]}
 
 
-def github_checks(repo: str, pr: int, wait_seconds: int = 900, poll_seconds: int = 20) -> dict[str, Any]:
+def github_checks(repo: str, pr: int, wait_seconds: int = 900, poll_seconds: int = 20,
+                  default_required: list[str] | None = None) -> dict[str, Any]:
     """Wait (up to wait_seconds) for the CI checks that gate a PR to finish.
 
     The gating checks are those the base branch's protection requires (all checks if it requires
@@ -174,14 +176,16 @@ def github_checks(repo: str, pr: int, wait_seconds: int = 900, poll_seconds: int
     """
     name, deadline = full_name(repo), time.monotonic() + wait_seconds
     while True:
-        result = _check_state(name, pr, with_logs=False)
+        result = _check_state(name, pr, with_logs=False, default_required=default_required)
         if result["state"] in {"success", "failure"} or time.monotonic() >= deadline:
             break
         time.sleep(poll_seconds)
     if result["state"] == "none":
         result["note"] = ("No CI checks ran on this PR. This is not a pass: the PR's base branch may have no "
                           "CI, or CI did not start. Report it in the handoff instead of claiming CI is green.")
-    return _check_state(name, pr, with_logs=True) if result["state"] == "failure" else result
+    if result["state"] == "failure":
+        return _check_state(name, pr, with_logs=True, default_required=default_required)
+    return result
 
 
 def github_pr_state(repo: str, pr: int, wait_seconds: int = 0, poll_seconds: int = 30) -> dict[str, Any]:

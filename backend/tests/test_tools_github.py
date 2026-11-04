@@ -218,3 +218,21 @@ def test_required_checks_gate_and_other_failures_are_advisory():
 def test_a_required_check_that_has_not_reported_is_pending():
     mock_checks([run("build-test", id=1)], required=["build-test", "CodeQL"])
     assert github.github_checks("rtems", 7, wait_seconds=0)["state"] == "pending"
+
+
+@respx.mock
+def test_case_required_checks_apply_when_the_branch_has_no_protection():
+    # Owner decision 2026-11-04: SonarCloud is advisory; the case declares what gates (ANVIL-32).
+    mock_checks([run("build-test", id=1), run("CodeQL (C/C++)", id=2), run("SonarCloud", conclusion="failure", id=3)])
+    out = github.github_checks("rtems", 7, wait_seconds=0, default_required=["build-test", "CodeQL (C/C++)"])
+    assert out["state"] == "success" and out["advisory_failing"] == ["SonarCloud"]
+    respx.get(f"{API}/actions/jobs/3/logs").respond(text="quality gate failed")
+    assert github.github_checks("rtems", 7, wait_seconds=0)["state"] == "failure"  # no case list: all gate
+
+
+@respx.mock
+def test_branch_protection_wins_over_the_case_list():
+    mock_checks([run("build-test", id=1), run("lint", conclusion="failure", id=2)], required=["build-test", "lint"])
+    respx.get(f"{API}/actions/jobs/2/logs").respond(text="lint failed")
+    out = github.github_checks("rtems", 7, wait_seconds=0, default_required=["build-test"])
+    assert out["state"] == "failure" and out["failing"] == ["lint"]

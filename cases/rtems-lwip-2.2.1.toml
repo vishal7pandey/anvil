@@ -22,6 +22,12 @@ labels = ["anvil", "component-upgrade", "tc2"]
 summary = "Upgrade vendored lwIP to 2.2.1 in rtems-lwip"
 body_file = "rtems-lwip-2.2.1.ticket.md"
 
+
+# CI checks that gate the agent's PR (owner decision 2026-11-04). SonarCloud stays advisory: its gate
+# fails every PR on new-code coverage, which this pipeline does not measure. Branch protection on the
+# base branch, if any, takes precedence.
+[ci]
+required_checks = ["build-test", "CodeQL (C/C++)"]
 [scoring]
 target_files = ["file-import.json", "lwip/src/include/lwip/init.h"]
 

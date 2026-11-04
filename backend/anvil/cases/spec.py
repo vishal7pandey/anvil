@@ -74,6 +74,7 @@ class Case:
     test_files: tuple[str, ...] = ()
     tolerance: int = 3
     acceptance: tuple[Check, ...] = ()
+    required_checks: tuple[str, ...] = ()   # CI checks that gate the PR; others are advisory
     path: Path | None = field(default=None, compare=False)
 
     @property
@@ -139,7 +140,8 @@ def load_case(path: Path) -> Case:
             target_files=_strs(scoring.get("target_files"), "scoring.target_files"),
             test_files=_strs(scoring.get("test_files"), "scoring.test_files"),
             tolerance=int(scoring.get("tolerance", 3)),
-            acceptance=_checks(raw.get("acceptance", {}).get("checks", []), path.name), path=path,
+            acceptance=_checks(raw.get("acceptance", {}).get("checks", []), path.name),
+            required_checks=_strs(raw.get("ci", {}).get("required_checks"), "ci.required_checks"), path=path,
         )
         if not case.base_sha and any("{base_sha}" in a for c in case.acceptance for a in c.args):
             raise CaseError(f"{path.name}: acceptance uses {{base_sha}} but base.sha is not pinned")

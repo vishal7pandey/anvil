@@ -1,6 +1,8 @@
 # Anvil Demonstration Runbook: Offline Team Laptop Path
 
-> **Offline Target:** Disconnected team laptops (Friday 11-06 demo). No GitHub (`github.com`), no Atlassian Cloud (`*.atlassian.net`). Standalone local stack + local file ticketing + pre-embedded KB + Docker compilation sandbox.  
+> **Offline Target:** Disconnected team laptops (Friday 11-06 demo).
+> - **What is offline:** GitHub (`github.com`) and Atlassian Cloud (`*.atlassian.net`) are unreachable. Standalone local stack + local file ticketing + pre-embedded KB + Docker compilation sandbox.
+> - **What is online:** LLM provider access through LiteLLM gateway (`127.0.0.1:4000`). The model requires internet egress to reach upstream APIs; credentials live in Windows Credential Manager target `forge`.  
 > **Format:** Checklist-driven runbook for presenters before and during the demonstration.
 
 ---
@@ -19,22 +21,22 @@ Complete these steps on the laptop while setting up the presenter display:
   ```powershell
   docker image inspect anvil-sandbox-rtems:7.1 > $null
   if ($LASTEXITCODE -ne 0) {
-      .\scripts\import-sandbox-image.ps1 -ImagePath data\sandbox\anvil-sandbox-rtems-7.1.tar
+      .\scripts\import-sandbox-image.ps1
   }
   ```
-  *Check:* Image `anvil-sandbox-rtems:7.1` present locally.
+  *Check:* Image `anvil-sandbox-rtems:7.1` present locally. Omitting `-ImagePath` automatically locates `anvil-sandbox-rtems-7.1.tar` under `data\sandbox\` or `private\handover\`.
 - [ ] **Import Pre-Embedded Knowledge Base Snapshot:**
   ```powershell
   uv run --directory backend python -m anvil.kb import-snapshot --from ..\data\kb
   ```
-  *Check:* Vectors sidecar verified and imported into `kb_chunks` table without requiring live gateway embeddings.
+  *Check:* Sidecar vectors verified and imported into `kb_chunks` table without requiring live gateway embeddings (document snapshot hash matches sidecar `snapshot_sha256`).
 
 ### 1.2 API & UI Daemons
 - [ ] **Start Control API Daemon (Terminal 1):**
   ```powershell
   .\scripts\start-api.ps1 -Force
   ```
-  *Check:* API listening on `http://127.0.0.1:8000`. Fresh process spawned from latest `main`. Log active at `api-8000.log`.
+  *Check:* API listening on `http://127.0.0.1:8000`. Fresh process spawned from latest `main`. Automatically runs sandbox reaper on start. Log active at `api-8000.log`.
 - [ ] **Start Frontend Web UI (Terminal 2):**
   ```powershell
   cd frontend
@@ -45,79 +47,86 @@ Complete these steps on the laptop while setting up the presenter display:
 ### 1.3 Preflight & Local Ticket Staging
 - [ ] **Run Preflight Verification:**
   ```powershell
-  .\scripts\preflight.ps1 -Presenter "presenter"
+  .\scripts\preflight.ps1 -Presenter offline
   ```
-  *Criteria:* **Must pass all 8 checks [PASS]** (Sandbox image, signed Python runtime, API port 8000, stack health, lock free or held by presenter, container hygiene). Check 6 (Jira baseline) and Check 7 (submodule reachability) are ignored for offline execution.
+  *Criteria:* Verifies Docker sandbox image, signed Python runtime, API port 8000, local stack health, and container hygiene. (Checks for Jira and remote submodules are skipped/ignored for offline mode).
 - [ ] **Stage the Target Ticket in `todo/`:**
-  Create ticket file `C:\work\tickets\todo\RTEMS-1.json`:
-  ```json
-  {
-    "key": "RTEMS-1",
-    "type": "Bug",
-    "status": "To Do",
-    "summary": "Mutex reports EBUSY / crashes after a failed pthread_mutex_init with an invalid priority ceiling",
-    "description": "Code base: branch tc1/5776-base of C:\\work\\rtems\n\nFix the ticket.",
-    "labels": ["anvil", "posix", "tc1"]
-  }
+  Copy the verified ticket from handover or cases template to `ANVIL_TICKETS_DIR\todo\RTEMS-1.json`:
+  ```powershell
+  Copy-Item "private\handover\tickets\todo\RTEMS-1.json" "C:\work\tickets\todo\RTEMS-1.json" -Force
   ```
-  *Check:* If using a custom codebase path with spaces, enclose in quotes: e.g. `Code base: "C:\work\My Projects\rtems"`.
+  *(If `private\handover` is not yet populated on the laptop, copy from `cases/rtems-5776.ticket.md`)*
+  - **Autonomous vs. Gated Mode:**
+    - Standard autonomous run: `"labels": ["anvil", "posix", "tc1"]`
+    - Interactive human-gated run: `"labels": ["anvil", "posix", "tc1", "anvil-interactive"]` (triggers outward tool pauses).
+  - **Codebase Path Rule:**
+    Ensure ticket description specifies: `Code base: branch tc1/5776-base of C:\work\rtems`. (Enclose paths containing spaces in double quotes: e.g. `Code base: "C:\work\My Projects\rtems"`).
   > [!NOTE]
-  > If pointing to a plain folder (no `.git`), Anvil generates an ephemeral single-commit snapshot on the fly. For large codebases like RTEMS (~10k+ files), this initial stat snapshot takes ~111 seconds (~1.8m) on Windows NTFS. From a Git checkout, intake starts in 1–2 seconds.
+  > If pointing to a plain unversioned folder (no `.git`), Anvil generates an ephemeral single-commit snapshot on the fly. For large codebases like RTEMS (~10k+ files), this initial stat snapshot takes ~111 seconds (~1.8m) on Windows NTFS. From a Git checkout, intake starts in 1–2 seconds.
 
 ---
 
-## 2. The Run (Minute-by-Minute & Screen Tour)
+## 2. The Run (Talk Tracks & Screen Tour)
 
 - **Target Ticket:** `RTEMS-1` (TC1: Mutex priority ceiling defect).
-- **Trigger:** Intake loop detects `C:\work\tickets\todo\RTEMS-1.json`, transitions it to `in-progress/RTEMS-1.json`, and triggers session `local:RTEMS-1`.
-- **Browser:** Open `http://localhost:5173` to the live session run stream.
+- **Intake Trigger:** The local polling intake detects `RTEMS-1.json` in `todo/`, moves it to `in-progress/RTEMS-1.json`, and starts session `local:RTEMS-1`.
+- **Timing Reality & Presenter Strategy:**
+  > [!IMPORTANT]
+  > **Real TC1 runs take 20 to 45 minutes** (cross-compilation, Waf configuration, reproduction, and SIS simulation inside Docker). Do NOT attempt to wait silently on stage for an end-to-end run to finish live.
+  > - **Primary Strategy:** Launch the live run to demonstrate ticket intake and the first ~2 minutes of autonomous code exploration. Then, switch to a browser tab showing a **pre-staged finished run** (session replay) to tour the plan, diff, and verification outputs without stalling the room.
+  > - **Alternative Strategy:** Pre-run TC1 immediately before the session; walk through the live timeline stream and jump straight to the approval gate and analysis.
 
 ### 2.1 What Each Screen / Panel Shows
 | UI Panel | What Evaluators See | Presenter Notes |
 |---|---|---|
 | **Chat / Run Stream (Center)** | Live tool calls (`kb_search`, `bash`, `waf`), thoughts, and simulation runs (`sis`). | Streams SSE events directly from backend without page refresh. |
-| **Plan Panel (Right)** | Step-by-step checklist dynamically generated by the agent. | Shows status of reproduction, source editing, Waf compilation, and test execution. |
-| **Diff Tab (Top Right)** | Live unified diff of modified code (`mutexinit.c`). | Shows exact syntax edits applied inside the container sandbox. |
-| **Cost Meter (Top Right)** | Displays **"pending"** while spend logs lag. | Explain: LiteLLM spend rows flush asynchronously to Postgres; meter shows "pending" rather than synthetic estimates or 503 errors. Once rows land, displays actual USD cost. |
+| **Plan Panel (Right)** | Dynamic checklist generated and updated by the agent. | Shows status of reproduction, source editing, Waf compilation, and test execution. |
+| **Diff Tab (Top Right)** | Live unified diff of modified code (`cpukit/posix/src/mutexinit.c`). | Shows exact syntax edits applied inside the container sandbox. |
+| **Cost Meter (Top Right)** | Displays **"pending"** while spend logs lag. | Explain: LiteLLM spend rows flush asynchronously to Postgres; meter displays "pending" rather than synthetic estimates or 503 errors. Once flushed, displays actual USD spend. |
 
-### 2.2 Talk Track by Elapsed Time
-- **0:00 - 2:00 (Code Intake & KB Search):**
-  - *What's happening:* The agent checks out `tc1/5776-base`, reviews the defect description, locates mutex initialization code, and queries the offline Knowledge Base.
+### 2.2 Talk Tracks
+- **Initial Code Intake & KB Search (First ~2 Minutes):**
+  - *What's happening:* The agent inspects `tc1/5776-base`, reviews the defect description, locates mutex initialization code, and queries the offline Knowledge Base.
   - *Talk track:*
-    > *"Notice that during the first two minutes, the model is reading the codebase and searching our offline engineering knowledge base using dense vector search. The upstream fix commits from late 2026 are strictly withheld by our historical time guard. The agent must deduce the bug independently."*
-- **2:00 - 4:00 (Reproduction & SIS Simulation):**
-  - *What's happening:* The agent reproduces the defect on the SPARC/ERC32 simulator (`sis`), verifying that `pthread_mutex_trylock()` returns `EBUSY` instead of `EINVAL`.
+    > *"Notice that during the first two minutes, the model is reading the codebase and searching our offline engineering knowledge base using dense vector search. The upstream fix commits from late 2026 are strictly withheld by our historical time guard. The agent must deduce the defect independently."*
+- **Reproduction & SIS Simulation:**
+  - *What's happening:* The agent reproduces the defect on the SPARC/ERC32 simulator (`sis`), observing that `pthread_mutex_trylock()` returns `EBUSY` instead of `EINVAL`.
   - *Talk track:*
     > *"Notice the plan panel on the right. Anvil formulates a verification plan, cross-compiles for SPARC using RTEMS Waf inside the Docker sandbox, and reproduces the defect under the SIS architectural simulator without requiring physical hardware."*
-- **4:00 - 5:30 (Patch Application & Regression Testing):**
-  - *What's happening:* The agent patches `cpukit/posix/src/mutexinit.c`, rebuilds `sparc/erc32`, and executes regression tests (`psx05.exe` and test suite).
+- **Patch Application & Regression Verification:**
+  - *What's happening:* The agent modifies `cpukit/posix/src/mutexinit.c`, rebuilds `sparc/erc32`, and executes regression tests on the simulator.
   - *Talk track:*
-    > *"The agent applies the fix—ensuring ceiling attributes are verified before mutex flags are modified. It re-runs the regression suite on SIS: all 87 POSIX tests pass cleanly."*
+    > *"Expect the agent to determine that `pthread_mutex_init` does not validate priority ceiling attributes before writing object state. Once modified, it re-compiles and re-runs the test suite on SIS: verification tests pass cleanly."*
 
 ---
 
-## 3. The Approval Moment (Human-in-the-Loop Gate - ANVIL-24)
+## 3. Human Governance & The Approval Moment
 
-Once acceptance tests pass, Anvil triggers the human governance gate before applying changes:
+> [!NOTE]
+> **UNVERIFIED until the 15:00 dry run.**
+> Gating mechanics are implemented in code (`backend/anvil/runtime/agent.py` and `backend/anvil/api/app.py`). Live reject/critique behavior will be exercised during the dry run rehearsal; fold live observations into this section.
 
-### 3.1 The Approval Dialog
-The UI displays the interactive **Approval Dialog**:
-- Candidate code diff (`mutexinit.c`).
-- Verified test execution log on `sis`.
-- Proposed git commit message and summary.
+### 3.1 How Gating Operates in Code
+- **Activation:** A run is only gated if the ticket includes the label `"anvil-interactive"`. Without it, `approval_policy("autonomous", ...)` gates nothing and execution proceeds autonomously.
+- **Offline Gated Tools:** In offline runs, remote GitHub tools (`git_push`, `github_open_pr`, `github_merge`) are withheld. The gated tools are the local `OUTWARD_TOOLS`:
+  - `jira_comment` (posting findings/status to the ticket)
+  - `jira_set_labels` (updating ticket tags)
+  - `jira_transition` (moving ticket to In Progress or Done)
+  - `publish_evidence` (writing local knowledge pages)
+- **Approval Card UI:** When the agent invokes an outward tool, execution pauses. The UI displays an approval card showing the **exact arguments of that tool call** (e.g. comment body, new labels, or evidence markdown).
+- **Deliverables Generation:** Deliverables (`.patch` and `.bundle`) are exported automatically via `export_local` upon successful verification, *not* as a side-effect of clicking approve.
 
-### 3.2 Exercising Both Decision Paths (Live or Dry Run)
+### 3.2 Decision Paths at the Gate
 * **Path A: Approve (Nominal Flow)**
-  1. Click **Approve** in the UI.
-  2. Agent finalizes the session:
-     - Exports `.patch` and `.bundle` deliverables to `private/runs/<run_id>/`.
-     - Appends execution metrics to ticket file and moves it from `in-progress/RTEMS-1.json` to `done/RTEMS-1.json`.
-  3. *Talk track:* *"Anvil never commits to production without human consent. Lead engineers review the diff, click Approve, and Anvil generates host-side deliverables and updates the ticket store."*
+  1. Review the tool arguments in the UI card.
+  2. Click **Approve**.
+  3. Execution resumes: tool executes against the local ticket store, metrics append to the ticket JSON, and it moves from `in-progress/` to `done/`.
+  4. *Talk track:* *"Human governance is built into the workflow. In interactive mode, outward operations pause for engineering confirmation before mutating state."*
 * **Path B: Reject with Feedback (Critique Loop)**
-  1. Enter feedback in the critique field (e.g., `"Please add an inline comment explaining why flags cannot be written before validation."`).
+  1. Enter feedback in the critique field.
   2. Click **Reject**.
-  3. Agent consumes the feedback event, updates its plan, edits the file to include the requested comment, re-runs Waf/SIS verification, and returns to the approval gate.
-  4. *Talk track:* *"Notice the interactive feedback loop. When a human reviewer requests adjustments, the agent resumes execution, addresses the feedback in context, and re-submits for verification."*
+  3. The agent receives the feedback event and resumes its planning loop.
+  *(Exact agent adjustment behavior will be confirmed during the 15:00 dry run).*
 
 ---
 
@@ -156,9 +165,9 @@ Quick triage checklist for live evaluation glitches:
 |---|---|---|
 | **Gateway Down** | API reports connection refused to `127.0.0.1:4000` | Run `docker restart anvil-gateway`. Check health at `http://127.0.0.1:4000/health/liveliness`. Verify provider API key in Credential Manager target `forge`. |
 | **No Embeddings / KB Fails** | `kb_search` returns empty or errors | Check vectors sidecar hash: `(Get-FileHash data\kb\kb-snapshot.jsonl.gz).Hash.ToLower()`. Re-run: `uv run --directory backend python -m anvil.kb import-snapshot --from ..\data\kb`. |
-| **Sandbox Won't Start** | Container startup timeout; `anvil-sbx-*` fails to boot | Prune stale containers: `docker ps -aq --filter 'name=^anvil-sbx-' \| ForEach-Object { docker rm -f $_ }`. Check Docker Desktop resource limits (min 7 GB RAM allocated). |
+| **Sandbox Won't Start** | Container startup timeout; `anvil-sbx-*` fails to boot | Prune stale containers: `.\scripts\reset-demo.ps1 -Containers`. Check Docker Desktop resource limits (min 7 GB RAM allocated). |
 | **Run Stuck > 5 Minutes** | Agent repeats loop or hangs without emitting events | **Do not force-kill.** Anvil's stuck-detector automatically triggers graceful handoff: persists WIP state, tags ticket with `anvil-needs-human`, and writes diagnostic notes. |
-| **Catastrophic Host Failure** | Laptop OS crash or critical toolchain failure | **Emergency Fallback: Recorded Rehearsal.** Open pre-recorded high-resolution walkthrough in `artifacts/rehearsals/tc1-defect-fix-nominal.mp4` or run analysis CLI on previous successful run ID. |
+| **Catastrophic Host Failure** | Laptop OS crash or critical toolchain failure | **Emergency Fallback:** Screen-record the 15:00 dry run and keep the MP4 on the laptop outside git. Until recorded, fallback is opening the UI to a completed run replay, inspecting `.patch`, and running `python -m anvil.analyze <run_id>`. |
 
 ---
 
@@ -167,12 +176,14 @@ Quick triage checklist for live evaluation glitches:
 To reset the offline environment for a consecutive demonstration:
 ```powershell
 # 1. Prune ephemeral containers
-$sbx = docker ps -aq --filter 'name=^anvil-sbx-'
-if ($sbx) { docker rm -f $sbx }
+.\scripts\reset-demo.ps1 -Containers
 
-# 2. Reset ticket back to todo/
-Move-Item "C:\work\tickets\done\RTEMS-1.json" "C:\work\tickets\todo\RTEMS-1.json" -Force
+# 2. Reset ticket back to todo/ (use clean baseline, not modified file)
+Copy-Item "private\handover\tickets\todo\RTEMS-1.json" "C:\work\tickets\todo\RTEMS-1.json" -Force
+Remove-Item "C:\work\tickets\done\RTEMS-1.json" -ErrorAction SilentlyContinue
+Remove-Item "C:\work\tickets\in-progress\RTEMS-1.json" -ErrorAction SilentlyContinue
 
 # 3. Clean working copy branch in local RTEMS
 git -C C:\work\rtems checkout -B tc1/5776-base origin/tc1/5776-base
+git -C C:\work\rtems clean -fd
 ```

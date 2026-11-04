@@ -316,3 +316,30 @@ async def test_each_run_has_its_own_graph_thread_and_resume_reuses_it():
     assert first["session_id"] == second["session_id"]
     assert seen == ["r-first", "r-second", "r-first"]
     assert graph_config(first)["recursion_limit"] > 0
+
+
+async def test_handoff_ends_the_stream_the_second_tool_never_runs():
+    """ANVIL-77: a handoff call ends the run; whatever the model queued next never runs."""
+    first = AIMessage(content="calling handoff now")
+    never = AIMessage(content="this tool call must never stream")
+
+    class HandoffMidStream(FakeAgent):
+        async def astream(self, *_args, **_kwargs):
+            yield ((), "updates", {"model": {"messages": [first]}})
+            # The handoff tool runs inside the graph; its callback lands between stream items.
+            self.on_handoff({"goal": "g", "tried": "t", "evidence": "e", "hypothesis": "h", "next_step": "n"})
+            # The handoff tool's own result still streams (it's this item), then the loop must
+            # break before anything the model queued next.
+            yield ((), "updates", {"model": {"messages": [AIMessage(content="handoff result")]}})
+            yield ((), "updates", {"model": {"messages": [never]}})
+
+    def factory(config, sandbox, *, tools, on_handoff, checkpointer, store, skills):
+        return HandoffMidStream([], on_handoff=on_handoff)
+
+    ex = OfflineExecutor(agent_factory=factory)
+    events = await collect(ex.start(RUN, "x"))
+    texts = [e["data"].get("text", "") for e in events]
+    assert any("calling handoff" in t for t in texts)
+    assert not any("must never stream" in t for t in texts)
+    assert events[-1]["data"]["status"] == "handoff"
+    assert events[-2]["data"]["kind"] == "handoff"

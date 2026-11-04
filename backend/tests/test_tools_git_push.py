@@ -114,3 +114,31 @@ def test_nothing_to_push_and_missing_branch(setup):
 def test_factory_exposes_model_facing_signature():
     tool = make_git_push(LocalSandbox())
     assert tool.__name__ == "git_push" and list(tool.__annotations__) == ["repo", "branch", "return"]
+
+
+def test_two_concurrent_pushes_to_one_repo_both_succeed(setup, tmp_path):
+    """ANVIL-81: the shared host clone is locked across fetch->import->check->push, so parallel
+    pushes to the same repo serialise instead of hitting *.lock or interleaving refs."""
+    import concurrent.futures
+
+    remote, ws, repo = setup
+    shas = {}
+    for i in (1, 2):
+        w = tmp_path / f"ws{i}"
+        w.mkdir()
+        git("clone", remote.as_uri(), "rtems", cwd=w)
+        r = w / "rtems"
+        git("checkout", "-b", f"anvil/push-{i}", cwd=r)
+        (r / "a.c").write_text(f"int a = {i};\n")
+        git("commit", "-am", f"push {i}", cwd=r)
+        shas[i] = git("rev-parse", "HEAD", cwd=r)
+
+    def push(i):
+        return push_from_sandbox(LocalSandbox(), "rtems", f"anvil/push-{i}",
+                                 workspace=(tmp_path / f"ws{i}").as_posix())
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        out = list(pool.map(push, [1, 2]))
+    assert {o["sha"] for o in out} == set(shas.values())
+    for i in (1, 2):
+        assert git("rev-parse", f"refs/heads/anvil/push-{i}", cwd=remote) == shas[i]

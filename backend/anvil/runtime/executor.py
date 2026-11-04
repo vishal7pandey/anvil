@@ -6,6 +6,7 @@ LangGraph thread per session (Postgres checkpointer), events in the docs/02 cont
 
 from __future__ import annotations
 
+from anvil.runtime.sandbox import host_run
 import asyncio
 import contextlib
 import hashlib
@@ -13,6 +14,7 @@ import os
 import re
 import shlex
 from collections.abc import AsyncIterator, Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +26,7 @@ from langgraph.types import Command
 from anvil.runtime import prompts
 from anvil.runtime.agent import RunConfig, build_agent
 from anvil.runtime.events import EventMapper
+from anvil.runtime import source
 from anvil.runtime.sandbox import DEFAULT_IMAGE, DockerSandbox, SandboxSpec
 from anvil.runtime.stuck import Budgets, StuckDetector
 
@@ -104,6 +107,9 @@ def validate_ref(ref: str, what: str) -> str:
 
 
 def repo_path(repo: str) -> str:
+    """/workspace/<name>: the GitHub repo name, or a local source's folder name (ANVIL-55)."""
+    if source.is_local(repo):
+        return f"/workspace/{source.local_name(source.validate_local(repo, check_exists=False))}"
     return f"/workspace/{validate_repo(repo).split('/')[1]}"
 
 
@@ -137,17 +143,24 @@ class DeepAgentExecutor:
                  tools_factory: ToolsFactory | None = None, agent_factory: AgentFactory = build_agent,
                  docker_client: docker.DockerClient | None = None, budgets: Budgets | None = None,
                  push_hook: PushHook | None = None, report_hook: ReportHook | None = None,
-                 verify_hook: VerifyHook | None = None) -> None:
+                 verify_hook: VerifyHook | None = None, owner_id: str | None = None) -> None:
         self.budgets = budgets
         self.verify_hook = verify_hook
         self.push_hook = push_hook
         self.report_hook = report_hook
         self.image = image or os.environ.get("ANVIL_SANDBOX_IMAGE", DEFAULT_IMAGE)
         self.db_url = db_url or os.environ.get("ANVIL_DATABASE_URL", "postgresql://anvil:anvil@localhost:5433/anvil")
+        self.owner_id = (
+            owner_id
+            or os.environ.get("ANVIL_INSTANCE_ID")
+            or os.environ.get("ANVIL_OWNER_ID")
+            or (self.db_url.rsplit("/", 1)[-1].split("?")[0] if "/" in self.db_url else "default")
+        )
         self.tools_factory = tools_factory or (lambda _sb, _run: [])
         self.agent_factory = agent_factory
         self._docker = docker_client
         self._cancel: dict[str, asyncio.Event] = {}
+        self._live: dict[str, Any] = {}  # run_id -> sandbox while the agent streams (ANVIL-76)
         self._stack: contextlib.AsyncExitStack | None = None
         self._checkpointer: Any = None
         self._store: Any = None
@@ -182,11 +195,23 @@ class DeepAgentExecutor:
         try:
             return DockerSandbox.attach(name, client=self.docker)
         except NotFound:
-            return DockerSandbox.start(SandboxSpec(image=self.image, name=name, labels={
-                "anvil.session_id": str(run["session_id"]), "anvil.repo": run["repo"]}), client=self.docker)
+            return DockerSandbox.start(
+                SandboxSpec(
+                    image=self.image,
+                    name=name,
+                    labels={
+                        "anvil.session_id": str(run["session_id"]),
+                        "anvil.repo": run["repo"],
+                        "anvil.owner": self.owner_id,
+                    },
+                ),
+                client=self.docker,
+            )
 
     def checkout(self, sandbox: DockerSandbox, run: dict[str, Any]) -> dict[str, Any]:
         """Clone only the base branch (answer-leak control: other refs may hold withheld fixes)."""
+        if source.is_local(run["repo"]):
+            return self.checkout_local(sandbox, run)
         repo = validate_repo(run["repo"])
         base = validate_ref(run.get("base_ref") or "main", "base_ref")
         branch = work_branch(run)
@@ -207,7 +232,7 @@ class DeepAgentExecutor:
             f"echo BASE_SHA=$(git rev-parse origin/{shlex.quote(base)}); echo HEAD_SHA=$(git rev-parse HEAD)"
         )
         sandbox.set_network("bridge")  # needed for the first clone; dropped again below for offline runs
-        res = sandbox.execute(script, timeout=1800)
+        res = host_run(sandbox, script, timeout=1800)
         if res.exit_code != 0:
             # Say what failed even when the command printed nothing (rehearsal 3e7db2f9: "checkout failed: ").
             raise RuntimeError(f"checkout failed (exit {res.exit_code}): "
@@ -226,6 +251,38 @@ class DeepAgentExecutor:
         return {"repo": repo, "path": path, "base_ref": base, "branch": branch, "network": network,
                 "skills": [p for p, _ in files if p.endswith("SKILL.md")], "skills_hash": skills_hash(files),
                 "base_sha": found.get("BASE_SHA"), "head_sha": found.get("HEAD_SHA")}
+
+    def checkout_local(self, sandbox: DockerSandbox, run: dict[str, Any]) -> dict[str, Any]:
+        """A local source (ANVIL-55): the host copies a shallow single-branch .git of the base branch in.
+
+        The sandbox never gets network for a local source, not even for the checkout: nothing in it
+        has to be fetched, and nothing in it may be pushed.
+        """
+        repo = source.validate_local(run["repo"])
+        # No branch given: a working copy's current branch, or 'main' for a folder/archive snapshot (ANVIL-91).
+        base = validate_ref(run.get("base_ref") or source.default_base(repo), "base_ref")
+        run["base_ref"] = base  # the export diffs against the same base
+        kind, uncommitted = source.local_kind(repo), source.uncommitted_changes(repo)
+        branch = work_branch(run)
+        path = repo_path(repo)
+        sandbox.set_network(None)
+        sandbox.upload_tar("/workspace", source.local_copy_tar(repo, base))
+        res = host_run(sandbox, source.local_checkout_script(path, base, branch), timeout=900)
+        if res.exit_code != 0:
+            raise RuntimeError(f"local checkout failed (exit {res.exit_code}): "
+                               f"{res.output[-1500:].strip() or 'no output'}")
+        found = dict(re.findall(r"^(BASE_SHA|HEAD_SHA)=(\w+)$", res.output, re.M))
+        files = skill_files()
+        failed = [r.path for r in sandbox.upload_files(files) if r.error]
+        if failed:
+            raise RuntimeError(f"could not upload skills: {failed}")
+        return {"repo": repo, "path": path, "base_ref": base, "branch": branch, "network": "offline",
+                "source": "local", "source_kind": kind, "uncommitted_changes": uncommitted,
+                "skills": [p for p, _ in files if p.endswith("SKILL.md")],
+                "skills_hash": skills_hash(files), "base_sha": found.get("BASE_SHA"), "head_sha": found.get("HEAD_SHA")}
+
+    def export_local(self, sandbox: DockerSandbox, run: dict[str, Any], path: str, branch: str) -> dict[str, Any]:
+        return source.export_result(sandbox, run, path, branch)
 
     def run_record(self, run: dict[str, Any], checkout: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -247,10 +304,15 @@ class DeepAgentExecutor:
         return mapper
 
     async def start(self, run: dict[str, Any], message: str) -> AsyncIterator[dict[str, Any]]:
+        from anvil.logs import record_commands, set_log_context
+
+        set_log_context(run_id=run.get("run_id"), session_id=run.get("session_id"),
+                        agent=run.get("trigger", "").split(":")[0])
         mapper = self._mapper(run)
         yield mapper.event("run.status", {"status": "running"})
         try:
             sandbox = await asyncio.to_thread(self.sandbox_for, run)
+            record_commands(sandbox, run["run_id"])  # full output to private/runs/<id>/commands/ (ANVIL-84)
             checkout = await asyncio.to_thread(self.checkout, sandbox, run)
         except Exception as exc:  # noqa: BLE001 - surfaced to the user as a failed run
             yield mapper.event("message", {"role": "system", "text": f"Setup failed: {exc}"})
@@ -261,6 +323,12 @@ class DeepAgentExecutor:
                 f"on branch {checkout['branch']} (base {checkout['base_ref']} @ {checkout['base_sha']}).")
         if run.get("jira_key"):
             task += f" Jira ticket: {run['jira_key']}."
+        if checkout.get("source_kind") in ("folder", "archive"):
+            task += (" The code base is a snapshot of a project folder without its own git history: "
+                     "commit your work on this branch as usual; it is exported as a patch.")
+        if checkout.get("uncommitted_changes"):
+            task += (f" Note: the original working copy has {checkout['uncommitted_changes']} uncommitted "
+                     f"change(s) that are not part of this checkout.")
         async for ev in self._stream(run, sandbox, mapper, {"messages": [{"role": "user", "content": task}]}):
             yield ev
 
@@ -273,12 +341,17 @@ class DeepAgentExecutor:
 
     async def cancel(self, run: dict[str, Any]) -> None:
         self._cancel.setdefault(run["run_id"], asyncio.Event()).set()
+        # A tool may be sleeping in a host thread (CI polling): tell it too, not only the stream loop.
+        live = self._live.get(run["run_id"])
+        if live is not None and hasattr(live, "stop_requested"):
+            live.stop_requested.set()
 
     # -- streaming -------------------------------------------------------------------------
 
     async def _stream(self, run: dict[str, Any], sandbox: DockerSandbox, mapper: EventMapper,
                       graph_input: Any) -> AsyncIterator[dict[str, Any]]:
         cancel = self._cancel.setdefault(run["run_id"], asyncio.Event())
+        self._live[run["run_id"]] = sandbox
         handoffs: list[dict[str, str]] = []
         # Commands run in the run's repo checkout, for the agent and its subagents alike.
         if hasattr(sandbox, "set_workdir"):
@@ -290,7 +363,10 @@ class DeepAgentExecutor:
                                    on_handoff=handoffs.append, checkpointer=checkpointer, store=store,
                                    skills=[SANDBOX_SKILLS])
         waiting = False
-        detector = StuckDetector(self.budgets)
+        budgets = self.budgets
+        if run.get("exploration_limit"):
+            budgets = replace(self.budgets, exploration_tool_calls=int(run["exploration_limit"]))
+        detector = StuckDetector(budgets)
         # The detector checks the time budget between events; the deadline makes the sandbox enforce
         # it inside a long command too (ANVIL-41). Cleared in `finally` so the handoff can still run.
         sandbox.deadline = detector.deadline
@@ -305,13 +381,18 @@ class DeepAgentExecutor:
                     return
                 for ev in mapper.map(item):
                     waiting = waiting or ev["type"] == "approval.request"
+                    if ev["type"] == "sandbox.exec" and hasattr(sandbox, "take_timing"):
+                        # Exact command time from the sandbox (ANVIL-83), not the tools step's.
+                        ev["data"].update(sandbox.take_timing(ev["data"].get("cmd", "")) or {})
                     if ev["type"] in ("tool.call", "sandbox.exec"):
                         recent = (recent + [ev])[-12:]
                     if ev["type"] == "tool.result" and ev["data"].get("name") in PROGRESS_TOOLS:
                         detector.note_diff_state(await asyncio.to_thread(self.diff_state, sandbox, path))
                     stuck = stuck or detector.observe(ev)
                     yield ev
-                if stuck:
+                # ANVIL-77: a handoff call ends the run like stuck does. Its note is already in
+                # `handoffs`; keep streaming only until this item's events are out, then _handoff.
+                if stuck or handoffs:
                     break
         except GraphRecursionError:
             # Out of graph steps is a budget, not a crash: hand off with the WIP like any other budget.
@@ -322,6 +403,7 @@ class DeepAgentExecutor:
             return
         finally:
             self._cancel.pop(run["run_id"], None)
+            self._live.pop(run["run_id"], None)
             sandbox.deadline = None
         if stuck or handoffs:
             note = handoffs[-1] if handoffs else self.auto_note(run, stuck or "", recent)
@@ -330,6 +412,9 @@ class DeepAgentExecutor:
         elif not waiting:
             problems = await self._verify(run, sandbox)
             if not problems:
+                if source.is_local(run["repo"]):
+                    async for ev in self._export_local(run, sandbox, mapper, path, work_branch(run)):
+                        yield ev
                 yield mapper.event("run.status", {"status": "succeeded"})
                 return
             # The agent finished, but its result does not check out: a human takes over, told exactly why.
@@ -344,6 +429,22 @@ class DeepAgentExecutor:
                                           push_wip=False):
                 yield ev
 
+    async def _export_local(self, run: dict[str, Any], sandbox: DockerSandbox, mapper: EventMapper, path: str,
+                            branch: str) -> AsyncIterator[dict[str, Any]]:
+        """Write a local source's result to the host and say where (an artifact the UI and ticket can link)."""
+        try:
+            out = await asyncio.to_thread(self.export_local, sandbox, run, path, branch)
+        except Exception as exc:  # noqa: BLE001 - the run's outcome stands; say the export failed
+            yield mapper.event("message", {"role": "system", "text": f"Exporting the result failed: {exc}"})
+            return
+        if not out.get("patch"):
+            yield mapper.event("message", {"role": "system", "text": f"No commits on `{branch}`: nothing to export."})
+            return
+        yield mapper.event("artifact", {"kind": "patch", "url": out["patch"],
+                                        "title": f"{out['commits']} commit(s) on {branch} as a patch",
+                                        "note": {"patch": out["patch"], "bundle": out["bundle"],
+                                                 "apply": "git am < the .patch file, or git fetch the .bundle"}})
+
     async def _verify(self, run: dict[str, Any], sandbox: DockerSandbox) -> list[str]:
         if not self.verify_hook:
             return []
@@ -356,12 +457,21 @@ class DeepAgentExecutor:
 
     @staticmethod
     def diff_state(sandbox: DockerSandbox, path: str) -> str:
-        # Tracked edits, plus the content of untracked files that aren't ignored (a rewritten config.ini
-        # is progress; build/ output is gitignored and is not).
-        res = sandbox.execute(
+        # Tracked edits, plus untracked non-ignored file contents (a rewritten config.ini is
+        # progress; build/ output is gitignored and is not). Normalized by code_signature so a
+        # comment-only or whitespace-only edit signs identically and cannot reset the
+        # repeated-failure counter (ANVIL-75).
+        from anvil.runtime.stuck import code_signature
+
+        # run_internal (ANVIL-89) returns the complete output — the model's head+tail cut would
+        # otherwise salt the signature with a unique spill filename on every call; plain execute
+        # on stub sandboxes. Untracked files are per-file sha1sum'd, not cat'd (content reads
+        # cost too much; a comment edit inside a brand-new file resetting is an accepted edge).
+        runner = getattr(sandbox, "run_internal", None) or sandbox.execute
+        res = runner(
             f"cd {shlex.quote(path)} 2>/dev/null && (git diff HEAD; git status --porcelain; "
-            f"git ls-files -o --exclude-standard -z | xargs -0 -r sha1sum) | sha1sum", timeout=60)
-        return res.output.strip()[:40]
+            f"git ls-files -o --exclude-standard -z | xargs -0 -r sha1sum)", timeout=60)
+        return code_signature(res.output or "")
 
     @staticmethod
     def auto_note(run: dict[str, Any], reason: str, recent: list[dict[str, Any]]) -> dict[str, str]:
@@ -392,15 +502,28 @@ class DeepAgentExecutor:
         if push_wip:
             key = run.get("jira_key") or "ANVIL"
             message = f"{key}: WIP handoff (Anvil run {run['run_id']})"
-            commit = await asyncio.to_thread(sandbox.execute, (
+            commit = await asyncio.to_thread(host_run, sandbox, (
                 f"cd {shlex.quote(path)} && git add -A && git commit -q --no-verify --allow-empty -m {shlex.quote(message)} "
                 f"&& git branch -f {shlex.quote(wip)} HEAD && git rev-parse HEAD"), timeout=120)
-            if commit.exit_code == 0 and self.push_hook:
+            if commit.exit_code == 0 and source.is_local(run["repo"]):
+                # No GitHub for a local source: the WIP goes to private/runs/<run_id>/ (ANVIL-55).
+                async for ev in self._export_local(run, sandbox, mapper, path, wip):
+                    if ev["type"] == "artifact":
+                        url = ev["data"].get("url")
+                    yield ev
+            elif commit.exit_code == 0 and self.push_hook:
                 try:
                     url = await asyncio.to_thread(self.push_hook, sandbox, run, wip)
                 except Exception as exc:  # noqa: BLE001 - handoff must still complete
                     yield mapper.event("message", {"role": "system", "text": f"WIP push failed: {exc}"})
             branch_line = f"WIP branch: `{wip}`" + (f" ({url})" if url else " (not pushed)")
+        elif source.is_local(run["repo"]):
+            # Unverified local result: still hand the person the agent's commits (ANVIL-55).
+            async for ev in self._export_local(run, sandbox, mapper, path, wip):
+                if ev["type"] == "artifact":
+                    url = ev["data"].get("url")
+                yield ev
+            branch_line = f"The agent's branch `{wip}`" + (f" exported to {url}" if url else " (nothing exported)")
         else:
             branch_line = "The agent's own branch and PR are as it pushed them."
         markdown = "\n\n".join([

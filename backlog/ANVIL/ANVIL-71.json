@@ -1,0 +1,23 @@
+{
+  "key": "ANVIL-71",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "High",
+  "summary": "One active run per session: a second message while a run is going starts a parallel run on the same sandbox",
+  "labels": [
+    "agent-claude",
+    "concurrency",
+    "demo",
+    "dfmea",
+    "friday"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:39:22.834+0530",
+  "updated": "2026-11-04T20:12:27.041+0530",
+  "resolved": "2026-11-04T20:12:27.022+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Source: DFMEA 2026-11-04 (F02, RPN 252). Confirmed on main 45a74b4: `create_run` (`POST /api/sessions/{id}/messages`) has no check for a non-terminal run in the session.\n\n**Effect:** two `_execute_run` tasks share the sandbox `anvil-sbx-<session>`, the `/workspace/<repo>` checkout and (with F04) the graph thread. That can corrupt the git index, mix events, and approve the wrong run.\n\n**Fix:**\n\n* In `create_run`, `SELECT ... FOR UPDATE` the session; if a run in it isn't in `TERMINAL_RUN_STATUSES`, return 409 naming that run and its status. In interactive mode a message while waiting for approval is a reply, not a new run; decide and document that.\n* The UI disables Send while the current run is active and says why.\n\n**Acceptance:** an API test where two concurrent POSTs give one 202 and one 409; a UI test where Send is disabled while running.\n",
+  "comments": []
+}

@@ -1,7 +1,7 @@
 {
   "key": "ANVIL-22",
   "type": "Story",
-  "status": "In Progress",
+  "status": "Done",
   "priority": "Medium",
   "summary": "TC1 eval harness + answer-leak controls",
   "labels": [
@@ -11,8 +11,8 @@
   "epic": "ANVIL-7",
   "epic_summary": "WS-G Knowledge base (TC4) + TC1 eval harness",
   "created": "2026-11-02T21:26:13.934+0530",
-  "updated": "2026-11-04T09:13:30.747+0530",
-  "resolved": null,
+  "updated": "2026-11-04T19:45:24.598+0530",
+  "resolved": "2026-11-04T19:45:24.577+0530",
   "links": [],
   "subtasks": [],
   "description": "Due 2026-11-08.\n\n## Leak controls (must hold for every TC run)\n\n* Sandbox clones only the base branch (`--single-branch`), no other refs, so main's withheld fix is unreachable.\n* web_search blocks gitlab.rtems.org, lists.rtems.org, devel.rtems.org and the mirrors' commit pages.\n* KB excludes the TC1 issues and anything referencing their MRs/fix shas (ANVIL-14).\n\n## Harness\n\n* Script: reset RTEMS-1 -> label `anvil` -> wait for the run -> fetch the agent PR diff -> compare with upstream fix `a62e60b5` (files touched, hunk overlap) -> scoring sheet with a human 0-2 root-cause score.\n* Run TC1 three times; consistency table (root cause, files, tests, time, USD).\n\n## Acceptance\n\nThree recorded runs with the table in Confluence ANVIL.\n",
@@ -36,6 +36,10 @@
     {
       "created": "2026-11-04T09:13:30.747+0530",
       "body": "[claude] Root cause scored for runs 2 and 3: **2/2 each**. Both defer `the_mutex->flags = flags` until after validation, which is the upstream root cause. The consistency table is published on the Confluence status page: https://vishal7pandey.atlassian.net/wiki/spaces/ANVIL/pages/28639233\n\n| Run | Outcome | Root cause | Hunks | Tests |\n|---|---|---|---|---|\n| 1 | succeeded, 18m40s | 2 | 2/3 | psx05 1/1, psxtests 87/87 |\n| 2 | handoff at the budget (pre-commit `--all-files`) | 2 | 2/3 | the new test passes; no failing-before-fix evidence; full suite not run |\n| 3 | handoff at the budget (pre-commit `--all-files`) | 2 | 2/3 | psx05 fails before the fix, passes after; psxtests 87/87 |\n\nRoot cause is consistent 3/3. 2/3 hunks is the ceiling for this equivalent fix, because upstream publishes the flags after queue init.\n\nTwo things remain for acceptance:\n\n* 3 clean runs that end in a PR. These are antigravity's rehearsals, after PR #51 (ANVIL-41).\n* The USD per run, from the gateway.\n"
+    },
+    {
+      "created": "2026-11-04T19:44:53.469+0530",
+      "body": "Closing: the TC1 eval harness and answer-leak controls are built.\n\n* case specs and scorer (#48, #49);\n* time-based KB guard (#58);\n* host-side acceptance checks (#60, #63);\n* single-branch checkout and the search blocklist.\n\nRemaining gap: undated documents, ANVIL-67.\n"
     }
   ]
 }

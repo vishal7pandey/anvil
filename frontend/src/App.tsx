@@ -11,8 +11,7 @@ import {
   createSession,
   listSessions,
   listApprovals,
-  listRunsForSession,
-  getRunTimeline,
+  getRun,
   sendMessage,
   subscribeToEvents,
   decideApproval,
@@ -63,7 +62,6 @@ export default function App() {
   const [activeView, setActiveView] = useState<AppView>('chat');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [approvalError, setApprovalError] = useState<string | null>(null);
-  const [runsLoadError, setRunsLoadError] = useState<string | null>(null);
 
   const refreshApprovals = useCallback(async () => {
     setApprovals(await listApprovals());
@@ -91,51 +89,6 @@ export default function App() {
       eventSourceRef.current = null;
     };
   }, [refreshApprovals]);
-
-  // Reopen a session: load its runs (newest first), show the latest run's
-  // timeline in the chat, and attach the live stream if the run is still active.
-  useEffect(() => {
-    if (!selectedSession) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const runs = await listRunsForSession(selectedSession.id);
-        if (cancelled) return;
-        if (runs.length > 0) {
-          const latest = runs[0];
-          setCurrentRun(latest);
-          const timeline = await getRunTimeline(latest.id);
-          if (cancelled) return;
-          setEvents(timeline);
-          const lastSeq = timeline.length > 0 ? timeline[timeline.length - 1].seq : undefined;
-          const active =
-            latest.status === 'running' ||
-            latest.status === 'queued' ||
-            latest.status === 'waiting_approval';
-          if (active) {
-            const unsubscribe = subscribeToEvents(latest.id, (event) => {
-              setEvents((prev) => [...prev, event]);
-              if (event.type === 'run.status') {
-                const status = (event.data as { status?: string }).status;
-                if (isRunStatus(status)) {
-                  setCurrentRun((prev) => prev ? { ...prev, status } : prev);
-                }
-              }
-            }, { afterSeq: lastSeq });
-            if (!cancelled) eventSourceRef.current = unsubscribe;
-          }
-        }
-      } catch (err: unknown) {
-        if (!cancelled)
-          setRunsLoadError(
-            err instanceof Error ? err.message : String(err)
-          );
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedSession]);
 
   const resetSessionRun = useCallback(() => {
     eventSourceRef.current?.();
@@ -165,7 +118,6 @@ export default function App() {
     }
     setCurrentRun(null);
     setEvents([]);
-    setRunsLoadError(null);
     setSelectedSession(session);
   }, [selectedSession]);
 
@@ -206,6 +158,12 @@ export default function App() {
           const status = event.data.status;
           if (isRunStatus(status)) {
             setCurrentRun((prev) => prev ? { ...prev, status } : prev);
+            // Re-fetch the run on terminal status to get updated cost_usd/usd
+            if (status === 'succeeded' || status === 'failed' || status === 'handoff' || status === 'cancelled') {
+              getRun(run.id).then((updated) => {
+                if (updated) setCurrentRun(updated);
+              }).catch(() => {});
+            }
           }
         }
       });
@@ -241,9 +199,7 @@ export default function App() {
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       <header className="h-14 bg-white border-b border-slate-200 text-slate-900 px-6 flex items-center gap-3 shrink-0">
-        <div className="w-7 h-7 rounded bg-slate-900 flex items-center justify-center text-white text-sm font-bold">
-          A
-        </div>
+        <img src="/icon-192.png" alt="" aria-hidden="true" className="w-8 h-8 rounded-lg" />
         <h1 className="font-semibold text-lg">Anvil</h1>
         <nav className="ml-auto flex items-center gap-1" aria-label="Main navigation">
           {([
@@ -280,11 +236,6 @@ export default function App() {
       <main className="flex-1 min-h-0 flex overflow-hidden">
         {activeView === 'chat' && selectedSession && (
           <>
-            {runsLoadError && (
-              <p className="text-xs text-red-700 px-4 py-2 bg-red-50 border border-red-200">
-                Could not load runs: {runsLoadError}
-              </p>
-            )}
             <SessionList
               sessions={sessions}
               selected={selectedSession}

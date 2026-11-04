@@ -2,7 +2,7 @@
 
 import subprocess
 import time
-from typing import Any
+from typing import Callable, Any
 from urllib.parse import quote
 
 import httpx
@@ -165,8 +165,33 @@ def _check_state(name: str, pr: int, with_logs: bool, default_required: list[str
             "required": required, "advisory_failing": [c["name"] for c in failed if c not in gating]}
 
 
+StopCheck = Callable[[], "str | None"]
+
+
+def _pause(seconds: float, should_stop: StopCheck | None) -> str | None:
+    """Sleep up to `seconds` in short slices; return why we stopped early ("cancelled", "budget") or None.
+
+    Polling tools used to sleep for up to 15 min regardless: a cancel waited for the sleep and a run
+    with 2 minutes of budget left could wait 15 (DFMEA F08, ANVIL-76).
+    """
+    left = max(0.0, seconds)
+    while True:  # counted slices, not the clock: a stubbed time.sleep in tests must not busy-wait
+        if should_stop and (reason := should_stop()):
+            return reason
+        if left <= 0:
+            return None
+        step = min(1.0, left)
+        time.sleep(step)
+        left -= step
+
+
+def _stopped_note(reason: str) -> str:
+    return ("The run was cancelled while waiting." if reason == "cancelled" else
+            "The run's time budget ended while waiting: this is the last state seen, not a final one.")
+
+
 def github_checks(repo: str, pr: int, wait_seconds: int = 900, poll_seconds: int = 20,
-                  default_required: list[str] | None = None) -> dict[str, Any]:
+                  default_required: list[str] | None = None, should_stop: StopCheck | None = None) -> dict[str, Any]:
     """Wait (up to wait_seconds) for the CI checks that gate a PR to finish.
 
     The gating checks are those the base branch's protection requires (all checks if it requires
@@ -179,7 +204,11 @@ def github_checks(repo: str, pr: int, wait_seconds: int = 900, poll_seconds: int
         result = _check_state(name, pr, with_logs=False, default_required=default_required)
         if result["state"] in {"success", "failure"} or time.monotonic() >= deadline:
             break
-        time.sleep(poll_seconds)
+        if stopped := _pause(min(poll_seconds, max(0.0, deadline - time.monotonic())), should_stop):
+            if stopped == "cancelled":
+                result["state"] = "cancelled"
+            result["note"] = _stopped_note(stopped)
+            return result
     if result["state"] == "none":
         result["note"] = ("No CI checks ran on this PR. This is not a pass: the PR's base branch may have no "
                           "CI, or CI did not start. Report it in the handoff instead of claiming CI is green.")
@@ -188,7 +217,8 @@ def github_checks(repo: str, pr: int, wait_seconds: int = 900, poll_seconds: int
     return result
 
 
-def github_pr_state(repo: str, pr: int, wait_seconds: int = 0, poll_seconds: int = 30) -> dict[str, Any]:
+def github_pr_state(repo: str, pr: int, wait_seconds: int = 0, poll_seconds: int = 30,
+                    should_stop: StopCheck | None = None) -> dict[str, Any]:
     """PR state for the merge watch: open|merged|closed plus review and issue comments.
 
     With wait_seconds > 0, polls until the PR is no longer open or the wait expires. On 'merged'
@@ -196,12 +226,15 @@ def github_pr_state(repo: str, pr: int, wait_seconds: int = 0, poll_seconds: int
     """
     name = full_name(repo)
     deadline = time.monotonic() + wait_seconds
+    stopped = None
     while True:
         p = _gh("GET", f"/repos/{name}/pulls/{pr}")
         state = "merged" if p.get("merged_at") else p["state"]
         if state != "open" or time.monotonic() >= deadline:
             break
-        time.sleep(poll_seconds)
+        stopped = _pause(min(poll_seconds, max(0.0, deadline - time.monotonic())), should_stop)
+        if stopped:
+            break
     comments = [
         {"author": (c.get("user") or {}).get("login"), "created": c.get("created_at"), "body": (c.get("body") or "")[:2000]}
         for c in _gh("GET", f"/repos/{name}/issues/{pr}/comments", params={"per_page": 100})
@@ -210,9 +243,12 @@ def github_pr_state(repo: str, pr: int, wait_seconds: int = 0, poll_seconds: int
         {"author": (r.get("user") or {}).get("login"), "state": r.get("state"), "body": (r.get("body") or "")[:2000], "submitted": r.get("submitted_at")}
         for r in _gh("GET", f"/repos/{name}/pulls/{pr}/reviews", params={"per_page": 100})
     ]
-    return {"pr": pr, "state": state, "merged_at": p.get("merged_at"), "merge_commit_sha": p.get("merge_commit_sha"),
-            "head_sha": p["head"]["sha"], "draft": p.get("draft"), "title": p.get("title"), "url": p["html_url"],
-            "comments": comments, "reviews": reviews}
+    out = {"pr": pr, "state": state, "merged_at": p.get("merged_at"), "merge_commit_sha": p.get("merge_commit_sha"),
+           "head_sha": p["head"]["sha"], "draft": p.get("draft"), "title": p.get("title"), "url": p["html_url"],
+           "comments": comments, "reviews": reviews}
+    if stopped:
+        out["note"] = _stopped_note(stopped)
+    return out
 
 
 def github_code_scanning_alerts(repo: str, pr: int | None = None, branch: str | None = None) -> list[dict[str, Any]]:

@@ -1,0 +1,23 @@
+{
+  "key": "ANVIL-74",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "High",
+  "summary": "The main prompt orders `pre-commit run --all-files`, which the sandbox refuses: one owned way to lint changed files",
+  "labels": [
+    "agent-claude",
+    "demo",
+    "dfmea",
+    "friday",
+    "runtime"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:39:27.226+0530",
+  "updated": "2026-11-04T19:45:39.419+0530",
+  "resolved": "2026-11-04T19:45:39.414+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Source: DFMEA 2026-11-04 (F05). Confirmed: `runtime/prompts.py:21` still says \"run `pre-commit run --all-files`\". `sandbox.refusal()` (added for ANVIL-41) refuses exactly that, with exit 126. The agent is told to do something and then punished for it, which burns calls and time. This was a half-finished fix on my side: the refusal went in without aligning the prompt.\n\n**Fix (design):**\n\n* A `lint_changed` tool that runs `pre-commit run --files <changed files>` (from `git diff --name-only <base>` plus untracked files), with a time limit from the run budget.\n* The prompt and the defect-fix skill name that tool.\n* Keep the refusal only as a backstop, with a message pointing to the tool.\n\n**Acceptance:**\n\n* no prompt or skill text mentions `--all-files`;\n* a test where `lint_changed` lints only the changed files;\n* a rehearsal log with no exit-126 refusals.\n",
+  "comments": []
+}

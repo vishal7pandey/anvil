@@ -7,6 +7,7 @@ A check prints one JSON object {"ok": bool, "problems": [...]} and exits 0 when 
 
 from __future__ import annotations
 
+from anvil.runtime.sandbox import host_run
 import json
 import shlex
 from typing import Any
@@ -28,7 +29,7 @@ def run_acceptance(case: Case, sandbox: Any, repo_dir: str, timeout: int = 600) 
     problems = []
     for check in case.acceptance:
         cmd = " ".join(shlex.quote(p) for p in ["python3", SANDBOX_CHECKS + check.script, *check.argv(case)])
-        res = sandbox.execute(f"cd {shlex.quote(repo_dir)} && {cmd}", timeout=timeout)
+        res = host_run(sandbox, f"cd {shlex.quote(repo_dir)} && {cmd}", timeout=timeout)
         result = _last_json(res.output)
         if res.exit_code == 0 and result.get("ok"):
             continue

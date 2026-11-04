@@ -2,7 +2,9 @@ import asyncio
 import hmac
 import json
 import logging
+import os
 import re
+from pathlib import Path
 from collections import Counter, defaultdict
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -31,6 +33,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.middleware.cors import CORSMiddleware
 
 from anvil.api.config import Settings, get_settings
+from anvil.logs import set_log_context
 from anvil.api.database import SessionFactory, create_session_factory, get_db
 from anvil.api.executor import RunExecutor
 from anvil.api.metrics import (
@@ -536,8 +539,11 @@ async def _execute_run(app: FastAPI, run_id: UUID, message: str) -> None:
     try:
         await run_in_threadpool(_mark_run_started, session_factory, run_id)
         run_payload = await run_in_threadpool(_load_run_payload, session_factory, run_id)
+        set_log_context(run_id=str(run_id))
         async for event in executor.start(run_payload, message):
             await run_in_threadpool(_persist_executor_event, session_factory, run_id, event)
+            if event.get("type") == "run.status":
+                logger.info("run %s status=%s", run_id, event.get("data", {}).get("status"))
             if (
                 event.get("type") == "run.status"
                 and event.get("data", {}).get("status") == "waiting_approval"
@@ -735,6 +741,7 @@ def _get_or_create_intake_run(
     issue: dict[str, Any],
     user_id: str,
     user_email: str,
+    source: str = "jira",
 ) -> tuple[UUID, str, bool]:
     key = issue.get("key")
     summary = issue.get("summary")
@@ -759,17 +766,25 @@ def _get_or_create_intake_run(
         # putting the ticket back to To Do with the `anvil` label is asking for a retry.
         existing = db.scalar(
             select(Run)
-            .where(Run.trigger == f"jira:{key}", Run.status.not_in(TERMINAL_RUN_STATUSES))
+            .where(Run.trigger == f"{source}:{key}", Run.status.not_in(TERMINAL_RUN_STATUSES))
             .order_by(Run.created_at.desc())
         )
         if existing is not None:
             return existing.id, message, existing.status == "queued"
 
+        repo_value = issue.get("repo") or code_base_repo or "vishal7pandey/rtems"
+        # normalize_repository validates both shapes: owner/repo, or a local project in any shape (ANVIL-91).
+        repo_checked = normalize_repository(repo_value)
+        if base_ref is None:
+            # Only a local path may leave the branch out: its current branch (or 'main' for a snapshot).
+            from anvil.runtime import source as _source
+
+            if not _source.is_local(repo_checked):
+                raise ValueError("a GitHub code base needs its branch: 'Code base: branch <ref> of github.com/<o>/<r>'")
+            base_ref = _source.default_base(repo_checked)
         session = Session(
             user_id=user_id,
-            repo=normalize_repository(
-                issue.get("repo") or code_base_repo or "vishal7pandey/rtems"
-            ),
+            repo=repo_checked,
             environment="local",
             mode=_jira_mode(issue),
             merge_policy="human",
@@ -780,12 +795,12 @@ def _get_or_create_intake_run(
         db.flush()
         run = Run(
             session_id=session.id,
-            trigger=f"jira:{key}",
+            trigger=f"{source}:{key}",
             repo=session.repo,
             status="queued",
             mode=session.mode,
             input_text=message,
-            network=_jira_network(issue),
+            network="offline" if source == "local" else _jira_network(issue),
             base_ref=base_ref,
             jira_key=key,
         )
@@ -805,22 +820,58 @@ def _get_or_create_intake_run(
 # "Code base: branch `tc1/5776-base` of github.com/vishal7pandey/rtems." anywhere in the ticket
 # (backticks and the "of github.com/..." part optional). Answer-leak control: a TC ticket's base
 # branch is what keeps the withheld fix out of the sandbox, so never guess it.
+# "of" accepts github.com/<owner>/<repo> or an absolute local path (ANVIL-56 offline path). A local
+# path with spaces is written in double quotes (ANVIL-91).
 _CODE_BASE = re.compile(
     r"code base:\s*(?:branch\s+)?`?(?P<ref>[A-Za-z0-9._/-]+?)`?"
-    r"(?:\s+of\s+(?:https?://)?github\.com/(?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?)?"
+    r"(?:\s+of\s+(?:(?:https?://)?github\.com/(?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?"
+    r"|\"(?P<qpath>(?:[A-Za-z]:[\\/]|/)[^\"\n]+)\"|(?P<path>(?:[A-Za-z]:[\\/]|/)\S+)))?"
     r"(?=[\s.,;)]|$)",
     re.IGNORECASE,
 )
+# A local path without a branch (ANVIL-91): "Code base: C:\work\app" or 'Code base: "C:\My Projects\app"'.
+# The base is then the working copy's current branch (or 'main' for a folder/archive snapshot).
+_CODE_BASE_PATH_ONLY = re.compile(
+    r"code base:\s*(?:of\s+)?(?:\"(?P<qpath>(?:[A-Za-z]:[\\/]|/)[^\"\n]+)\"|(?P<path>(?:[A-Za-z]:[\\/]|/)\S+))",
+    re.IGNORECASE,
+)
+
+_LOCAL_PATH = re.compile(r"^(?:[A-Za-z]:[\\/]|/)")
 
 
-def _code_base(description: str) -> tuple[str | None, str]:
-    """(repo or None, base ref) from the ticket's "Code base:" line; ValueError if there is none."""
+def _session_base(repo: str) -> str:
+    """Base branch for a UI message: a local project's current branch (ANVIL-91: a junior's repo may be
+    on master or anything else); 'main' for a GitHub repo, as before."""
+    from anvil.runtime import source
+
+    if source.is_local(repo):
+        try:
+            return source.default_base(repo)
+        except ValueError:
+            return "main"  # the checkout reports the real problem (missing path) as a failed setup
+    return "main"
+
+
+def _is_local_path(value: str | None) -> bool:
+    return bool(value) and bool(_LOCAL_PATH.match(value))
+
+
+def _code_base(description: str) -> tuple[str | None, str | None]:
+    """(repo or None, base ref or None) from the ticket's "Code base:" line; ValueError if there is none.
+
+    A GitHub repo always needs its branch (answer-leak control: never guess a TC base). A local path
+    may leave the branch out (ref None: the project's current branch, ANVIL-91)."""
+    path_only = _CODE_BASE_PATH_ONLY.search(description)
+    if path_only is not None:
+        path = (path_only.group("qpath") or (path_only.group("path") or "").rstrip(".,;")).strip()
+        return path or None, None
     match = _CODE_BASE.search(description)
     if match is None:
         raise ValueError(
             "Jira intake candidate has no 'Code base: branch <ref> of github.com/<owner>/<repo>' line"
         )
-    return match.group("repo"), match.group("ref")
+    local = match.group("qpath") or (match.group("path") or "").rstrip(".,;")
+    return (match.group("repo") or local.strip()) or None, match.group("ref")
 
 
 def _jira_labels(issue: dict[str, Any]) -> list[str]:
@@ -840,43 +891,104 @@ def _jira_mode(issue: dict[str, Any]) -> str:
     return "interactive" if "anvil-interactive" in _jira_labels(issue) else "autonomous"
 
 
+def _atlassian_configured() -> bool:
+    import os
+
+    return all(os.environ.get(v) for v in ("ATLASSIAN_SITE", "ATLASSIAN_EMAIL", "ATLASSIAN_API_TOKEN"))
+
+
 async def poll_jira_intake(app: FastAPI) -> list[UUID]:
     if app.state.executor is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="RunExecutor is not configured",
         )
-    candidates_fn, transition_fn = _load_jira_helpers(app)
-    candidates = await run_in_threadpool(candidates_fn, max_results=20)
+    # Sources: the local ticket store whenever a tickets dir is set, and Jira only when credentials
+    # exist (an offline laptop must never reach Atlassian, ANVIL-56).
+    sources: list[tuple[JiraCandidates, JiraTransition, str]] = []
+    tickets_dir = getattr(app.state, "tickets_dir", None)
+    if tickets_dir:
+        from anvil.tickets import LocalTracker
+
+        tracker = LocalTracker(tickets_dir)
+        sources.append((tracker.candidates, tracker.transition, "local"))
+    if app.state.jira_candidates is not None or _atlassian_configured():
+        candidates_fn, transition_fn = _load_jira_helpers(app)
+        sources.append((candidates_fn, transition_fn, "jira"))
+
     started: list[UUID] = []
     user_id = app.state.settings.demo_user_id
-    for issue in candidates:
+    first_exc: Exception | None = None
+    for candidates_fn, transition_fn, source in sources:
         try:
-            run_id, message, should_start = await run_in_threadpool(
-                _get_or_create_intake_run,
-                app.state.session_factory,
-                issue,
-                user_id,
-                app.state.settings.demo_user_email,
-            )
-        except ValueError as exc:
-            # One malformed ticket must not block the others, and must not start on a guessed base.
-            logger.warning("Skipping Jira intake candidate %s: %s", issue.get("key"), exc)
+            candidates = await run_in_threadpool(candidates_fn, max_results=20)
+        except _jira_expected_errors() as exc:
+            logger.error("%s intake poll failed (%s)", source, type(exc).__name__)
+            first_exc = first_exc or exc
             continue
-        await run_in_threadpool(transition_fn, issue["key"], "In Progress")
-        if should_start:
-            _schedule_run(app, run_id, message)
-            started.append(run_id)
+        for issue in candidates:
+            try:
+                run_id, message, should_start = await run_in_threadpool(
+                    _get_or_create_intake_run,
+                    app.state.session_factory,
+                    issue,
+                    user_id,
+                    app.state.settings.demo_user_email,
+                    source,
+                )
+            except ValueError as exc:
+                # One malformed ticket must not block the others, and must not start on a guessed base.
+                logger.warning("Skipping %s intake candidate %s: %s", source, issue.get("key"), exc)
+                continue
+            try:
+                await run_in_threadpool(transition_fn, issue["key"], "In Progress")
+            except _jira_expected_errors() as exc:
+                logger.warning("%s transition for %s failed: %s", source, issue.get("key"), exc)
+            if should_start:
+                _schedule_run(app, run_id, message)
+                started.append(run_id)
+    # A failed source still lets the others run, but the loop must see the failure so its backoff
+    # fires (ANVIL-80) — swallowing it here meant the backoff never engaged.
+    if first_exc is not None:
+        raise first_exc
     return started
 
 
 async def _jira_intake_loop(app: FastAPI) -> None:
+    """Poll forever; back off exponentially (to 15 min) while failing, log only state changes
+    (ANVIL-80: a misconfigured Jira must not fill the log with 60 s retries forever)."""
+    delay = POLL_INTERVAL_SECONDS
+    failures = 0
     while True:
         try:
             await poll_jira_intake(app)
         except _jira_expected_errors() as exc:
-            logger.error("Jira intake poll failed (%s)", type(exc).__name__)
-        await asyncio.sleep(POLL_INTERVAL_SECONDS)
+            failures += 1
+            if failures == 1:
+                logger.error("Intake poll failing (%s); backing off up to 15 min", type(exc).__name__)
+            delay = min(POLL_INTERVAL_SECONDS * (2 ** failures), 900)
+        else:
+            if failures:
+                logger.info("Intake poll recovered after %s consecutive failures", failures)
+            failures = 0
+            delay = POLL_INTERVAL_SECONDS
+        await asyncio.sleep(delay)
+
+
+async def _sandbox_reaper_loop(app: FastAPI) -> None:
+    from anvil.runtime.reaper import reap_stale_sandboxes
+
+    while True:
+        try:
+            await run_in_threadpool(
+                reap_stale_sandboxes,
+                session_factory=app.state.session_factory,
+                owner_id=app.state.settings.owner_id,
+                max_age_hours=app.state.settings.sandbox_max_age_hours,
+            )
+        except Exception as exc:
+            logger.error("Sandbox reaper sweep failed (%s)", type(exc).__name__)
+        await asyncio.sleep(app.state.settings.sandbox_reaper_interval_seconds)
 
 
 def _events_after(
@@ -903,10 +1015,15 @@ def create_app(
     executor: RunExecutor | None = None,
     jira_candidates: JiraCandidates | None = None,
     jira_transition: JiraTransition | None = None,
+    tickets_dir: str | None = None,
     spend_log_provider: SpendLogProvider | None = None,
     start_intake_loop: bool = True,
+    start_reaper_loop: bool = True,
 ) -> FastAPI:
     configured_settings = settings or get_settings()
+    from anvil.logs import configure_logging
+
+    configure_logging(Path(os.environ.get("ANVIL_LOGS_DIR") or Path(__file__).resolve().parents[3] / "logs"))
     configured_database_url = database_url or configured_settings.database_dsn
     engine, session_factory = create_session_factory(
         configured_database_url
@@ -917,9 +1034,21 @@ def create_app(
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         _seed_demo_user(app.state.engine, app.state.settings)
         if app.state.executor is not None and app.state.start_intake_loop:
-            app.state.intake_task = asyncio.create_task(
-                _jira_intake_loop(app),
-                name="anvil-jira-intake",
+            # No ticket source configured -> no loop at all, and say so once (ANVIL-80).
+            if app.state.jira_candidates or _atlassian_configured() or getattr(app.state, "tickets_dir", None):
+                app.state.intake_task = asyncio.create_task(
+                    _jira_intake_loop(app),
+                    name="anvil-jira-intake",
+                )
+            else:
+                logger.info("intake disabled: no tickets dir and no Jira credentials")
+        if (
+            app.state.start_reaper_loop
+            and app.state.settings.sandbox_reaper_enabled
+        ):
+            app.state.reaper_task = asyncio.create_task(
+                _sandbox_reaper_loop(app),
+                name="anvil-sandbox-reaper",
             )
         try:
             yield
@@ -928,6 +1057,9 @@ def create_app(
             if app.state.intake_task is not None:
                 app.state.intake_task.cancel()
                 tasks.append(app.state.intake_task)
+            if app.state.reaper_task is not None:
+                app.state.reaper_task.cancel()
+                tasks.append(app.state.reaper_task)
             for task in tasks:
                 task.cancel()
             if tasks:
@@ -956,9 +1088,14 @@ def create_app(
     app.state.spend_log_provider = spend_log_provider
     app.state.jira_candidates = jira_candidates
     app.state.jira_transition = jira_transition
+    import os as _os
+
+    app.state.tickets_dir = tickets_dir or _os.environ.get("ANVIL_TICKETS_DIR")
     app.state.start_intake_loop = start_intake_loop
+    app.state.start_reaper_loop = start_reaper_loop
     app.state.run_tasks = {}
     app.state.intake_task = None
+    app.state.reaper_task = None
 
     @app.post(
         "/api/sessions",
@@ -1034,11 +1171,27 @@ def create_app(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="RunExecutor is not configured",
             )
+        # The session row is locked while we check for an active run, so two messages sent at once
+        # cannot both start one (ANVIL-71: runs in a session share its sandbox and checkout).
         session = db.scalar(
-            select(Session).where(Session.id == session_id, Session.user_id == user.id)
+            select(Session)
+            .where(Session.id == session_id, Session.user_id == user.id)
+            .with_for_update()
         )
         if session is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+        active = db.scalar(
+            select(Run)
+            .where(Run.session_id == session.id, Run.status.not_in(TERMINAL_RUN_STATUSES))
+            .order_by(Run.created_at.desc())
+        )
+        if active is not None:
+            # A run waiting for approval is answered in the Approvals panel, not with a new message.
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Run {active.id} is {active.status} in this session: wait for it to finish, "
+                       f"decide its approval, or cancel it before sending another message.",
+            )
 
         run = Run(
             session_id=session.id,
@@ -1048,7 +1201,7 @@ def create_app(
             mode=session.mode,
             input_text=payload.text,
             network="offline",
-            base_ref="main",
+            base_ref=_session_base(session.repo),
             run_record={"scenario": payload.scenario} if payload.scenario else {},
         )
         db.add(run)

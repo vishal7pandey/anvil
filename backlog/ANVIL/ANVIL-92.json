@@ -1,0 +1,21 @@
+{
+  "key": "ANVIL-92",
+  "type": "Task",
+  "status": "To Do",
+  "priority": "Highest",
+  "summary": "Junior hand-over by tomorrow morning: refresh backlog/Confluence export, HANDOFF.md, verified repo zip",
+  "labels": [
+    "agent-devin",
+    "friday",
+    "handoff"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T22:29:28.487+0530",
+  "updated": "2026-11-04T22:29:28.573+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] Owner, 2026-11-05: the codebase is handed to the juniors tomorrow morning. They have no access to our Jira, Confluence or GitHub. The hand-over bundle (#56) dates from 11-04 04:48 and is a day out of date.\n\n**Do:**\n\n1. Re-run `backend/scripts/export_trackers.py` so that `backlog/` (ANVIL and RTEMS, every ticket with its comments) and `docs/confluence/` match today's Jira and Confluence. Commit this via a PR.\n2. Update `HANDOFF.md` for a junior reader:\n\n  * what Anvil is;\n  * start at `docs/SETUP.md`;\n  * the offline path (local project folder plus local JSON tickets);\n  * where the board lives now (`backlog/`, plus the local tracker for new tickets);\n  * what is done and what is open (from the board);\n  * how to run the tests;\n  * the known limits.\n  Remove anything that assumes our accounts.\n3. Build the zip with `git archive` from main (never zip the folder: `.env` and `private/` must not leave the laptop). Verify the zip contains no `.env`, `private/` or `*.tar`. Put it in `private/handover/` with its sha256, next to the ANVIL-88 files, and add it to that README.\n\n**Acceptance:**\n\n* someone who unzips it with only the README and HANDOFF.md finds SETUP.md and the backlog;\n* `grep` of the zip for `ATLASSIAN_API_TOKEN=` / `ghp_` / `sk-` finds nothing.\n",
+  "comments": []
+}

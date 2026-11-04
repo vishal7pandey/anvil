@@ -1,8 +1,12 @@
 # Handoff: start here
 
-This repository is a complete, offline copy of the Anvil project as of **2026-11-04**. Until now the
+This repository is a complete, offline copy of the Anvil project as of **2026-11-05**. Until now the
 project lived in GitHub (code), Jira (backlog) and Confluence (status and specs). You may not have
 access to any of those, so everything you need is in this folder:
+
+**Start with [`docs/SETUP.md`](docs/SETUP.md)** — it walks a clean machine to a first run, including
+the fully offline path (no GitHub, no Jira): point a ticket at a local folder on disk and let the
+local JSON ticket tracker stand in for Jira.
 
 | You'd normally look in | Look here instead |
 |---|---|
@@ -21,20 +25,54 @@ it gets stuck or runs out of budget, it stops, saves its work on a branch and ex
 [README.md](README.md), then [docs/01-vision.md](docs/01-vision.md) and
 [docs/02-architecture.md](docs/02-architecture.md).
 
-## Where it stands (2026-11-04)
+## Where it stands (2026-11-05)
 
 | Milestone | State |
 |---|---|
 | M0 Foundations (mirrors, sandbox image, local stack) | Done |
 | M1 Walking skeleton (UI -> API -> agent -> sandbox) | Nearly done. Jira intake starts a real run; a re-run through intake and the approve/reject/cancel check remain (ANVIL-24, ANVIL-19) |
-| M2 TC1: fix a real bug end to end | Works. 3 of 3 runs found the same root cause as the real upstream fix. Two runs ran out of time for a reason that is now fixed (ANVIL-41, PR #51). 3 recorded rehearsals were in progress |
-| M3 TC2 (upgrade lwIP) + TC3 (EU CRA review) | At risk. TC2 runs keep losing local patches during the re-import (ANVIL-21) |
+| M2 TC1: fix a real bug end to end | Works online. 3 of 3 runs found the same root cause as the real upstream fix |
+| Offline demo path | Built this week: local folder source (no GitHub), local JSON tickets (no Jira), KB snapshot with vectors (no re-embed), sandbox image as a file. The whole chain is proven by `backend/tests/test_offline_chain.py` (ticket -> patch in ~4 min, no LLM); a clean-laptop dry run is the remaining check |
+| M3 TC2 (upgrade lwIP) + TC3 (EU CRA review) | TC3 interactive intake exists (`anvil-interactive` label). TC2 was at risk on patch-loss; unverified lately |
 | M4 TC4 (incident investigation from the KB) + rehearsal | KB complete; TC4 acceptance passes 3/3 |
 
 The latest status page with tables is
 [docs/confluence/ANVIL/anvil-status-and-plan-to-the-2026-11-10-demo.md](docs/confluence/ANVIL/anvil-status-and-plan-to-the-2026-11-10-demo.md).
-Open work is every file in `backlog/ANVIL/` whose `status` isn't `Done`; [backlog/README.md](backlog/README.md)
-lists it.
+
+**The board lives in two places now:** `backlog/` is the offline export of Jira (every ANVIL/RTEMS
+issue with comments; open work is every file whose `status` isn't `Done`), and the local JSON ticket
+tracker — `todo/`, `in-progress/`, `done/` folders under the directory in `ANVIL_TICKETS_DIR` — is
+where *new* tickets go when you run the offline path. The intake polls both; a ticket whose `Code
+base:` line points at a local path runs fully offline.
+
+## The offline path (no GitHub, no Jira, no Atlassian)
+
+`docs/SETUP.md` §"100% offline" is the full walkthrough. In short:
+
+- Ticket = a JSON file in `$ANVIL_TICKETS_DIR/todo/` labelled `anvil`, ending with
+  `Code base: branch <base> of <absolute path>`. The path may be a git working copy (any branch;
+  leave the branch out to use the one checked out), a plain folder, or a .zip/.tar.gz of either.
+  Put a path with spaces in double quotes. See SETUP.md §5b.
+- The intake moves it to `in-progress/`, the sandbox gets a shallow copy of the base branch only
+  (your other branches — including one holding a withheld fix — never leave the host), and the
+  agent's commits come back as `private/runs/<run_id>/<run_id>.patch` + `.bundle` — apply with
+  `git am`. `jira_*` tool calls write to the ticket JSON; GitHub tools are not offered.
+- The KB travels as `data/kb/kb-snapshot.jsonl.gz` (committed) plus the vectors sidecar
+  `kb-snapshot-vectors.jsonl.gz` + its manifest (shared out-of-band; import skips re-embedding when
+  the model + hash pair matches). Only *query* embeddings still need the LiteLLM gateway.
+- The sandbox image travels as `anvil-sandbox-rtems-7.1.tar` + sha256 manifest;
+  `scripts\import-sandbox-image.ps1` verifies and loads it.
+
+## Known limits
+
+- Local projects: any absolute path (spaces fine) to a git working copy, a plain folder or an
+  archive (ANVIL-91). Uncommitted changes in a working copy are reported but not copied. Git
+  submodules inside a local project are not copied. The sandbox has RTEMS 7 / SPARC, Python 3 and
+  common build tools; other toolchains are not installed.
+- `git push`/PR/CI tools only exist for `owner/repo` sources; local runs produce patch + bundle only.
+- The ticket key selects the case (`RTEMS-1` binds the TC1 case: KB time-guard + acceptance checks).
+- Query-side KB embeddings need the gateway (document vectors are imported, queries are not).
+- The sandbox is amd64 Linux; Windows hosts run it through Docker Desktop/WSL2.
 
 ## Run it
 
@@ -96,6 +134,17 @@ Jira, pull requests and a shared inbox folder. You don't need that setup. The us
 * Write the decision and the numbers on the backlog item when you decide something, as the comments in
   `backlog/` show. Most of the "why" in this project is in those comments.
 * Test leak controls through the real path (ticket -> checkout -> agent), not only in unit tests.
+
+## Running the tests
+
+```bash
+cd backend
+uv run python -m pytest                # unit + integration suite
+uv run python -m pytest tests/test_offline_chain.py   # the end-to-end offline chain (needs Docker + the 7.1 image)
+cd ../frontend && npm test
+```
+
+Tests that need Docker or the sandbox image skip themselves when those aren't present.
 
 ## Gotchas (Windows laptop)
 

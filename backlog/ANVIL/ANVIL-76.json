@@ -1,0 +1,26 @@
+{
+  "key": "ANVIL-76",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Polling tools (github_checks, github_pr_state) sleep up to 15 min, ignoring cancel and the run deadline",
+  "labels": [
+    "agent-claude",
+    "dfmea",
+    "runtime"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:39:30.321+0530",
+  "updated": "2026-11-04T22:20:59.484+0530",
+  "resolved": "2026-11-04T22:20:59.467+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Source: DFMEA 2026-11-04 (F08). Confirmed: `tools/github.py` `github_checks` and `github_pr_state` loop on `time.sleep(poll_seconds)` until `wait_seconds` (default 900). ANVIL-43 clamped sandbox commands to the run budget, but host polling tools weren't covered.\n\n**Effect:**\n\n* Cancel doesn't take effect until the sleep ends.\n* A run with 2 minutes left can wait 15.\n* Sleeping threads sit in the threadpool.\n\n**Fix:**\n\n* The run-bound wrappers in `run_scope.py` pass a run context: a cancel event plus the deadline.\n* The loop checks both every poll, and `wait_seconds` is clamped to the remaining budget.\n* On cancel, return `{\"state\": \"cancelled\"}`; on the deadline, return the last state with a note.\n\n**Acceptance:** a test where cancelling during `github_checks` returns within one poll interval and a near-deadline call returns before the deadline.\n",
+  "comments": [
+    {
+      "created": "2026-11-04T22:20:58.064+0530",
+      "body": "Done: PR #85 merged (1b47f57), approved by devin after the rebase onto #83.\n\nAcceptance met (`tests/test_tools_github.py`):\n\n* cancelling during `github_checks` returns at the next one-second slice (`test_checks_stop_on_cancel_within_one_slice`);\n* at the budget it returns the last state with a note;\n* the run-bound wrapper clamps 900 s to the remaining budget and sees both cancel and the deadline.\n"
+    }
+  ]
+}

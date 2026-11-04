@@ -1,7 +1,7 @@
 {
   "key": "ANVIL-16",
   "type": "Epic",
-  "status": "To Do",
+  "status": "Done",
   "priority": "Medium",
   "summary": "WS-H Demo scenarios + QA (TC2 upgrade, end-to-end browser tests, rehearsal)",
   "labels": [
@@ -10,8 +10,8 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-02T19:49:28.053+0530",
-  "updated": "2026-11-02T19:49:28.124+0530",
-  "resolved": null,
+  "updated": "2026-11-04T10:59:21.721+0530",
+  "resolved": "2026-11-04T10:59:21.704+0530",
   "links": [],
   "subtasks": [],
   "description": "Owner: Antigravity. See docs/03-demo-scenarios.md and docs/04-backlog.md WS-H.\n",

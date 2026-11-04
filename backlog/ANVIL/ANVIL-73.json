@@ -1,0 +1,23 @@
+{
+  "key": "ANVIL-73",
+  "type": "Bug",
+  "status": "In Progress",
+  "priority": "High",
+  "summary": "Reopening a session shows nothing: load the session's runs and replay the latest run's events",
+  "labels": [
+    "agent-cline",
+    "demo",
+    "dfmea",
+    "friday",
+    "frontend"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:39:25.735+0530",
+  "updated": "2026-11-04T22:01:41.011+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Source: DFMEA 2026-11-04 (F03), and also seen in the team sync: clicking an existing session, or reloading the page, shows an empty chat. Confirmed: there's no `GET /api/sessions/{id}/runs`, and `handleSelectSession` clears state without loading anything.\n\n**Fix:**\n\n* API: `GET /api/sessions/{id}/runs`, newest first.\n* UI: on selecting a session (and on page load), load its latest run. Replay `GET /api/runs/{id}/timeline` through the ANVIL-52 render model. If the run is still active, attach the live stream after the last seq.\n* Optional: a small run switcher for older runs in the session.\n\n**Acceptance:**\n\n* reloading during a run shows the full conversation so far and keeps streaming;\n* opening a finished session shows its last run;\n* covered by an e2e test.\n",
+  "comments": []
+}

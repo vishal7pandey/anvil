@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import App from '../App';
 
@@ -32,10 +32,6 @@ function mockSessions(list: unknown[]) {
   vi.mocked(globalThis.fetch).mockResolvedValueOnce({
     ok: true,
     json: async () => list,
-  } as Response);
-  vi.mocked(globalThis.fetch).mockResolvedValueOnce({
-    ok: true,
-    json: async () => [],
   } as Response);
   vi.mocked(globalThis.fetch).mockResolvedValueOnce({
     ok: true,
@@ -83,7 +79,6 @@ describe('App', () => {
     fetchMock
       .mockResolvedValueOnce({ ok: true, json: async () => [session, other] } as Response)
       .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
-      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
       .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'r1', status: 'running' }) } as Response)
       .mockImplementationOnce(async (_url, init) => ({
         ok: true,
@@ -116,7 +111,7 @@ describe('App', () => {
 
     fireEvent.click(screen.getAllByText('RTEMS-2 lwIP upgrade')[0]);
     expect(screen.queryByText('a-1')).not.toBeInTheDocument();
-    const streamInit = fetchMock.mock.calls[4][1];
+    const streamInit = fetchMock.mock.calls[3][1];
     expect(streamInit?.signal?.aborted).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: /Approvals/ }));
     expect(await screen.findByText('a-1')).toBeInTheDocument();
@@ -131,68 +126,75 @@ describe('App', () => {
     expect(screen.getByText('No pending approvals.')).toBeInTheDocument();
   });
 
-  it('shows You message when selecting a session with a finished run', async () => {
-    const finishedSession = {
-      ...session,
-      id: '6f0c1a52-0000-4000-8000-000000000003',
-    };
-    const finishedRun = {
-      id: 'r1',
-      session_id: finishedSession.id,
-      status: 'succeeded',
-      mode: 'autonomous',
-      network: 'online',
-      created_at: '2026-11-03T08:00:00Z',
-      updated_at: '2026-11-03T08:05:00Z',
-    };
-    const timelineEvents = [
-      {
-        run_id: finishedSession.id,
-        seq: 1,
-        ts: '2026-11-03T08:00:01Z',
-        type: 'message.delta',
-        agent: 'main',
-        data: { role: 'assistant', text: 'received: hello' },
-      },
-      {
-        run_id: finishedSession.id,
-        seq: 2,
-        ts: '2026-11-03T08:00:02Z',
-        type: 'run.status',
-        agent: 'main',
-        data: { status: 'succeeded' },
-      },
-    ];
-    const approval = JSON.stringify({
-      run_id: 'r1', seq: 3, ts: '2026-11-03T08:00:00Z', type: 'approval.request', agent: 'main',
-      data: { approval_id: 'a-1', action: 'git_push', args: { branch: 'anvil/rtems-1' } },
-    });
-    const encoder = new TextEncoder();
-    let sent = false;
+  it('New Session dialog shows repo hint and field descriptions', async () => {
+    mockSessions([]);
+    render(<App />);
+    fireEvent.click(screen.getAllByText('New Session')[0]);
+    expect(await screen.findByRole('heading', { name: 'New Session' })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/vishal7pandey\/rtems or C:\\work\\rtems/)).toBeInTheDocument();
+    expect(screen.getByText('GitHub owner/repository or an absolute local path')).toBeInTheDocument();
+    expect(screen.getByText('Every tool waits for your approval (TC1 default)')).toBeInTheDocument();
+    expect(screen.getByText('Balanced model for general tasks (TC1 default)')).toBeInTheDocument();
+  });
+
+  it('creating a session submits the form and closes the dialog', async () => {
     const fetchMock = vi.mocked(globalThis.fetch);
     fetchMock
-      .mockResolvedValueOnce({ ok: true, json: async () => [finishedSession] } as Response)
-      .mockResolvedValueOnce({ ok: true, json: async () => [finishedRun] } as Response)
-      .mockResolvedValueOnce({ ok: true, json: async () => timelineEvents } as Response)
       .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
-      .mockImplementationOnce(async (_url, init) => ({
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockResolvedValueOnce({
         ok: true,
-        body: {
-          getReader: () => ({
-            read: async () => {
-              if (!sent) {
-                sent = true;
-                return { done: false, value: encoder.encode(`id: 2\nevent: run.status\ndata: {\"status\":\"succeeded\"}\n\n`) };
-              }
-              return new Promise((_resolve, reject) =>
-                init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
-              );
-            },
-          }),
-        } as Response,
-      } as Response) as unknown as Response;
+        json: async () => ({ ...session, id: 's-new' }),
+      } as Response);
+
     render(<App />);
-    await screen.findAllByText('RTEMS-1 mutex defect');
-    expect(await screen.findByText('You: hello')).toBeInTheDocument();
+    await screen.findByText('No sessions yet.');
+    fireEvent.click(screen.getAllByText('New Session')[0]);
+    await screen.findByRole('heading', { name: 'New Session' });
+
+    fireEvent.change(screen.getByPlaceholderText(/vishal7pandey\/rtems or C:\\work\\rtems/), {
+      target: { value: 'vishal7pandey/rtems' },
+    });
+    fireEvent.submit(screen.getByRole('button', { name: /Create/ }).closest('form')!);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/sessions',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"repo":"vishal7pandey/rtems"'),
+      }),
+    );
+    // Dialog closes and the new session appears in the list
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: 'New Session' })).not.toBeInTheDocument();
+    });
+    expect(await screen.findByText('RTEMS-1 mutex defect')).toBeInTheDocument();
+  });
+
+  it('shows the API 422 error inline when session creation fails', async () => {
+    const fetchMock = vi.mocked(globalThis.fetch);
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 422,
+        statusText: 'Repository must be a GitHub owner/repository',
+        json: async () => ({ detail: 'Repository must be a GitHub owner/repository' }),
+      } as Response);
+
+    render(<App />);
+    await screen.findByText('No sessions yet.');
+    fireEvent.click(screen.getAllByText('New Session')[0]);
+    await screen.findByRole('heading', { name: 'New Session' });
+
+    fireEvent.change(screen.getByPlaceholderText(/vishal7pandey\/rtems or C:\\work\\rtems/), {
+      target: { value: 'not-a-valid-repo' },
+    });
+    fireEvent.submit(screen.getByRole('button', { name: /Create/ }).closest('form')!);
+
+    expect(await screen.findByText('Failed to create session: Repository must be a GitHub owner/repository')).toBeInTheDocument();
+    // Dialog stays open so the user can fix the input
+    expect(screen.getByRole('heading', { name: 'New Session' })).toBeInTheDocument();
   });
 });

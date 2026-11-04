@@ -5,6 +5,7 @@ blobless clone under %LOCALAPPDATA%/anvil/repos/<repo>, fetch the bundle, push w
 through git's environment config (never argv, never the sandbox).
 """
 
+from anvil.runtime.sandbox import host_run
 import base64
 import os
 import re
@@ -67,34 +68,37 @@ def push_from_sandbox(sandbox: Sandbox, repo: str, branch: str, workspace: str =
     bundle = f"{workspace}/.anvil-push.bundle"
     ref = f"refs/heads/{branch}"
 
-    res = sandbox.execute(f"git -C {shlex.quote(src)} rev-parse --verify {shlex.quote(ref)}")
+    res = host_run(sandbox, f"git -C {shlex.quote(src)} rev-parse --verify {shlex.quote(ref)}")
     if res.exit_code:
         raise ToolError(f"branch '{branch}' not found in the sandbox repo {src}: {res.output[-500:]}")
     sha = res.output.strip().splitlines()[-1]
-    res = sandbox.execute(f"rm -f {bundle} && git -C {shlex.quote(src)} bundle create {bundle} {shlex.quote(ref)} --not --remotes=origin")
+    res = host_run(sandbox, f"rm -f {bundle} && git -C {shlex.quote(src)} bundle create {bundle} {shlex.quote(ref)} --not --remotes=origin")
     if res.exit_code:
         raise ToolError(f"nothing to push or bundle failed: {res.output[-800:]}")
     [dl] = sandbox.download_files([bundle])
-    sandbox.execute(f"rm -f {bundle}")
+    host_run(sandbox, f"rm -f {bundle}")
     if dl.content is None:
         raise ToolError(f"could not download the bundle from the sandbox: {dl.error}")
 
-    clone = Path(s.anvil_repos_dir) / name.replace("/", "__")
-    remote = f"{s.github_remote_base.rstrip('/')}/{name}.git"
-    if not (clone / "HEAD").exists():
-        clone.parent.mkdir(parents=True, exist_ok=True)
-        with acquire_lock("network-heavy", what=f"first host clone of {name} for git_push"):
-            _host_git(["clone", "--bare", "--filter=blob:none", remote, str(clone)], None, s)
-    else:
-        _host_git(["fetch", "--prune", remote, "+refs/heads/*:refs/heads/*"], clone, s)
-    with tempfile.TemporaryDirectory() as tmp:
-        path = Path(tmp) / "push.bundle"
-        path.write_bytes(dl.content)
-        _host_git(["fetch", str(path), f"+{ref}:{ref}"], clone, s)
-    if blocked := _protected_paths(clone, ref, s):
-        _host_git(["update-ref", "-d", ref], clone, s)
-        raise ToolError(f"refused: the commits touch protected paths ({', '.join(blocked[:10])}). Agents may not change .github/; drop those changes and commit again.")
-    _host_git(["push", remote, f"{ref}:{ref}"], clone, s)
+    # ANVIL-81: the shared host clone is one bare repo per GitHub repo — hold a per-repo lock across
+    # the whole fetch -> import -> check -> push sequence or two runs interleave refs/hit *.lock.
+    with acquire_lock(f"git-push-{name.replace('/', '__')}", what=f"git_push {ref} to {name}"):
+        clone = Path(s.anvil_repos_dir) / name.replace("/", "__")
+        remote = f"{s.github_remote_base.rstrip('/')}/{name}.git"
+        if not (clone / "HEAD").exists():
+            clone.parent.mkdir(parents=True, exist_ok=True)
+            with acquire_lock("network-heavy", what=f"first host clone of {name} for git_push"):
+                _host_git(["clone", "--bare", "--filter=blob:none", remote, str(clone)], None, s)
+        else:
+            _host_git(["fetch", "--prune", remote, "+refs/heads/*:refs/heads/*"], clone, s)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "push.bundle"
+            path.write_bytes(dl.content)
+            _host_git(["fetch", str(path), f"+{ref}:{ref}"], clone, s)
+        if blocked := _protected_paths(clone, ref, s):
+            _host_git(["update-ref", "-d", ref], clone, s)
+            raise ToolError(f"refused: the commits touch protected paths ({', '.join(blocked[:10])}). Agents may not change .github/; drop those changes and commit again.")
+        _host_git(["push", remote, f"{ref}:{ref}"], clone, s)
     return {"repo": name, "branch": branch, "sha": sha, "url": f"https://github.com/{name}/tree/{branch}"}
 
 

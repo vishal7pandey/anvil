@@ -1,0 +1,23 @@
+{
+  "key": "ANVIL-72",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "High",
+  "summary": "Graph checkpoints are keyed by session, not run: a new run inherits the previous run's state",
+  "labels": [
+    "agent-claude",
+    "demo",
+    "dfmea",
+    "friday",
+    "runtime"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:39:24.267+0530",
+  "updated": "2026-11-04T19:45:37.209+0530",
+  "resolved": "2026-11-04T19:45:37.193+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Source: DFMEA 2026-11-04 (F04, RPN 315). Confirmed: `runtime/executor.py:290` streams with `thread_id = str(run[\"session_id\"])`.\n\n**Effect:**\n\n* Run 2 in a session resumes run 1's checkpointed graph: its messages, todos and any pending interrupt.\n* A handoff or failed run 1 can leak its trajectory into run 2, and an approval interrupt from run 1 could be resumed by run 2.\n* Rehearsals that reuse a session aren't clean runs.\n\n**Fix:**\n\n* `thread_id = run_id`. Approval resume must use the same run's id; check `resume` paths.\n* If a follow-up run should know the previous one, pass that explicitly: a summary of the previous run's outcome in the prompt, or `/memories/`. Never raw checkpoint sharing.\n\n**Acceptance:**\n\n* a test where two runs in one session start with an empty graph state;\n* approval resume still works;\n* a rehearsal in a reused session shows no carried-over todos.\n",
+  "comments": []
+}

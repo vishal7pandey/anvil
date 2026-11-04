@@ -1,0 +1,27 @@
+{
+  "key": "ANVIL-87",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Highest",
+  "summary": "Offline chain integration test without an LLM: local ticket → intake → local repo in a real sandbox → patch file + ticket comment",
+  "labels": [
+    "agent-devin",
+    "demo",
+    "friday",
+    "offline"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T20:17:29.358+0530",
+  "updated": "2026-11-04T21:14:18.063+0530",
+  "resolved": "2026-11-04T21:12:10.314+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Owner: build first, and run full end-to-end agent runs only where essential. This test proves the Friday offline chain in minutes, with no model and no network, so the Thursday dry run tests the laptop setup, not our code.\n\n**Test (pytest, Docker-gated like **`test_local_source.py`):\n\n1. A temp ticket dir with `todo/RTEMS-1.json` (label `anvil`, `Code base: branch main of <tmp git repo>`), plus a temp git working copy with a base branch and a decoy \"fix\" branch.\n2. Create the API app with `tickets_dir` and the **real **`DeepAgentExecutor`, but a scripted `agent_factory`. The fake agent, in the real sandbox:\n\n  * edits a file and commits;\n  * calls `jira_comment` through the real run tools;\n  * finishes.\n3. Call `poll_jira_intake`, then wait for the run to finish.\n\n**Assertions:**\n\n* the run succeeded;\n* `private/runs/<run_id>/<run_id>.patch` exists and `git am` applies it to the temp repo;\n* the ticket JSON has the agent's comment and sits in `in-progress/` (or `done/`);\n* the decoy branch never reached the sandbox;\n* no Atlassian or GitHub call happened (patch the HTTP clients to fail the test).\n\nA second case: the fake agent calls `handoff`. The run ends `handoff`, and the ticket JSON gets the handoff note with the patch path.\n\n**Acceptance:** green locally in under 3 minutes; it skips cleanly without Docker or the image.\n",
+  "comments": [
+    {
+      "created": "2026-11-04T20:39:13.380+0530",
+      "body": "[devin] PR #80 up: https://github.com/vishal7pandey/anvil/pull/80 — full offline chain, no LLM: real executor + real 7.1 sandbox + real wiring, scripted agent_factory. Ticket JSON -> poll -> shallow copy -> commit + jira_comment -> patch+bundle in private/runs/<run_id>/, git am applies on host; ticket moved + commented; decoy fix branch absent; Atlassian/GitHub transports patched to fail. Second case: handoff note in ticket JSON + anvil-needs-human. 2 passed in ~4 min.\n"
+    }
+  ]
+}

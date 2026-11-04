@@ -1,0 +1,26 @@
+{
+  "key": "ANVIL-67",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "KB: faster import and incremental refresh from a snapshot",
+  "labels": [
+    "kb",
+    "post-demo",
+    "team-sync"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:36:57.805+0530",
+  "updated": "2026-11-04T18:40:01.846+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Source: KB review 2026-11-04 (P5, P6).\n\n* **Faster import:** build the HNSW index after the bulk load, not before (`ensure_schema` creates it first today). Use larger or parallel embedding batches (64 today, sequential).\n* **Incremental refresh:** the crawl cursor lives in a local `.cache/kb-crawl-state.json`. Store the per-project cursor in the snapshot manifest, so `kb update` = import the snapshot, then crawl only what changed since.\n\n**Acceptance:** import time measured before and after; `kb update` on a fresh machine fetches only post-snapshot items.\n",
+  "comments": [
+    {
+      "created": "2026-11-04T18:40:01.846+0530",
+      "body": "DFMEA 2026-11-04 (F13) raises leak-guard rigor. Checked on main: the time guard from ANVIL-43 already exists (`make_kb_search(as_of)`, host-side), and acceptance checks are uploaded only after the agent finishes. The real gap is this ticket: undated documents (rtems-docs, Confluence) escape the time guard. Its other idea, semantic-similarity screening of withheld patches, is noted as a post-demo option here, not a separate ticket.\n"
+    }
+  ]
+}

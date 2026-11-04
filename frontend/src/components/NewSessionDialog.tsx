@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import type { NewSessionForm } from '../types';
 
 interface NewSessionDialogProps {
-  onSubmit: (form: NewSessionForm) => void;
+  onSubmit: (form: NewSessionForm) => Promise<void>;
   onClose: () => void;
 }
 
@@ -17,10 +17,18 @@ export default function NewSessionDialog({
     model_profile: 'anvil-main',
     title: '',
   });
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    onSubmit(form);
+    setError(null);
+    try {
+      await onSubmit(form);
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : 'Failed to create session',
+      );
+    }
   };
 
   return (
@@ -42,15 +50,23 @@ export default function NewSessionDialog({
               className="input"
             />
           </div>
+          {error && (
+            <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5">
+              {error}
+            </p>
+          )}
           <div>
             <label className="label">Repository</label>
             <input
               type="text"
               value={form.repo}
               onChange={(e) => setForm({ ...form, repo: e.target.value })}
-              placeholder="rtems"
+              placeholder="vishal7pandey/rtems or C:\work\rtems"
               className="input"
             />
+            <p className="text-xs text-slate-400 mt-1">
+              GitHub owner/repository or an absolute local path
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -79,9 +95,16 @@ export default function NewSessionDialog({
                 }
                 className="input"
               >
-                <option value="interactive">Interactive</option>
+                <option value="interactive">
+                  Interactive
+                </option>
                 <option value="autonomous">Autonomous</option>
               </select>
+              <p className="text-xs text-slate-400 mt-1">
+                {form.mode === 'interactive'
+                  ? 'Every tool waits for your approval (TC1 default)'
+                  : 'Agent runs without waiting'}
+              </p>
             </div>
           </div>
           <div>
@@ -97,6 +120,13 @@ export default function NewSessionDialog({
               <option value="anvil-fast">anvil-fast</option>
               <option value="anvil-embed">anvil-embed</option>
             </select>
+            <p className="text-xs text-slate-400 mt-1">
+              {form.model_profile === 'anvil-main'
+                ? 'Balanced model for general tasks (TC1 default)'
+                : form.model_profile === 'anvil-fast'
+                ? 'Faster, cheaper model for simple tasks'
+                : 'Embedding model for knowledge base'}
+            </p>
           </div>
           <div className="flex gap-3 pt-4">
             <button

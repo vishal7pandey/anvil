@@ -31,6 +31,22 @@ class Settings(BaseSettings):
     demo_token: SecretStr = SecretStr("")
     demo_user_id: str = "demo"
     demo_user_email: str = "demo@anvil.local"
+    sandbox_reaper_enabled: bool = True
+    sandbox_reaper_interval_seconds: int = 300
+    sandbox_max_age_hours: float = 2.0
+    instance_id: str = Field(
+        default="",
+        validation_alias="ANVIL_INSTANCE_ID",
+    )
+
+    @property
+    def owner_id(self) -> str:
+        if self.instance_id:
+            return self.instance_id
+        dsn = self.database_dsn
+        if "/" in dsn:
+            return dsn.rsplit("/", 1)[-1].split("?")[0] or "default"
+        return "default"
 
     @property
     def database_dsn(self) -> str:

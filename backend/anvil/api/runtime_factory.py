@@ -120,13 +120,28 @@ def create_executor_from_environment() -> RunExecutor | None:
             markdown = handoff.get("markdown")
             if not isinstance(markdown, str) or not markdown:
                 raise ValueError("Handoff report requires a structured note or Markdown fallback")
+        if run.get("trigger", "").startswith("local:"):
+            # The handoff note goes into the ticket JSON, not real Jira (ANVIL-56); the patch
+            # path from the local export rides in `url`/details as usual.
+            from anvil.tickets import LocalTracker
+
+            tracker = LocalTracker.from_env()
+            if tracker is not None:
+                tracker.comment(jira_key, markdown)
+                tracker.set_labels(jira_key, add=["anvil-needs-human"])
+                return
         jira_comment(jira_key, markdown)
         jira_set_labels(jira_key, add=["anvil-needs-human"])
 
-    return DeepAgentExecutor(
-        db_url=_runtime_database_url(get_settings().database_dsn),
-        tools_factory=tools_factory,
-        push_hook=push_hook,
-        report_hook=report_hook,
-        verify_hook=verify_outcome,
-    )
+    settings = get_settings()
+    import inspect
+    executor_kwargs: dict[str, Any] = {
+        "db_url": _runtime_database_url(settings.database_dsn),
+        "tools_factory": tools_factory,
+        "push_hook": push_hook,
+        "report_hook": report_hook,
+        "verify_hook": verify_outcome,
+    }
+    if "owner_id" in inspect.signature(DeepAgentExecutor.__init__).parameters:
+        executor_kwargs["owner_id"] = settings.owner_id
+    return DeepAgentExecutor(**executor_kwargs)

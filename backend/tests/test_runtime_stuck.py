@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from langchain_core.messages import AIMessage, ToolMessage
 
 from deepagents.backends.protocol import ExecuteResponse
@@ -132,3 +133,81 @@ def test_same_failure_with_code_changes_in_between_is_iteration_not_stuck():
 def test_tool_call_guard_is_a_runaway_guard_not_the_budget():
     # 150 stopped TC1 rehearsals mid-work at 15-20 min (ANVIL-32); time and no-progress bound runs.
     assert Budgets().max_tool_calls >= 400
+
+
+# -- ANVIL-75: comment-only edits cannot reset failures; exploration is bounded -----------------
+
+V1 = "int f(void) { return 0; }\n"
+V1_COMMENTS = "/* changed */ int f(void) { return 0; } /* more */\n"
+V1_WS = "int f(void) {   return   0 ;  }\n"
+V2 = "int f(void) { return 1; }\n"
+
+
+def test_comment_and_whitespace_edits_sign_identically():
+    from anvil.runtime.stuck import code_signature
+
+    assert code_signature(V1) == code_signature(V1_COMMENTS) == code_signature(V1_WS)
+    assert code_signature(V1) != code_signature(V2)
+
+
+def test_comment_edit_does_not_reset_the_failure_counter():
+    from anvil.runtime.stuck import code_signature
+
+    d = StuckDetector(Budgets())
+    d.note_diff_state(code_signature(V1))
+    assert d.observe(exec_ev("make", 2)) is None
+    assert d.observe(exec_ev("make", 2)) is None
+    # a comment-only edit produces the same signature: the counter is NOT reset, third failure trips
+    d.note_diff_state(code_signature(V1_COMMENTS))
+    assert "failed 3 times" in (d.observe(exec_ev("make", 2)) or "")
+
+
+def test_a_real_code_change_still_resets_the_counter():
+    from anvil.runtime.stuck import code_signature
+
+    d = StuckDetector(Budgets())
+    d.note_diff_state(code_signature(V1))
+    d.observe(exec_ev("make", 2))
+    d.note_diff_state(code_signature(V2))            # real fix attempt: iteration, not a loop
+    assert d.observe(exec_ev("make", 2)) is None
+    assert d.observe(exec_ev("make", 2)) is None
+    assert "failed 3 times" in (d.observe(exec_ev("make", 2)) or "")
+
+
+def test_exploration_budget_bounds_runs_with_no_diff_report():
+    d = StuckDetector(Budgets(exploration_tool_calls=3))
+    for _ in range(2):
+        assert d.observe({"type": "tool.call", "data": {}}) is None
+    assert "explored 3 tool calls" in (d.observe({"type": "tool.call", "data": {}}) or "")
+    # once a diff report exists, the exploration counter stops being the bound
+    d2 = StuckDetector(Budgets(exploration_tool_calls=3, no_progress_tool_calls=99))
+    d2.note_diff_state("x")
+    for _ in range(5):
+        assert d2.observe({"type": "tool.call", "data": {}}) is None
+
+
+def test_diff_state_prefers_run_internal_and_signs_content():
+    from anvil.runtime.executor import DeepAgentExecutor
+    from anvil.runtime.stuck import code_signature
+
+    calls = {}
+
+    class Sb:
+        def run_internal(self, cmd, *, timeout=None):
+            calls["internal"] = True
+            return SimpleNamespace(output="diff --git a/f.c\n+int x = 1;\n", exit_code=0)
+
+        def execute(self, cmd, *, timeout=None):
+            raise AssertionError("diff_state must not use the model-facing execute")
+
+        def execute_never(self, cmd, *, timeout=None):
+            pass
+
+    class StubSb:
+        def execute(self, cmd, *, timeout=None):
+            calls["stub"] = True
+            return SimpleNamespace(output="same", exit_code=0)
+
+    assert DeepAgentExecutor.diff_state(Sb(), "/w") == code_signature("diff --git a/f.c\n+int x = 1;\n")
+    assert calls["internal"] and not calls.get("stub")
+    assert DeepAgentExecutor.diff_state(StubSb(), "/w") == code_signature("same")

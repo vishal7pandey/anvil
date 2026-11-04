@@ -11,6 +11,11 @@ CostStatus = Literal["pending", "available", "missing"]
 
 
 def normalize_repository(value: str) -> str:
+    from anvil.runtime.source import is_local, validate_local
+
+    if isinstance(value, str) and is_local(value.strip()):
+        # A git working copy on this machine: the offline path, no GitHub (ANVIL-55).
+        return validate_local(value)
     if not isinstance(value, str):
         raise ValueError("Repository must be a GitHub owner/repository")
     repository = value.strip()
@@ -40,9 +45,8 @@ class SessionCreate(BaseModel):
             strip_whitespace=True,
             min_length=3,
             max_length=512,
-            pattern=r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
         ),
-    ]
+    ]  # owner/repo or an absolute local path; normalize_repository validates both (ANVIL-55)
     environment: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
     ]

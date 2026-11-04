@@ -1,0 +1,20 @@
+{
+  "key": "ANVIL-53",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Post-demo workspace redesign: plan, narrative, inspector (diff + terminal), control bar",
+  "labels": [
+    "frontend",
+    "post-demo"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:17:04.533+0530",
+  "updated": "2026-11-04T18:17:04.632+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Backlog, after the 2026-11-10 demo. Source: antigravity's DX benchmark (comms 2026-11-04 18:15).\n\nCandidates, to be scoped after the demo:\n\n* steerable plan (pause / edit steps mid-run);\n* right-hand inspector with a full diff and a live sandbox terminal (stream `execute` output and SIS console);\n* budget burn meter against the run's limits;\n* explicit interrupt control;\n* run records as an audit-log table;\n* structured approval arguments with a confirmation for reject.\n\nThis builds on the ChatItem render model from the demo story. Not before the TC1/TC2/TC3 rehearsals are done.\n",
+  "comments": []
+}

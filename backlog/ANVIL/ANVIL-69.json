@@ -1,0 +1,21 @@
+{
+  "key": "ANVIL-69",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "KB: configurable embedding model and dimension (on-prem / local embeddings)",
+  "labels": [
+    "kb",
+    "post-demo",
+    "team-sync"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:37:01.426+0530",
+  "updated": "2026-11-04T18:37:01.499+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Source: KB review 2026-11-04 (P8).\n\nThe schema fixes `vector(1536)` (`kb/models.py` `EMBED_DIM`), so a different embedding model (e.g. a local one for an air-gapped deployment) needs a schema change.\n\n**Want:**\n\n* the dimension comes from configuration at schema creation;\n* the snapshot manifest records the model and dimension (with the vectors story);\n* switching models means a re-embed with a clear error, not silent mixing.\n\n**Acceptance:** the KB builds and searches with a 768- or 1024-d local model in a test.\n",
+  "comments": []
+}

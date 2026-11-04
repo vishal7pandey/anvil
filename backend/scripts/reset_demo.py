@@ -393,8 +393,40 @@ def reset_memories(dry_run: bool = False, keep_tc4_run1: bool = False) -> bool:
     return success
 
 
-def reset_containers(dry_run: bool = False) -> bool:
+def reset_containers(
+    dry_run: bool = False,
+    *,
+    stale_only: bool = False,
+    max_age_hours: float = 2.0,
+    all_owners: bool = False,
+) -> bool:
     """Stop and remove ephemeral Anvil sandbox containers (anvil-sbx-* and anvil-sandbox-*)."""
+    if stale_only:
+        logger.info(
+            "--- Reaping Stale Sandbox Containers (max_age=%.1fh, all_owners=%s) ---",
+            max_age_hours,
+            all_owners,
+        )
+        try:
+            from anvil.api.config import get_settings
+            from anvil.api.database import create_session_factory
+            from anvil.runtime.reaper import reap_stale_sandboxes
+
+            settings = get_settings()
+            _, session_factory = create_session_factory(settings.database_dsn)
+            reaped = reap_stale_sandboxes(
+                session_factory,
+                owner_id=settings.owner_id,
+                all_owners=all_owners,
+                max_age_hours=max_age_hours,
+                dry_run=dry_run,
+            )
+            logger.info("Reaper processed %d stale container(s)", len(reaped))
+            return True
+        except Exception as e:
+            logger.error("Failed to reap stale containers: %s", e)
+            return False
+
     logger.info("--- Cleaning Up Sandbox Containers ---")
     success = True
 
@@ -443,6 +475,9 @@ def main() -> None:
     parser.add_argument("--confluence", action="store_true", help="Reset Confluence space RTKB (purge agent pages & vector chunks)")
     parser.add_argument("--memories", action="store_true", help="Reset LangGraph /memories/ lessons")
     parser.add_argument("--containers", action="store_true", help="Remove ephemeral sandbox containers")
+    parser.add_argument("--stale-only", action="store_true", help="When cleaning containers, reap only stale/terminal containers older than max-age")
+    parser.add_argument("--max-age-hours", type=float, default=2.0, help="Max age in hours for stale containers (default: 2.0)")
+    parser.add_argument("--all-owners", action="store_true", help="When resetting containers, include sandboxes from all owners/instances")
     parser.add_argument("--keep-tc4-run1", action="store_true", help="Preserve TC4 Run 1 post-mortem and lessons for RTEMS-6 self-learning demo")
     parser.add_argument("--dry-run", action="store_true", help="Simulate actions without mutating state")
 
@@ -471,7 +506,12 @@ def main() -> None:
             failures.append("memories")
 
     if run_all or args.containers:
-        if not reset_containers(dry_run=args.dry_run):
+        if not reset_containers(
+            dry_run=args.dry_run,
+            stale_only=args.stale_only,
+            max_age_hours=args.max_age_hours,
+            all_owners=args.all_owners,
+        ):
             failures.append("containers")
 
     if failures:

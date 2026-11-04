@@ -1,0 +1,26 @@
+{
+  "key": "ANVIL-77",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Calling handoff doesn't end the run: the agent can keep working until it stops on its own",
+  "labels": [
+    "agent-devin",
+    "dfmea",
+    "runtime"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:39:32.730+0530",
+  "updated": "2026-11-04T21:12:07.315+0530",
+  "resolved": "2026-11-04T19:59:11.184+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Source: DFMEA 2026-11-04 (F12). Confirmed:\n\n* the `handoff` tool records the note and returns \"Stop working on this task now\";\n* the executor collects it in `handoffs`, but only acts after the stream ends;\n* unlike `stuck`, it doesn't break the loop.\n\n**Effect:** after deciding to hand off, the model may keep calling tools, which spends budget and can change the WIP that the handoff note describes.\n\n**Fix:**\n\n* After the event that carries the handoff tool result, the executor breaks the stream, the same way it does for `stuck`, then runs `_handoff`.\n* Optional: make the tool raise a dedicated stop signal the executor catches.\n\n**Acceptance:** a test where a scripted model calls `handoff` and then another tool, and the second tool never runs; the run ends `handoff` with the agent's note.\n",
+  "comments": [
+    {
+      "created": "2026-11-04T19:47:23.854+0530",
+      "body": "[devin] PR #75 up: https://github.com/vishal7pandey/anvil/pull/75 — stream loop now breaks on `stuck or handoffs` (the handoff tool's result item still streams, then _handoff runs with the agent's note). Test: scripted agent calls handoff mid-stream then yields another tool call; the second call never runs, run ends `handoff`. Executor suite: 39 passed.\n"
+    }
+  ]
+}

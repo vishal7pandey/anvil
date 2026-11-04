@@ -1,0 +1,20 @@
+{
+  "key": "ANVIL-70",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Route a ticket to its repo from ticket metadata when one tracker spans many repos",
+  "labels": [
+    "post-demo",
+    "team-sync"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:37:03.596+0530",
+  "updated": "2026-11-04T18:37:03.665+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Source: team sync 2026-11-04. Question raised: with ~20 repos, how does the agent know which one a bug is in? Owner's decision for the demo: the ticket says so (project, epic or label → repo), with no keyword scoring and no extra LLM classification step.\n\n**Post-demo want:**\n\n* a declared mapping (tracker project / component / label → repo + base branch), host-side, in config;\n* intake resolves the repo from it, or hands off asking a person when no rule matches;\n* no guessing across repos.\n\n**Acceptance:** two repos behind one tracker; tickets labelled for each start runs in the right repo; an unlabelled ticket is handed off, not guessed.\n",
+  "comments": []
+}

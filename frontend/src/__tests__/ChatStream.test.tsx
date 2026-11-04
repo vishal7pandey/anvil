@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import ChatStream from '../components/ChatStream';
-import type { Session, StreamEvent } from '../types';
+import type { Run, Session, StreamEvent } from '../types';
 import tc3Run from './fixtures/tc3-run-f9181d40.json';
 
 const session = { id: 's1', repo: 'rtems-lwip', title: 'TC3' } as Session;
@@ -48,5 +48,17 @@ describe('ChatStream', () => {
     expect(send).not.toHaveBeenCalled();
     fireEvent.keyDown(box, { key: 'Enter' });
     await vi.waitFor(() => expect(send).toHaveBeenCalledWith('line one'));
+  });
+});
+
+describe('ChatStream while a run is active', () => {
+  it('disables sending and says why (one active run per session, ANVIL-71)', () => {
+    const running = { id: 'r', status: 'running' } as Run;
+    const { rerender } = render(<ChatStream session={session} run={running} events={[]} onSendMessage={vi.fn()} />);
+    expect(screen.getByPlaceholderText('A run is in progress: wait for it or cancel it')).toBeDisabled();
+    rerender(<ChatStream session={session} run={{ ...running, status: 'waiting_approval' }} events={[]} onSendMessage={vi.fn()} />);
+    expect(screen.getByPlaceholderText('Waiting for your approval: decide it in Approvals')).toBeDisabled();
+    rerender(<ChatStream session={session} run={{ ...running, status: 'succeeded' }} events={[]} onSendMessage={vi.fn()} />);
+    expect(screen.getByPlaceholderText('Ask the agent to build, fix, or upgrade…')).not.toBeDisabled();
   });
 });

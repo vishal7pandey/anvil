@@ -1,0 +1,665 @@
+[
+ {
+  "key": "ANVIL-1",
+  "type": "Epic",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "WS-A Sandbox image (RTEMS toolchain + SIS, pre-commit, GHCR)",
+  "labels": [
+   "agent-claude"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-2",
+  "type": "Epic",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "WS-B Agent runtime (Deep Agents, Docker sandbox backend, subagents, skills, stuck detection)",
+  "labels": [
+   "agent-claude"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-3",
+  "type": "Epic",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "WS-C Control API (FastAPI, sessions, runs, SSE events, approvals)",
+  "labels": [
+   "agent-claude"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-4",
+  "type": "Epic",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "WS-D Web UI (sessions, chat stream, plan, tool calls, diffs, approvals)",
+  "labels": [
+   "agent-cline"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-5",
+  "type": "Epic",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "WS-E Integrations (Jira, Confluence, GitHub push/PR/checks/merge, Sonar, intake, web search)",
+  "labels": [
+   "agent-devin"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-6",
+  "type": "Epic",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "WS-F Quality gates (Actions build+test on SIS, CodeQL, SonarCloud, SBOM, OSV, Dependabot)",
+  "labels": [
+   "agent-claude"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-7",
+  "type": "Epic",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "WS-G Knowledge base (TC4) + TC1 eval harness",
+  "labels": [
+   "agent-antigravity"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-8",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Sandbox image: smoke passes, pre-commit installed, published to GHCR",
+  "labels": [
+   "M0",
+   "agent-codex"
+  ],
+  "epic": "ANVIL-1"
+ },
+ {
+  "key": "ANVIL-9",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "rtems mirror CI: build erc32 + run POSIX tests on SIS, CodeQL C/C++, SonarCloud",
+  "labels": [
+   "M2",
+   "agent-codex"
+  ],
+  "epic": "ANVIL-6"
+ },
+ {
+  "key": "ANVIL-10",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Runtime walking skeleton: DockerSandbox backend + build_agent + event adapter",
+  "labels": [
+   "M1",
+   "agent-claude"
+  ],
+  "epic": "ANVIL-2"
+ },
+ {
+  "key": "ANVIL-11",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Control API skeleton: models, REST and SSE per contract",
+  "labels": [
+   "M1",
+   "agent-copilot"
+  ],
+  "epic": "ANVIL-3"
+ },
+ {
+  "key": "ANVIL-12",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Web UI skeleton: sessions, new-session dialog, event stream rendering",
+  "labels": [
+   "M1",
+   "agent-cline"
+  ],
+  "epic": "ANVIL-4"
+ },
+ {
+  "key": "ANVIL-13",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Host tools: Jira, Confluence, git_push, GitHub PR/checks/merge",
+  "labels": [
+   "M2",
+   "agent-devin"
+  ],
+  "epic": "ANVIL-5"
+ },
+ {
+  "key": "ANVIL-14",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Knowledge base: ingest RTEMS issues + rtems-docs into pgvector, kb_search tool",
+  "labels": [
+   "M3",
+   "agent-antigravity"
+  ],
+  "epic": "ANVIL-7"
+ },
+ {
+  "key": "ANVIL-15",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Local stack up: compose (Postgres + LiteLLM), OpenAI key from Windows Credential Manager",
+  "labels": [
+   "M0",
+   "agent-claude"
+  ],
+  "epic": "ANVIL-2"
+ },
+ {
+  "key": "ANVIL-16",
+  "type": "Epic",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "WS-H Demo scenarios + QA (TC2 upgrade, end-to-end browser tests, rehearsal)",
+  "labels": [
+   "agent-antigravity"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-17",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "TC2 spike: lwIP upgrade path in rtems-lwip, pick the demo target, write the TC2 ticket",
+  "labels": [
+   "M3",
+   "agent-antigravity"
+  ],
+  "epic": "ANVIL-16"
+ },
+ {
+  "key": "ANVIL-18",
+  "type": "Task",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "anvil smoke test (safe to delete)",
+  "labels": [
+   "anvil-smoke-done"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-19",
+  "type": "Story",
+  "status": "In Progress",
+  "priority": "Medium",
+  "summary": "Runtime executor: sessions -> sandbox, repo checkout, checkpointer, tools wiring, run record",
+  "labels": [
+   "M1",
+   "agent-claude"
+  ],
+  "epic": "ANVIL-2"
+ },
+ {
+  "key": "ANVIL-20",
+  "type": "Story",
+  "status": "In Progress",
+  "priority": "Medium",
+  "summary": "Stuck detection, handoff and budgets",
+  "labels": [
+   "M2",
+   "agent-devin"
+  ],
+  "epic": "ANVIL-2"
+ },
+ {
+  "key": "ANVIL-21",
+  "type": "Story",
+  "status": "In Progress",
+  "priority": "Medium",
+  "summary": "Skills: defect-fix, component-upgrade, cra-review, investigate",
+  "labels": [
+   "M2",
+   "agent-claude"
+  ],
+  "epic": "ANVIL-2"
+ },
+ {
+  "key": "ANVIL-22",
+  "type": "Story",
+  "status": "In Progress",
+  "priority": "Medium",
+  "summary": "TC1 eval harness + answer-leak controls",
+  "labels": [
+   "M2",
+   "agent-claude"
+  ],
+  "epic": "ANVIL-7"
+ },
+ {
+  "key": "ANVIL-23",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "web_search tool with domain blocklist",
+  "labels": [
+   "M3",
+   "agent-claude"
+  ],
+  "epic": "ANVIL-2"
+ },
+ {
+  "key": "ANVIL-24",
+  "type": "Story",
+  "status": "In Progress",
+  "priority": "Medium",
+  "summary": "API: Jira intake loop, approvals resume, cancel, executor wiring",
+  "labels": [
+   "M2",
+   "agent-claude"
+  ],
+  "epic": "ANVIL-3"
+ },
+ {
+  "key": "ANVIL-25",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "API: run metrics endpoint (time, USD, tokens, human touches, CI rounds)",
+  "labels": [
+   "M4",
+   "agent-copilot"
+  ],
+  "epic": "ANVIL-3"
+ },
+ {
+  "key": "ANVIL-26",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "UI: approvals inbox, run record page, metrics page, artifact links",
+  "labels": [
+   "M4",
+   "agent-antigravity"
+  ],
+  "epic": "ANVIL-4"
+ },
+ {
+  "key": "ANVIL-27",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Evidence writer + merge watch: Jira/PR/Confluence templates, PR state polling",
+  "labels": [
+   "M2",
+   "agent-devin"
+  ],
+  "epic": "ANVIL-5"
+ },
+ {
+  "key": "ANVIL-28",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "TC3 spec: CRA compliance review of a reference RTEMS networked device",
+  "labels": [
+   "M3",
+   "agent-devin"
+  ],
+  "epic": "ANVIL-16"
+ },
+ {
+  "key": "ANVIL-29",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Pre-commit + CI on rtems-lwip (TC2) and pre-commit config on rtems (TC1)",
+  "labels": [
+   "M3",
+   "agent-antigravity"
+  ],
+  "epic": "ANVIL-6"
+ },
+ {
+  "key": "ANVIL-30",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "SBOM + vulnerability + licence artefacts (Syft, OSV-Scanner, ScanCode)",
+  "labels": [
+   "M3",
+   "agent-copilot"
+  ],
+  "epic": "ANVIL-6"
+ },
+ {
+  "key": "ANVIL-31",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "TC4 spec + seed RTKB knowledge space + RTEMS ticket",
+  "labels": [
+   "M3",
+   "agent-antigravity"
+  ],
+  "epic": "ANVIL-7"
+ },
+ {
+  "key": "ANVIL-32",
+  "type": "Story",
+  "status": "In Progress",
+  "priority": "Medium",
+  "summary": "E2E browser tests, demo runbook, reset script, rehearsals",
+  "labels": [
+   "M4",
+   "agent-antigravity"
+  ],
+  "epic": "ANVIL-16"
+ },
+ {
+  "key": "ANVIL-33",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "CI for the anvil repo: backend pytest + frontend tests on every PR",
+  "labels": [
+   "M1",
+   "agent-claude"
+  ],
+  "epic": "ANVIL-6"
+ },
+ {
+  "key": "ANVIL-34",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Metrics: aggregate cost must not go null when one run lacks spend rows",
+  "labels": [
+   "M4",
+   "agent-claude"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-35",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Frontend type-check: tsconfig + `npm run typecheck` in CI",
+  "labels": [
+   "M4",
+   "agent-cline"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-36",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Flaky: test_cancel_falls_back_to_task_cancellation_after_timeout hits a duplicate event seq",
+  "labels": [
+   "M4",
+   "agent-claude"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-37",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "GET /api/runs/{id} on a running run crashes on SQLite: naive vs aware datetime subtraction",
+  "labels": [
+   "M4",
+   "agent-devin"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-38",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Generic bug-replay eval cases: any upstream fix becomes a TC1-style case (base, ticket, withheld set, scorer) from one spec file",
+  "labels": [
+   "M2",
+   "agent-claude"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-39",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "KB sources: GitLab issues with comments, merge requests and mailing-list archives, config-driven across projects; ingest them",
+  "labels": [
+   "M4",
+   "agent-claude"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-40",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "High",
+  "summary": "github_open_pr on an unpushed branch: say \"push first\" instead of a raw 422; skills push before opening the PR",
+  "labels": [
+   "M2",
+   "agent-claude"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-41",
+  "type": "Task",
+  "status": "To Do",
+  "priority": "High",
+  "summary": "Decide the TC1 run time budget (now 45 min) from the TC1 run timings, before the recorded rehearsals",
+  "labels": [
+   "M2",
+   "agent-claude"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-42",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Second real bug-replay case from the TC1 shortlist, added with no code changes (proves ANVIL-38 is generic)",
+  "labels": [
+   "M2",
+   "agent-devin"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-43",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Time-based leak guard: during an eval run, KB search hides documents created after the case's as_of date",
+  "labels": [
+   "M4",
+   "agent-devin"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-44",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "TC2 as a case spec (component-upgrade): declare the rtems-lwip withheld set so rtems-lwip can enter the KB safely",
+  "labels": [
+   "M3",
+   "agent-claude"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-45",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "KB: mailing-list archive loader (pipermail devel/users/bugs, one document per thread)",
+  "labels": [
+   "M4",
+   "agent-cline"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-46",
+  "type": "Task",
+  "status": "Done",
+  "priority": "High",
+  "summary": "One command to (re)start the demo API from main with the repo .env loaded",
+  "labels": [
+   "M4",
+   "agent-antigravity"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-47",
+  "type": "Task",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Sandbox container lifecycle: remove finished-run sandboxes after their evidence is saved (10+ stale anvil-sbx-* tonight)",
+  "labels": [
+   "M4",
+   "agent-claude"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-48",
+  "type": "Task",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Owner actions before the demo: GHCR push of the 7.1 image, Atlassian token rotation, dead branches, RTEMS Discord access",
+  "labels": [
+   "owner"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-49",
+  "type": "Task",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Reset + preflight protect every case ticket (cases/*.toml ticket.key), not only RTEMS-1..6",
+  "labels": [
+   "M4",
+   "agent-antigravity"
+  ],
+  "epic": null
+ },
+ {
+  "key": "RTEMS-1",
+  "type": "Bug",
+  "status": "In Progress",
+  "priority": "Medium",
+  "summary": "Mutex reports EBUSY / crashes after a failed pthread_mutex_init with an invalid priority ceiling",
+  "labels": [
+   "anvil",
+   "posix",
+   "tc1"
+  ],
+  "epic": null
+ },
+ {
+  "key": "RTEMS-2",
+  "type": "Task",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Upgrade vendored lwIP to 2.2.1 in rtems-lwip",
+  "labels": [
+   "component-upgrade",
+   "tc2"
+  ],
+  "epic": null
+ },
+ {
+  "key": "RTEMS-3",
+  "type": "Task",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "[TC3] CRA Annex I compliance review of reference RTEMS networked device (RefDev)",
+  "labels": [
+   "cra",
+   "tc3"
+  ],
+  "epic": null
+ },
+ {
+  "key": "RTEMS-4",
+  "type": "Task",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "GRETH RX drops ~3% of frames under sustained 100 Mbit/s load on the LEON3 board",
+  "labels": [
+   "network",
+   "tc2"
+  ],
+  "epic": null
+ },
+ {
+  "key": "RTEMS-5",
+  "type": "Task",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "[TC4] Incident: Telemetry packet drops and TM_GUIDANCE deadline overrun under burst traffic",
+  "labels": [
+   "incident-investigation",
+   "tc4"
+  ],
+  "epic": null
+ },
+ {
+  "key": "RTEMS-6",
+  "type": "Task",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "[TC4] Secondary payload instrument reports intermittent telemetry packet drops during burst mode",
+  "labels": [
+   "incident-investigation",
+   "tc4-followup"
+  ],
+  "epic": null
+ },
+ {
+  "key": "RTEMS-7",
+  "type": "Bug",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Counter conversions return wrong values above a few seconds",
+  "labels": [
+   "classic-api",
+   "tc1"
+  ],
+  "epic": null
+ }
+]

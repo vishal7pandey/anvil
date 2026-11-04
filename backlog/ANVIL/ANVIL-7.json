@@ -1,0 +1,19 @@
+{
+  "key": "ANVIL-7",
+  "type": "Epic",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "WS-G Knowledge base (TC4) + TC1 eval harness",
+  "labels": [
+    "agent-antigravity"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-02T19:38:11.255+0530",
+  "updated": "2026-11-02T21:07:56.591+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Owner: Antigravity (knowledge base, RTKB seeding) and Claude (TC1 eval harness). Reassigned 2026-11-02: OpenCode removed from the project by the owner. See docs/04-backlog.md WS-G and docs/03-demo-scenarios.md.\n",
+  "comments": []
+}

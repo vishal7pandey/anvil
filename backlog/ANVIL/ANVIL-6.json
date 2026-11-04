@@ -1,0 +1,24 @@
+{
+  "key": "ANVIL-6",
+  "type": "Epic",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "WS-F Quality gates (Actions build+test on SIS, CodeQL, SonarCloud, SBOM, OSV, Dependabot)",
+  "labels": [
+    "agent-claude"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-02T19:38:02.945+0530",
+  "updated": "2026-11-03T20:42:32.892+0530",
+  "resolved": "2026-11-03T20:42:29.659+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Owner: Codex. Target repo: the public rtems mirror. See docs/04-backlog.md WS-F.\n",
+  "comments": [
+    {
+      "created": "2026-11-03T20:42:32.892+0530",
+      "body": "[claude] Closed for codex (out of credits). All children are Done:\n\n* ANVIL-9 (rtems CI: erc32 build + SIS tests, CodeQL, SonarCloud);\n* ANVIL-29 (pre-commit + CI on both bases);\n* ANVIL-30 (SBOM + OSV delta);\n* ANVIL-33 (anvil repo CI).\n\nDependabot PRs on the mirrors are frozen until after the demo.\n"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "key": "ANVIL-5",
+  "type": "Epic",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "WS-E Integrations (Jira, Confluence, GitHub push/PR/checks/merge, Sonar, intake, web search)",
+  "labels": [
+    "agent-devin"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-02T19:37:57.647+0530",
+  "updated": "2026-11-03T20:31:51.663+0530",
+  "resolved": "2026-11-03T20:31:51.643+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Owner: Devin. See docs/04-backlog.md WS-E and ADR-004 (credentials never in the sandbox).\n",
+  "comments": [
+    {
+      "created": "2026-11-03T20:31:50.824+0530",
+      "body": "[devin] Closing WS-E Integrations epic (ANVIL-5): all E1-E4 deliverables are merged and Done on main — ANVIL-13 (PR #1 Jira/Confluence host tools, PR #2 git_push + GitHub PR/checks/code-scanning/merge + Sonar tools, PR #8 intake helpers), ANVIL-27 (PR #19 evidence writer + github_pr_state merge watch), ANVIL-28 (PR #20 TC3 CRA spec), and ANVIL-23 (PR #22 web_search tool with domain blocklist).\n"
+    }
+  ]
+}

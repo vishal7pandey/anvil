@@ -5,6 +5,8 @@
     uv run python -m anvil.kb ingest-issues
     uv run python -m anvil.kb search "interrupt latency" --k 5
     uv run python -m anvil.kb stats
+    uv run python -m anvil.kb import-snapshot      # load data/kb (no network except the embedder)
+    uv run python -m anvil.kb export-snapshot      # refresh data/kb from the live KB
 
 The GitLab and clone steps use the network. On the shared laptop take
 ``C:\\Dev\\comms\\locks\\network-heavy.lock`` before a large clone.
@@ -27,11 +29,14 @@ from .sources import (
     fetch_confluence_pages,
 )
 from .gitlab import GitLabClient, fetch_gitlab_items
+from .snapshot import export_snapshot, import_snapshot
 from .store import KBStore
 
 log = logging.getLogger(__name__)
 
 RTEMS_DOCS_URL = "https://github.com/vishal7pandey/rtems-docs"
+# <repo>/data/kb: the KB snapshot committed for offline handoff.
+DEFAULT_SNAPSHOT_DIR = Path(__file__).resolve().parents[3] / "data" / "kb"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -82,6 +87,14 @@ def main(argv: list[str] | None = None) -> int:
             documents = fetch_confluence_pages(space_key=space, limit=limit)
             report = store.ingest(documents)
             print(json.dumps(_report_dict("confluence", report)))
+            return 0
+
+        if args.command == "export-snapshot":
+            print(json.dumps(export_snapshot(store, args.out), indent=2))
+            return 0
+
+        if args.command == "import-snapshot":
+            print(json.dumps(asdict(import_snapshot(store, args.src))))
             return 0
 
         if args.command == "search":
@@ -144,6 +157,11 @@ def _build_parser() -> argparse.ArgumentParser:
     confluence.add_argument("--limit", type=int, default=100, help="maximum pages to fetch")
 
     sub.add_parser("ingest-all", help="docs + issues + confluence")
+
+    exp = sub.add_parser("export-snapshot", help="write documents + chunks (no vectors) to files")
+    exp.add_argument("--out", type=Path, default=DEFAULT_SNAPSHOT_DIR)
+    imp = sub.add_parser("import-snapshot", help="load a snapshot and re-embed it with the configured model")
+    imp.add_argument("--from", dest="src", type=Path, default=DEFAULT_SNAPSHOT_DIR)
 
     search = sub.add_parser("search", help="hybrid search")
     search.add_argument("query")

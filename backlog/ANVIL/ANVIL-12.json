@@ -1,0 +1,41 @@
+{
+  "key": "ANVIL-12",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Web UI skeleton: sessions, new-session dialog, event stream rendering",
+  "labels": [
+    "M1",
+    "agent-cline"
+  ],
+  "epic": "ANVIL-4",
+  "epic_summary": "WS-D Web UI (sessions, chat stream, plan, tool calls, diffs, approvals)",
+  "created": "2026-11-02T19:39:35.514+0530",
+  "updated": "2026-11-03T17:57:39.652+0530",
+  "resolved": "2026-11-03T17:57:37.037+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Contracts: docs/02-architecture.md. `frontend/`: React 19 + Vite + TypeScript + Tailwind. Think \"coding-agent app\" (Claude Code desktop / Codex web style): left sessions sidebar, centre chat, right panel tabs Plan / Diff / Run.\n\n## Do\n\n* New-session dialog: repo (rtems, rtems-lwip, ...), environment (Local sandbox; Cloud disabled with \"coming soon\"), mode (interactive / autonomous), merge policy (human / agent-after-approval / agent), model profile.\n* Render every event type in the contract: streaming message, plan todos, collapsible tool call + result, terminal block for `sandbox.exec`, diff viewer, approval card with Approve/Reject, artifact links, usage meter (USD/tokens).\n* Talk to the API via `VITE_API_URL`; SSE with reconnect.\n* Component tests with Vitest; a fixture file of contract events lives only under `src/__tests__/`.\n\n## Acceptance\n\n* `npm test` green; screenshot of the fixture rendered in the PR; against the live API (once ANVIL Copilot story merges) a session can be created.\n",
+  "comments": [
+    {
+      "created": "2026-11-02T21:24:27.632+0530",
+      "body": "[claude] on behalf of cline: started, branch cline/anvil-12-web-ui (worktree C:\\Dev\\wt\\anvil-cline-12).\n"
+    },
+    {
+      "created": "2026-11-03T10:35:35.213+0530",
+      "body": "[claude] Assigned: **cline**. Branch `cline/anvil-12-web-ui` has 1 commit (message just `'ANVIL-12'`), is 32 commits behind main, and has no PR. Next: rebase on main, give the commit a proper `ANVIL-12: <summary>` message, open the PR with a screenshot. Then, against copilot's ANVIL-24 API, run \"build erc32 and run hello\" from the UI: that is ANVIL-19's acceptance. Reviewer: copilot (owns the API contract).\n"
+    },
+    {
+      "created": "2026-11-03T12:58:52.428+0530",
+      "body": "[claude] cline's branch `cline/anvil-12-web-ui` (af7dda2) had been pushed 14 hours ago but never opened as a PR. I opened it as PR #31 so CI runs: https://github.com/vishal7pandey/anvil/pull/31. It merges into main with no conflicts. Reviewer: copilot. cline: please watch the Frontend CI job and address the review. ANVIL-19's acceptance run from the UI follows the merge.\n"
+    },
+    {
+      "created": "2026-11-03T14:03:54.215+0530",
+      "body": "[claude] Status 14:05: PR #31 has **3 blocking findings from copilot** (https://github.com/vishal7pandey/anvil/pull/31#issuecomment-6598542821):\n\n1. SSE sends the token as a query parameter, but the API accepts only a Bearer header.\n2. The default `demo-1` session is fabricated, not persisted.\n3. `ApprovalDecision['data']` is not a valid type.\n\nOwner: cline. Due today 16:00. ANVIL-19, ANVIL-24 and ANVIL-26 wait on this.\n"
+    },
+    {
+      "created": "2026-11-03T17:57:39.652+0530",
+      "body": "[claude] Done. PR #31 merged into main by claude, on the owner's go-ahead, at 73acc6c: copilot APPROVE, CI green. Built on cline's skeleton (af7dda2), with claude's fixes:\n\n* fetch-based SSE with Bearer auth and named events;\n* real sessions only;\n* session switch resets the run state;\n* an honest handoff view;\n* a shared approval type;\n* strict TypeScript check in CI (also closes ANVIL-35).\n\nThe browser acceptance run is ANVIL-19's.\n"
+    }
+  ]
+}

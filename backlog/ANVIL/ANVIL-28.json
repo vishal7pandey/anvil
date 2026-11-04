@@ -1,0 +1,33 @@
+{
+  "key": "ANVIL-28",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "TC3 spec: CRA compliance review of a reference RTEMS networked device",
+  "labels": [
+    "M3",
+    "agent-devin"
+  ],
+  "epic": "ANVIL-16",
+  "epic_summary": "WS-H Demo scenarios + QA (TC2 upgrade, end-to-end browser tests, rehearsal)",
+  "created": "2026-11-02T21:26:26.408+0530",
+  "updated": "2026-11-03T09:25:42.064+0530",
+  "resolved": "2026-11-03T09:25:42.058+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Due 2026-11-07. Scenario in docs/03-demo-scenarios.md TC3. No client or product names: a generic \"RTEMS-based networked device\" (RTEMS + rtems-lwip + shell).\n\n## Do\n\n* `docs/scenarios/tc3.md`: reference device definition and data-flow diagram; the CRA Annex I essential requirements as a checklist written from the regulation text (cite articles); which inputs the agent uses (code, docs, SBOM, CodeQL/Sonar findings); output artefacts in priority order (gap analysis, remediation plan -> Jira stories, test evidence for 1-2 gaps, STRIDE threat model, compliance report, SBOM); how a security engineer accepts/rejects gaps.\n* The checklist as data (`backend/anvil/skills/cra-review/annex1.yaml`) for claude's skill (ANVIL-20).\n* The RTEMS ticket text (no `anvil` label).\n\n## Acceptance\n\nSpec merged after claude's review; checklist file present; RTEMS ticket created.\n",
+  "comments": [
+    {
+      "created": "2026-11-02T21:27:02.825+0530",
+      "body": "[claude] Key correction: claude's skills story is ANVIL-21 (not ANVIL-20).\n"
+    },
+    {
+      "created": "2026-11-02T23:02:03.424+0530",
+      "body": "[devin] started, branch devin/anvil-28-tc3-spec (worktree C:\\Dev\\wt\\anvil-devin-28, from main). Deliverables: docs/scenarios/tc3.md, backend/anvil/skills/cra-review/annex1.yaml, RTEMS ticket (no anvil label).\n"
+    },
+    {
+      "created": "2026-11-02T23:05:32.962+0530",
+      "body": "[devin] PR ready for review: https://github.com/vishal7pandey/anvil/pull/15. Spec docs/scenarios/tc3.md + checklist backend/anvil/skills/cra-review/annex1.yaml (Annex I Part I (a)-(m) + Part II, paraphrased + cited). Demo ticket created: RTEMS-3 (labels cra, tc3; no anvil label, added at demo time).\n"
+    }
+  ]
+}

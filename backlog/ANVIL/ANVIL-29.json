@@ -1,0 +1,49 @@
+{
+  "key": "ANVIL-29",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Pre-commit + CI on rtems-lwip (TC2) and pre-commit config on rtems (TC1)",
+  "labels": [
+    "M3",
+    "agent-antigravity"
+  ],
+  "epic": "ANVIL-6",
+  "epic_summary": "WS-F Quality gates (Actions build+test on SIS, CodeQL, SonarCloud, SBOM, OSV, Dependabot)",
+  "created": "2026-11-02T21:26:28.493+0530",
+  "updated": "2026-11-03T19:13:39.262+0530",
+  "resolved": "2026-11-03T19:13:37.989+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Due 2026-11-07.\n\n* `.pre-commit-config.yaml` on `tc1/5776-base` and `tc2/upgrade-base` (clang-format changed lines, whitespace, cppcheck changed files, commit-msg `^[A-Z]+-[0-9]+: `), tuned so the base branches pass.\n* rtems-lwip CI: build sparc/leon3 in the sandbox image, run the networking test on SIS (see antigravity's tc2.md), CodeQL; on PRs to `tc2/upgrade-base`.\n\n## Acceptance\n\nBoth base branches pass pre-commit and CI on a no-op PR.\n",
+  "comments": [
+    {
+      "created": "2026-11-02T23:33:30.196+0530",
+      "body": "[codex] Started the config work. Pushed TC1 pre-commit draft branch `codex/anvil-29-tc1-precommit` at `7829ef30bd`, based on `tc1/5776-base`. The RTEMS mirror currently has no `tc2/upgrade-base` remote or local ref, so I’ve asked Claude for the intended base. I’ll prepare the TC2 workflow/config once that base is available; no PR opened before the image is public.\n"
+    },
+    {
+      "created": "2026-11-03T11:28:49.336+0530",
+      "body": "[codex] Opened TC1 PR #8: https://github.com/vishal7pandey/rtems/pull/8. It is rebased onto the merged ANVIL-9 CI base and checks are running. TC2 branch is prepared, but its workflow targets sparc/leon3 and Antigravity confirmed tc2/upgrade-base at 6ee76a7 lacks defs/bsps/sparc/leon3.json and the GRETH port, so configure will fail. No TC2 PR opened pending a valid target/base decision. See Antigravity's TC2 baseline report.\n"
+    },
+    {
+      "created": "2026-11-03T12:58:49.706+0530",
+      "body": "[claude] Reassigned: codex → antigravity (codex is out of credits).\n\n**TC1 half (rtems#8):** done, pending the owner's merge. Testing it offline in the sandbox image turned up two bugs, both fixed in bfab9fa: the YAML did not parse (unquoted `: `), and the remote pre-commit-hooks repo cannot be fetched once the sandbox is offline. All hooks are now `repo: local`.\n\n**Remaining, for antigravity:** copy the same `.pre-commit-config.yaml` from rtems#8 onto `tc2/upgrade-base-leon3` in rtems-lwip, then add `.github/workflows/ci.yml` on PRs to that branch. The workflow runs in `ghcr.io/vishal7pandey/anvil-sandbox-rtems:7`, does `git submodule update --init`, `./waf configure --prefix=/opt/rtems/7 --rtems-tools=/opt/rtems/7 --rtems-bsps=sparc/leon3`, `./waf -j2`, then `rtems-test --rtems-bsp=leon3-sis build/sparc-rtems7-leon3/networking01.exe`. Copy the rtems#4 workflow as the template. CodeQL is optional: skip it if it costs more than an hour.\n\nAcceptance unchanged: a no-op PR to `tc2/upgrade-base-leon3` is green. Due 11-05.\n"
+    },
+    {
+      "created": "2026-11-03T14:07:23.579+0530",
+      "body": "[antigravity] Picked up TC2 half of ANVIL-29:\n\n* Created .pre-commit-config.yaml on tc2/upgrade-base-leon3 matching rtems#8 (purely local hooks for offline sandbox compatibility).\n* Created .github/scripts/build-leon3.sh and .github/workflows/ci.yml with build-test and CodeQL jobs, configuring Waf for sparc/leon3 and verifying networking01.exe on SIS simulator.\n* Opened PR #1 on vishal7pandey/rtems-lwip targeting tc2/upgrade-base-leon3: https://github.com/vishal7pandey/rtems-lwip/pull/1. Checks currently running.\n"
+    },
+    {
+      "created": "2026-11-03T17:14:03.219+0530",
+      "body": "[claude] TC2 half merged: rtems-lwip#1 (antigravity, c81daaf), with pre-commit (offline-safe local hooks) and CI (leon3 build + networking01 on SIS with `Passed` >= 1, CodeQL). The TC2 base is now `tc2/upgrade-base-leon3` @ 221e1b8 and includes claude's c73b7d1: `lwip-upstream` is fetched from github.com/lwip-tcpip/lwip, after Savannah returned HTTP 500. Remaining: the `sbom` job on rtems-lwip CI (antigravity) and the owner's merge of rtems#8 (TC1 pre-commit). Then Done.\n"
+    },
+    {
+      "created": "2026-11-03T17:57:40.788+0530",
+      "body": "[claude] TC1 half merged: rtems#8 (codex + claude's bfab9fa offline fix), merged by claude on the owner's go-ahead. All checks green: build-test, CodeQL, SonarCloud. `tc1/5776-base` is now dbb32b7; image 7.1 pins its BSP to bfabfac, so it is unaffected. The only open item on this ticket is antigravity's `sbom` job on rtems-lwip CI.\n"
+    },
+    {
+      "created": "2026-11-03T19:13:39.262+0530",
+      "body": "[claude] Done. rtems-lwip#2 (antigravity, the `sbom` job: SPDX/CycloneDX + OSV delta vs base on PRs) merged after claude's APPROVE with all 4 checks green. Both halves are complete: TC1 pre-commit (rtems#8) and TC2 pre-commit + CI + SBOM (rtems-lwip#1, #2).\n"
+    }
+  ]
+}

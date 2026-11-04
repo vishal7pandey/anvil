@@ -1,0 +1,20 @@
+{
+  "key": "RTEMS-7",
+  "type": "Bug",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Counter conversions return wrong values above a few seconds",
+  "labels": [
+    "classic-api",
+    "tc1"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T09:48:50.753+0530",
+  "updated": "2026-11-04T09:48:50.873+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "## Observed\n\n`rtems_counter_ticks_to_sbintime()` returns wrong values once the interval exceeds a couple of seconds, and `rtems_counter_ticks_to_nanoseconds()` is wrong past about 4.29 s: the reported durations come out far too small, as if the interval had been truncated. At short intervals (around 1 s and below) both conversions are correct.\n\nThe test framework measures elapsed time with `rtems_counter_ticks_to_sbintime()`, so long-running performance tests report nonsense: a run that took ~731 s was reported as ~107 s.\n\n## Steps to reproduce\n\n```c\nuint64_t ticks = /* counter ticks equivalent to ~10 s */;\nsbintime_t  sb  = rtems_counter_ticks_to_sbintime( ticks );\nuint64_t    ns  = rtems_counter_ticks_to_nanoseconds( ticks );\n/* sb is not 10 s; ns is much smaller than 10e9 */\n```\n\nAlso: convert the maximum number of counter ticks and compare with the expected duration.\n\n## Expected\n\nConversions must be correct for any tick count, including intervals longer than a few seconds and the maximum representable tick value.\n\n## Environment\n\nReproduce on `sparc/erc32` (SIS). The check belongs in `testsuites/sptests/spcpucounter01`, which currently only exercises a one-second interval. Code base: branch `tc1/5806-base` of github.com/vishal7pandey/rtems.\n\n## Done when\n\nRoot cause identified, fix on a branch, `spcpucounter01` extended so the conversion fails before and passes after the fix on the simulator, PR open with CI green.\n",
+  "comments": []
+}

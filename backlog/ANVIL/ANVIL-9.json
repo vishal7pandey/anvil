@@ -1,0 +1,57 @@
+{
+  "key": "ANVIL-9",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "rtems mirror CI: build erc32 + run POSIX tests on SIS, CodeQL C/C++, SonarCloud",
+  "labels": [
+    "M2",
+    "agent-codex"
+  ],
+  "epic": "ANVIL-6",
+  "epic_summary": "WS-F Quality gates (Actions build+test on SIS, CodeQL, SonarCloud, SBOM, OSV, Dependabot)",
+  "created": "2026-11-02T19:39:21.136+0530",
+  "updated": "2026-11-03T11:19:15.326+0530",
+  "resolved": "2026-11-03T11:19:14.307+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Repo: github.com/vishal7pandey/rtems (public mirror). Branch the workflow off `main` AND cherry-pick it onto `tc1/5776-base` so the TC1 PR gets checks.\n\n## Do\n\n* `.github/workflows/anvil-ci.yml` on `pull_request`: job in `container: ghcr.io/vishal7pandey/anvil-sandbox-rtems:7`, build erc32 with `BUILD_TESTS` limited to psxtests + samples, run them with `rtems-test --rtems-bsp=erc32-sis`, upload logs, fail on any test failure.\n* CodeQL C/C++ in manual build mode (same container build).\n* SonarCloud scan (see `C:\\Dev\\ai-software-factory\\docs\\sonarcloud.md`; owner adds the `SONAR_TOKEN` secret). C/C++ in SonarCloud needs a compilation database: generate with `bear` or waf's `compile_commands.json`.\n* Dependabot: `github-actions` ecosystem only (say so in the PR: no package manifests in the kernel).\n\n## Acceptance\n\n* A dummy PR shows three checks (build-test, CodeQL, Sonar) green on `tc1/5776-base`. Total CI time noted (target < 20 min).\n",
+  "comments": [
+    {
+      "created": "2026-11-02T20:45:34.965+0530",
+      "body": "[codex] started, branch codex/anvil-9-rtems-ci\n"
+    },
+    {
+      "created": "2026-11-02T20:57:19.741+0530",
+      "body": "[codex] Implemented and pushed the CI workflow branch: https://github.com/vishal7pandey/rtems/tree/codex/anvil-9-rtems-ci. Waiting for `ghcr.io/vishal7pandey/anvil-sandbox-rtems:7` to be published and publicly pullable before opening a PR, so the checks can run against the real image.\n"
+    },
+    {
+      "created": "2026-11-03T09:25:50.254+0530",
+      "body": "[codex] Published image verified: unauthenticated manifest inspection and pull of ghcr.io/vishal7pandey/anvil-sandbox-rtems:7 succeeded at sha256:15e3705829d08b8b803bc863ef3b07c7536c9aa5a4f20e88bc8de46635823de1. Image verification workflow passed: https://github.com/vishal7pandey/anvil/actions/runs/41574286616. Digest and smoke evidence are recorded in anvil PR #21 (merged). ANVIL-9 workflow PRs are open on main (#3) and tc1/5776-base (#4). The build-test passed on the first run; SonarCloud revealed missing unzip, now fixed on both branches. The full three-check results are pending; keeping this issue In Progress until they pass.\n"
+    },
+    {
+      "created": "2026-11-03T10:35:36.501+0530",
+      "body": "[claude] Assigned: **codex**. rtems#3 and #4: build-test and SonarCloud are green, but CodeQL is **cancelled at the job's 45-minute limit** while building erc32 under tracing (`The job has exceeded the maximum execution time of 45m0s`, step \"Build erc32 for CodeQL\"). Next: in the CodeQL job, build cpukit/BSP only (no testsuites in config.ini) and set `timeout-minutes: 120`. Then rerun; the owner merges #3/#4 when all three checks are green.\n"
+    },
+    {
+      "created": "2026-11-03T10:50:24.039+0530",
+      "body": "[codex] Pushed the CodeQL timeout fix to both PR branches: #3 commit d991d5d7c5 and #4 commit 35dce4b612. CodeQL now configures only cpukit/BSP (PSX tests and samples disabled), runs ./waf -v -j1 without switching users, and has a 120-minute timeout. New CI runs: #3 https://github.com/vishal7pandey/rtems/actions/runs/41583282892 and #4 https://github.com/vishal7pandey/rtems/actions/runs/41583309404. All checks are pending; ANVIL-9 remains In Progress pending green CodeQL on both PRs.\n"
+    },
+    {
+      "created": "2026-11-03T10:59:17.867+0530",
+      "body": "[codex] Update: CodeQL passed on both PRs with the reduced build: #3 completed in 8m33s and #4 in 5m38s. Build-test passed on both. SonarCloud analysis is still running on both, so ANVIL-9 remains In Progress pending the final green checks and owner merge.\n"
+    },
+    {
+      "created": "2026-11-03T11:01:23.984+0530",
+      "body": "[codex] PR #3 is now fully green: build-test, CodeQL, SonarCloud. PR #4 has build-test and CodeQL green; SonarCloud is still running. Requested owner to merge #3 now and #4 after its SonarCloud check passes; ANVIL-9 remains In Progress until both are merged.\n"
+    },
+    {
+      "created": "2026-11-03T11:03:00.413+0530",
+      "body": "[codex] Final CI update: all three required checks are green on both PRs. #3: build-test 1m59s, CodeQL 8m33s, SonarCloud 10m47s. #4: build-test 1m58s, CodeQL 5m38s, SonarCloud 12m1s. Both PRs are ready for the owner to merge; I will close ANVIL-9 after the merges are visible.\n"
+    },
+    {
+      "created": "2026-11-03T11:19:15.326+0530",
+      "body": "[codex] RTEMS PR #3 and #4 are merged. All three required checks passed on both: build-test, CodeQL, and SonarCloud. On the TC1 base PR (#4), all checks passed and total pipeline time was 12m1s, below the 20-minute target.\n"
+    }
+  ]
+}

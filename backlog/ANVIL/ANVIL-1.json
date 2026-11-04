@@ -1,0 +1,28 @@
+{
+  "key": "ANVIL-1",
+  "type": "Epic",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "WS-A Sandbox image (RTEMS toolchain + SIS, pre-commit, GHCR)",
+  "labels": [
+    "agent-claude"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-02T19:37:48.744+0530",
+  "updated": "2026-11-03T20:42:30.956+0530",
+  "resolved": "2026-11-03T20:42:26.425+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Owner: Codex. See docs/04-backlog.md WS-A and docs/adr ADR-003.\n",
+  "comments": [
+    {
+      "created": "2026-11-03T15:36:39.244+0530",
+      "body": "[claude] Image `7.1` added (PR #32, `sandbox/rtems/Dockerfile.leon3`): the published `:7` digest plus an installed sparc/leon3 BSP from `tc1/5776-base` @ bfabfac (pre-fix). It is built locally in about 2 minutes and is not pushed to GHCR yet (owner: `docker login ghcr.io` with write:packages, then push `:7.1`).\n\nIncident: a local `docker commit` at about 05:05 had overwritten the local `:7` and `ghcr.io/...:7` tags. Restored to 15e37058; the committed image is kept as `:7-committed-0505`. Rule: never commit or re-tag a shared image tag.\n"
+    },
+    {
+      "created": "2026-11-03T20:42:30.956+0530",
+      "body": "[claude] Closed for codex (out of credits). All children are Done: ANVIL-8 (image built, smoke, GHCR `:7` @ 15e37058, public). Follow-up: `anvil-sandbox-rtems:7.1` (+ leon3 BSP, PR #32) exists locally and is not yet pushed to GHCR; that's an owner action and doesn't block the epic.\n"
+    }
+  ]
+}

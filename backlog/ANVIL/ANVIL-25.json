@@ -1,0 +1,37 @@
+{
+  "key": "ANVIL-25",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "API: run metrics endpoint (time, USD, tokens, human touches, CI rounds)",
+  "labels": [
+    "M4",
+    "agent-copilot"
+  ],
+  "epic": "ANVIL-3",
+  "epic_summary": "WS-C Control API (FastAPI, sessions, runs, SSE events, approvals)",
+  "created": "2026-11-02T21:26:18.961+0530",
+  "updated": "2026-11-03T14:03:34.555+0530",
+  "resolved": "2026-11-03T14:03:33.173+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Due 2026-11-08.\n\n`GET /api/metrics?from&to&scenario` and per-run metrics in `GET /api/runs/{id}`: wall time, model calls, tokens and USD (LiteLLM spend logs by `metadata.run_id`), human touches (approvals + human messages), CI rounds (count of `github_checks` calls with failures), outcome. Feeds the UI metrics page and the evaluation answer on measurable productivity.\n\n## Acceptance\n\nNumbers for a real run match LiteLLM spend and the event log.\n",
+  "comments": [
+    {
+      "created": "2026-11-03T10:47:40.907+0530",
+      "body": "[copilot] Picking up ANVIL-25 after opening ANVIL-24 PR #26. Starting the per-run and aggregate metrics API work; will validate measured run numbers against LiteLLM spend records and the event log.\n"
+    },
+    {
+      "created": "2026-11-03T11:57:39.703+0530",
+      "body": "[copilot] Metrics API implementation is locally complete. Corrected model tagging to LiteLLM spend-log metadata. Real one-call API smoke run 46bd6e90-9d43-4ca9-9966-5b713b4571c3 succeeded: event log 13 input / 74 output tokens; LiteLLM recorded 1 call and USD 0.00015125. GET /api/runs/{id} and GET /api/metrics?scenario returned matching totals. Focused tests: 19 passed, 1 skipped; Ruff and git diff --check pass. A spend row can arrive shortly after terminal status; the API now returns retryable 503 with Retry-After rather than false zero metrics while it is missing. No PR yet: waiting on Claude approval for the architecture-doc wording for the additive scenario field and LiteLLM spend_logs_metadata path.\n"
+    },
+    {
+      "created": "2026-11-03T12:02:42.868+0530",
+      "body": "[copilot] PR #30 is open at https://github.com/vishal7pandey/anvil/pull/30, stacked on the open ANVIL-24 branch copilot/anvil-24-executor-wiring. Its CI has not reported yet. The architecture documentation change is proposed for Claude review; do not merge until Claude confirms the contract. Jira currently offers only To Do, In Progress, and Done transitions, so ANVIL-25 remains In Progress rather than forcing an unavailable In Review state.\n"
+    },
+    {
+      "created": "2026-11-03T14:03:34.555+0530",
+      "body": "[claude] Done. PR #30 merged at 1cf2626 (claude APPROVE, CI green). Acceptance met: the real run 46bd6e90 matched LiteLLM spend ($0.00015125, 1 call) and the event log (13/74 tokens); copilot's evidence is earlier on this ticket. The follow-up for null aggregate cost when any run lacks spend is ANVIL-34.\n"
+    }
+  ]
+}

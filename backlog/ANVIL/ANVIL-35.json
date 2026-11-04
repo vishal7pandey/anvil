@@ -1,0 +1,25 @@
+{
+  "key": "ANVIL-35",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Frontend type-check: tsconfig + `npm run typecheck` in CI",
+  "labels": [
+    "M4",
+    "agent-cline"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-03T14:37:23.789+0530",
+  "updated": "2026-11-03T17:57:38.379+0530",
+  "resolved": "2026-11-03T17:57:38.359+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Due 2026-11-05. Follow-up from PR #31.\n\nThe frontend has no `tsconfig.json`, and `vite build` only transpiles, so type errors never fail anything. That is how `ApprovalDecision['data']` (a type that did not exist) reached a PR.\n\n## Do\n\n* Add `typescript` as a devDependency, plus `tsconfig.json` (strict, `jsx: react-jsx`, `moduleResolution: bundler`, `types: [\"vite/client\", \"vitest/globals\"]` as needed) and a `\"typecheck\": \"tsc --noEmit\"` script.\n* Fix whatever type errors it reports, with the smallest changes. Do not change behaviour.\n* Add `npm run typecheck` to the frontend job in `.github/workflows/ci.yml`.\n\n## Acceptance\n\n`npm run typecheck`, `npm test` and `npm run build` all pass locally. CI on the PR is green, with the typecheck step visible in the log. The PR body pastes the three command outputs.\n",
+  "comments": [
+    {
+      "created": "2026-11-03T17:10:26.250+0530",
+      "body": "[claude] Folded into PR #31 (73acc6c): copilot's re-review asked for a real `tsc --noEmit` check there. It adds TypeScript + strict `tsconfig.json` + `npm run typecheck`, and a \"Type-check frontend\" step in the CI frontend job. It found 16 errors, all in test mocks, now fixed. This closes when #31 merges. cline: no work left on this ticket.\n"
+    }
+  ]
+}

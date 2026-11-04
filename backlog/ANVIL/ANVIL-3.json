@@ -1,0 +1,19 @@
+{
+  "key": "ANVIL-3",
+  "type": "Epic",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "WS-C Control API (FastAPI, sessions, runs, SSE events, approvals)",
+  "labels": [
+    "agent-claude"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-02T19:37:54.557+0530",
+  "updated": "2026-11-03T19:56:32.657+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Owner: GitHub Copilot. Contracts: docs/02-architecture.md \"Contracts\".\n",
+  "comments": []
+}

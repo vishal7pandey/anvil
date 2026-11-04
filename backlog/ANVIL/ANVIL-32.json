@@ -1,0 +1,37 @@
+{
+  "key": "ANVIL-32",
+  "type": "Story",
+  "status": "In Progress",
+  "priority": "Medium",
+  "summary": "E2E browser tests, demo runbook, reset script, rehearsals",
+  "labels": [
+    "M4",
+    "agent-antigravity"
+  ],
+  "epic": "ANVIL-16",
+  "epic_summary": "WS-H Demo scenarios + QA (TC2 upgrade, end-to-end browser tests, rehearsal)",
+  "created": "2026-11-02T21:26:34.593+0530",
+  "updated": "2026-11-04T09:21:04.282+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Due 2026-11-09.\n\n* Browser test of the TC1 flow in the UI (session list -> run stream -> approval -> PR link -> run record -> metrics).\n* `docs/demo-runbook.md`: minute-by-minute script per scenario, fallback recordings, what to say at each human gate.\n* `scripts/reset-demo.ps1`: reset tickets/labels, delete agent branches and PRs on the mirrors, clear sessions.\n* Three rehearsals of TC1 (with claude), issues filed as bugs.\n\n## Acceptance\n\nRunbook merged; one full rehearsal recorded end to end without manual fixes.\n",
+  "comments": [
+    {
+      "created": "2026-11-03T10:35:40.107+0530",
+      "body": "[claude] Assigned: **antigravity**, after ANVIL-17. Start with the reset script: reset RTEMS-1..6 status and labels; delete agent branches `anvil/*` on the mirrors; delete agent-written RTKB pages (not `[synthetic]`, created after seeding), but keep TC4 run 1's post-mortem when the next step is RTEMS-6; re-ingest RTKB; remove `anvil-sbx-*` containers. Then the demo runbook, then E2E browser tests once cline's UI lands.\n"
+    },
+    {
+      "created": "2026-11-03T11:09:52.118+0530",
+      "body": "[antigravity] Started ANVIL-32. Beginning with demo reset automation (reset-demo.ps1 / backend/scripts/reset_demo.py) handling RTEMS ticket resetting, mirror branch/PR cleanup, RTKB agent page cleanup, and sandbox container teardown.\n"
+    },
+    {
+      "created": "2026-11-03T11:36:07.281+0530",
+      "body": "[antigravity] Demo reset automation and minute-by-minute execution runbook delivered:\n\n* scripts/reset-demo.ps1 & backend/scripts/reset_demo.py:\n* Resets Jira tickets RTEMS-1..6 back to 'To Do' with baseline labels (stripping 'anvil' and runtime labels).\n* Cleans up mirror branches (anvil/*) and closes agent PRs on vishal7pandey/rtems and vishal7pandey/rtems-lwip.\n* Purges agent-written pages in Confluence space RTKB while protecting the 10 [synthetic] baseline pages and Devin's evidence; supports --keep-tc4-run1 for the RTEMS-6 self-learning follow-up.\n* Triggers vector DB re-ingestion for RTKB.\n* Teardown of ephemeral anvil-sbx-* and anvil-sandbox-* containers.\n* 5/5 unit tests in backend/tests/test_reset_demo.py passing.\n* docs/demo-runbook.md:\n* Complete minute-by-minute execution scripts and talk tracks for TC1, TC2, TC3, TC4 (Runs 1 & 2), and Forced-Stuck handoff.\n* Detailed evaluator speaking points for each human approval gate.\n* Offline fallback procedures.\n* Pull Request opened: https://github.com/vishal7pandey/anvil/pull/29\n\nNext: E2E browser tests once Cline's UI (PR pending) and Copilot's executor wiring (PR #26) merge.\n"
+    },
+    {
+      "created": "2026-11-04T09:21:04.282+0530",
+      "body": "h3. TC4 Knowledge Base Acceptance Verification (Final Ingested Corpus)\n\nRe-evaluated `scripts/evaluate_tc4_acceptance.py` across the full crawled KB post-ANVIL-39:\n* *Corpus:* 7,573 documents, 14,654 chunks (5,519 issues, 1,552 MRs, 490 docs, 12 RTKB pages)\n* *Q1-QUEUE-SIZING:* *PASS* (Found at Rank 1/5, Score: 0.032787, 'Payload Telemetry Flow and Queue Specifications')\n* *Q2-LOOKALIKE-INCIDENT:* *PASS* (Found at Rank 1/5, Score: 0.032787, 'Post-Mortem: 2025 Payload Guidance Timing Overrun Incident')\n* *Q3-TRIAGE-RUNBOOK:* *PASS* (Found at Rank 1/5, Score: 0.032787, 'Runbook: Real-Time Deadline Overrun & Directive Failure Triage')\n\n*Result:* 3/3 PASS (100.0% TC4 Acceptance Criteria Met; zero answer leaks detected).\n"
+    }
+  ]
+}

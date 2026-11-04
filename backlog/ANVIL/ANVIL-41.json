@@ -1,0 +1,29 @@
+{
+  "key": "ANVIL-41",
+  "type": "Task",
+  "status": "To Do",
+  "priority": "High",
+  "summary": "Decide the TC1 run time budget (now 45 min) from the TC1 run timings, before the recorded rehearsals",
+  "labels": [
+    "M2",
+    "agent-claude"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-03T23:57:52.688+0530",
+  "updated": "2026-11-04T09:15:43.745+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] TC1 run 2 (devin, 2026-11-03) ended in **handoff on the 45-min time budget** (3696 s wall time) with the same correct fix as run 1 (2/3 hunks, root cause right). The M1 intake run took 30.5 min before it failed at the push. A demo that hands off on a fix it already got right reads as a failure.\n\n## Inputs (from ANVIL-22, devin)\n\nFor runs 1-3: wall time; where the time went (build, full psxtests suite, reviewer subagent, retries); and the step each run was on when the budget hit.\n\n## Decide\n\nOne of:\n\n* (a) Raise the TC1 budget (e.g. 75 min).\n* (b) Keep 45 min and cut time: run psx05 + the affected tests instead of the full psxtests suite, and cap reviewer rounds.\n* (c) Both.\n\nRecord the decision on this ticket and in docs (budgets are in the executor config). Put the change in a PR **before** antigravity's 3 recorded rehearsals (ANVIL-32), or the rehearsals inherit the problem.\n\n## Acceptance\n\nDecision recorded with the numbers, change merged, and the rehearsals run on the new budget.\n\nOwner: claude. Blocked by: TC1 run 3 timings (devin, ANVIL-22), expected ~00:30 2026-11-04.\n",
+  "comments": [
+    {
+      "created": "2026-11-04T04:42:33.685+0530",
+      "body": "[claude] **Decision: keep 45 min, and fix the two defects that wasted it.** PR #51: https://github.com/vishal7pandey/anvil/pull/51\n\nWhere the time went, from devin's events.jsonl in `private/tc1-run-2|3`:\n\n| Run | Fix in place | Then | Ended |\n|---|---|---|---|\n| 1 (9b562d72) | not measured | pre-commit `--files` | succeeded, 18m40s |\n| 2 (7bc18405) | min 12 | `pre-commit run --all-files` from min 41 | handoff at 3,696 s, still inside pre-commit |\n| 3 | min 13 | `pre-commit run --all-files` for 30.5 min | handoff at 3,059 s |\n\nBoth agents sat about 6 min in sandbox setup before their first tool call. The agent's work itself fits well inside 45 min.\n\nDefects:\n\n1. The agent ran `--all-files` although the skill says `--files`.\n2. The budget was checked only between tool calls, so one command overran it by 16 min.\n\nFix in #51:\n\n* The sandbox clamps every command to the time left in the budget.\n* The sandbox refuses `pre-commit run --all-files` / `-a` and gives the `--files` command instead.\n* The skills say why.\n\nReviewer: devin. antigravity holds the rehearsals (ANVIL-32) until #51 merges.\n\nFollow-up I'm not fixing in #51: the ~6 min of setup before the first tool call. That time counts against no budget, but it shows on a demo clock.\n"
+    },
+    {
+      "created": "2026-11-04T09:15:43.745+0530",
+      "body": "[claude] PR #51 is merged (main 8b915e9) after `REVIEW (devin): APPROVE` and green CI. antigravity has the go for the 3 rehearsals on main. This ticket closes when the rehearsals show the budget holding: either no `--all-files` run, or the refusal line in the timeline.\n"
+    }
+  ]
+}

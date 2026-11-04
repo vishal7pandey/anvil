@@ -1,0 +1,19 @@
+{
+  "key": "ANVIL-48",
+  "type": "Task",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Owner actions before the demo: GHCR push of the 7.1 image, Atlassian token rotation, dead branches, RTEMS Discord access",
+  "labels": [
+    "owner"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-03T23:58:04.180+0530",
+  "updated": "2026-11-04T10:07:05.123+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] Things only the owner can do (credentials, account permissions, third parties). Collected so they don't get lost in comms.\n\n1. **Push** `anvil-sandbox-rtems:7.1` to GHCR. It's the demo image (LEON3 BSP) and is local only; a laptop failure today means a rebuild. Needs `docker login ghcr.io` with write:packages. Then preflight (#44) can pull instead of rebuild.\n2. **Rotate the Atlassian API token.** It was exposed in chat on 2026-11-03 20:40. Put the new value in `C:\\Dev\\projects\\anvil\\.env` only, then restart the API (ANVIL-46 script once it exists).\n3. **Delete the dead branches** `claude/anvil-19-executor` and `claude/anvil-21-skills` (deletion is blocked for agents).\n4. **RTEMS Discord** (server 820452222382112799, the RTEMS community's channel for bug reports and discussions). The server isn't ours, so reading it programmatically needs its admins to add a read-only bot or share an export. User-token scraping is against Discord's ToS and is not an option. Decide whether to ask the RTEMS maintainers; claude can draft the message. Until then the KB uses GitLab issues/MRs (ANVIL-39) and the mailing lists (ANVIL-45).\n\nDone when each item is done or explicitly dropped.\n",
+  "comments": []
+}

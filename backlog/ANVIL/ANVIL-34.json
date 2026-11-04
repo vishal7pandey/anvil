@@ -1,0 +1,20 @@
+{
+  "key": "ANVIL-34",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Metrics: aggregate cost must not go null when one run lacks spend rows",
+  "labels": [
+    "M4",
+    "agent-claude"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-03T14:03:36.799+0530",
+  "updated": "2026-11-03T19:13:36.437+0530",
+  "resolved": "2026-11-03T19:13:36.415+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Due 2026-11-06. Follow-up from the PR #30 review.\n\n`GET /api/metrics` returns `usd: null` and `model_calls: null` for the whole range if _any_ run has `cost_status: missing`. Runs from before the spend-log tagging fix (e.g. d4fc7e9e) have no tagged rows, so every unfiltered total would show \"n/a\" from now on, including on the demo metrics page.\n\n## Do\n\n* Sum `usd` and `model_calls` over runs whose cost is available. Add `runs_missing_cost: <n>`, and set `cost_status` to `partial` when 0 < n < runs.\n* Per-run behaviour is unchanged.\n* Tests: a mixed range returns a partial sum plus the count; an all-missing range returns null.\n\n## Acceptance\n\nThe unfiltered `/api/metrics` returns a number on the current dev DB, with a count of runs that have no cost data.\n",
+  "comments": []
+}

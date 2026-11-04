@@ -1,0 +1,41 @@
+{
+  "key": "ANVIL-13",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Host tools: Jira, Confluence, git_push, GitHub PR/checks/merge",
+  "labels": [
+    "M2",
+    "agent-devin"
+  ],
+  "epic": "ANVIL-5",
+  "epic_summary": "WS-E Integrations (Jira, Confluence, GitHub push/PR/checks/merge, Sonar, intake, web search)",
+  "created": "2026-11-02T19:39:40.630+0530",
+  "updated": "2026-11-03T09:25:16.450+0530",
+  "resolved": "2026-11-03T09:25:16.442+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Package `backend/anvil/tools/`. Plain Python functions with type hints + docstrings (they become LangChain tools). Credentials from env, read in the API process only (ADR-004).\n\n## Do\n\n* Jira (REST v3, email + API token): `jira_get(key)`, `jira_comment(key, markdown)`, `jira_transition(key, to_status)`, `jira_set_labels(key, add, remove)`, `jira_create(project, type, summary, description, labels)`, `jira_search(jql)`.\n* Confluence (REST v2): `confluence_search(cql)`, `confluence_get(page_id)`, `confluence_write(space_key, title, markdown_or_storage, parent_id=None)`.\n* Git: `git_push(sandbox, repo, branch)`: `git bundle create` inside the sandbox -> download -> fetch into a host clone under `%LOCALAPPDATA%/anvil/repos` -> push with the token. Refuse pushes to `main` and to branches not prefixed `anvil/`.\n* GitHub (PyGithub or REST): `github_open_pr`, `github_checks(pr)` (waits with timeout), `github_code_scanning_alerts(pr)`, `github_merge(pr, method=\"squash\")` which refuses unless all checks are green.\n* Intake poller: JQL `project = RTEMS AND labels = anvil AND statusCategory = \"To Do\"`.\n\n## Acceptance\n\n* Tests with recorded HTTP (respx/vcrpy cassettes scrubbed of tokens). One live smoke script per service, run by the owner.\n",
+  "comments": [
+    {
+      "created": "2026-11-02T20:25:08.279+0530",
+      "body": "[devin] started, branch devin/anvil-13-host-tools (worktree C:\\Dev\\wt\\anvil-devin-13, from main 36f0530). First PR: Jira + Confluence tools with respx tests. Second PR: GitHub, git_push, intake. Plan and token request: comms thread 20261102-1955-claude-welcome-to-anvil, reply 20261102-2022-devin-anvil-13-ack.\n"
+    },
+    {
+      "created": "2026-11-02T20:39:23.504+0530",
+      "body": "[devin] PR 1 of 2 in review: https://github.com/vishal7pandey/anvil/pull/2 (Jira + Confluence tools, intake query, smoke scripts). Untested against live Jira/Confluence until the token is in .env. The ANVIL workflow has no In Review status (only To Do / In Progress / Done), so the issue stays In Progress; PR 2 (GitHub tools, git_push, sonar_issues) is next.\n"
+    },
+    {
+      "created": "2026-11-02T20:53:23.174+0530",
+      "body": "[devin] PR 2 of 2 in review: https://github.com/vishal7pandey/anvil/pull/4 (github_open_pr / checks / code_scanning_alerts / merge, git_push, sonar_issues, smoke_github.py). Stacked on #2. git_push tested end to end against local repos only; GitHub/SonarCloud untested live until GITHUB_TOKEN is in .env. All ANVIL-13 scope is now in review (webhook cut, web_search moved to claude, per comms).\n"
+    },
+    {
+      "created": "2026-11-02T21:15:30.322+0530",
+      "body": "[devin] Live smoke with the owner's Atlassian token: Jira tools (search, get, create ANVIL-18 throwaway, comment, labels, transition, intake JQL) and Confluence tools (create/update page 'Anvil smoke test' in ANVIL, get, CQL search) all pass. GitHub tools authenticate via the gh CLI login (owner decision, no separate PAT); a live REST read works. Still not exercised live: github_open_pr/checks/merge and git_push (smoke_github.py and the M1 sandbox run).\n"
+    },
+    {
+      "created": "2026-11-02T21:42:25.649+0530",
+      "body": "[devin] #2 merged to main (839a23e) after REVIEW (claude): APPROVE. #4 updated for the blocking review item: git_push refuses commits touching .github/ (checked on the host clone), github_merge refuses PRs touching .github/, confluence_write limited to RTKB, acquire_lock helper. #4 now targets main, waiting for re-review: https://github.com/vishal7pandey/anvil/pull/4\n"
+    }
+  ]
+}

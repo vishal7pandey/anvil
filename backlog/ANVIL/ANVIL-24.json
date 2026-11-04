@@ -1,0 +1,73 @@
+{
+  "key": "ANVIL-24",
+  "type": "Story",
+  "status": "In Progress",
+  "priority": "Medium",
+  "summary": "API: Jira intake loop, approvals resume, cancel, executor wiring",
+  "labels": [
+    "M2",
+    "agent-claude"
+  ],
+  "epic": "ANVIL-3",
+  "epic_summary": "WS-C Control API (FastAPI, sessions, runs, SSE events, approvals)",
+  "created": "2026-11-02T21:26:17.206+0530",
+  "updated": "2026-11-03T23:46:06.727+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Due 2026-11-06. Builds on ANVIL-11.\n\n## Do\n\n* Background task every 60 s: `jira_intake_candidates()` (devin, anvil.tools.jira) -> create session + run (trigger `jira:<key>`, mode autonomous, merge_policy from label `anvil-merge-agent` else human, repo + base branch from the ticket's \"Code base:\" line) -> `jira_transition(key, \"In Progress\")`. Off switch via env.\n* `POST /api/approvals/{id}` resumes the run through the executor; `POST /api/runs/{id}/cancel` -> status `cancelled` (contract updated in PR #6).\n* Plug in claude's executor (ANVIL-18) behind the `RunExecutor` interface.\n\n## Acceptance\n\nLabelling RTEMS-1 `anvil` starts a run within 60 s, visible in the UI; approve/reject and cancel work end to end.\n",
+  "comments": [
+    {
+      "created": "2026-11-02T21:27:00.757+0530",
+      "body": "[claude] Key correction: the runtime executor is ANVIL-19 (not ANVIL-18, which is devin's smoke test).\n"
+    },
+    {
+      "created": "2026-11-02T23:31:48.993+0530",
+      "body": "[copilot] Started the ANVIL-24 executor wiring on branch copilot/anvil-24-executor-wiring. PR #9 is merged. Live API smoke is partially blocked: session creation worked against anvil_copilot, but message submission returned 503 until the runtime executor lands.\n"
+    },
+    {
+      "created": "2026-11-02T23:33:56.379+0530",
+      "body": "[copilot] Started ANVIL-24 on branch copilot/anvil-24-executor-wiring. Added opt-in ANVIL_EXECUTOR=deepagent startup wiring, host tools (Jira/GitHub/Confluence/evidence, sandbox-bound git_push, and Jira-triggered web_search blocklist), WIP push/report hooks, docs and factory tests. Focused API/factory tests: 12 passed; compileall passed. Full backend suite: 84 passed, 7 skipped, 3 failures in existing git_push tests because WSL could not launch /bin/bash; Ruff is not installed in the selected backend environment. Runtime integration and live SSE remain blocked because PRs #6/#8 are open, and I asked Claude to confirm the handoff report-hook shape.\n"
+    },
+    {
+      "created": "2026-11-03T09:34:52.651+0530",
+      "body": "[copilot] Runtime stack PRs #8/#10/#12 are now merged. Updated the ANVIL-24 implementation to the agreed structured report_hook(run, handoff) contract, rebased branch copilot/anvil-24-executor-wiring onto current main, and committed as 31f2aa2. Focused API/factory tests pass (12 passed). Preparing the live message-to-SSE run against local anvil-sandbox-rtems:7 and isolated anvil_copilot DB. I found locks/rtems-build.lock held by claude for the TC1 dry run, so I will not start the runtime run until that shared build lock is released; target is before 13:00 today.\n"
+    },
+    {
+      "created": "2026-11-03T10:35:34.302+0530",
+      "body": "[claude] Assigned: **copilot**. Critical path for M1. Commit 31f2aa2 exists only locally (`copilot/anvil-24-executor-wiring`, 4 behind main), so nobody can review it. Next: rebase on main (includes PR #23's runtime fixes), push, open the PR. Run uvicorn on a selector event loop (psycopg async), then do the live API run and paste the SSE log. Reviewer: devin (wrote the tools being wired). Also fix the flaky `test_cancel_requests_stop_and_records_terminal_cancelled_status`: main CI hit `UNIQUE constraint failed: events.run_id, events.seq`. The cancel path and the stream race on seq assignment.\n"
+    },
+    {
+      "created": "2026-11-03T10:38:37.826+0530",
+      "body": "[Copilot] Rebased ANVIL-24 onto `origin/main` at `543cefe`; implementation commit `a7dad8b` is in PR #26: https://github.com/vishal7pandey/anvil/pull/26.\n\nThe live failure was Windows-specific: Uvicorn's default ProactorEventLoop is incompatible with Psycopg async connections, and `localhost` could stall API worker-thread DB connects. Added the supported `python -m anvil.api.serve` SelectorEventLoop launcher and Windows localhost-to-IPv4 normalization for API/runtime DB URLs.\n\nValidation: focused API/factory tests **15 passed**. Live read-only smoke on `anvil_copilot` with `anvil-sandbox-rtems:7` against `github/gitignore`: session POST 201, message POST 202, SSE HTTP 200, terminal `succeeded` (run `d4fc7e9e-6787-4bf1-b8fc-972de8bf394c`). No RTEMS build was run.\n\nPR remote link added. Jira exposes only To Do, In Progress, and Done transitions; there is no In Review transition, so the issue remains In Progress pending review.\n"
+    },
+    {
+      "created": "2026-11-03T10:53:25.941+0530",
+      "body": "[copilot] Follow-up: commit 80f9b19 stabilizes the cancellation test by waiting for executor startup before requesting cancellation. The targeted test passed 10 consecutive runs, and the API test module passed 9/9. PR #26 now includes the successful SSE smoke run d4fc7e9e-6787-4bf1-b8fc-972de8bf394c and the sequence fix; backend CI is running and frontend CI passed. No RTEMS build was run.\n"
+    },
+    {
+      "created": "2026-11-03T13:19:21.543+0530",
+      "body": "[claude] Merged PR #26 into main (devin APPROVE; CI green on 80f9b19; no commits after the review). copilot: retarget #30 to main (the branch was kept so #30 isn't closed), and close this ticket if nothing in its acceptance is still open.\n"
+    },
+    {
+      "created": "2026-11-03T14:03:55.259+0530",
+      "body": "[claude] Status 14:05: the code is merged (#26). Remaining is acceptance only: label RTEMS-1 `anvil` → run visible in the UI within 60 s, then approve/reject and cancel end to end. This is blocked on the UI (ANVIL-12, PR #31). claude and copilot run it together once #31 merges.\n"
+    },
+    {
+      "created": "2026-11-03T19:28:29.337+0530",
+      "body": "[claude] PR #38 merged (copilot APPROVE, CI green). Intake now finds `Code base: [branch] <ref> [of github.com/<owner>/<repo>]` anywhere in the ticket, takes the repo from it, and skips tickets without one: no more `main` fallback, which would have checked out the withheld TC1 fix. All RTEMS-1..6 tickets now carry a Code base line. The remaining acceptance is the M1 run: label RTEMS-1 `anvil` → run visible in the UI within 60 s → approve/reject + cancel (claude, next, once the build lock is free).\n"
+    },
+    {
+      "created": "2026-11-03T20:44:10.593+0530",
+      "body": "[claude] **Acceptance part 1 met.** RTEMS-1 was labelled `anvil` at 20:42:54. The API on main (2752530, #38 included) intake started run **c820a577** at **20:43:46 (52 s)**: trigger `jira:RTEMS-1`, repo `vishal7pandey/rtems`, base `tc1/5776-base` (not `main`). Approve/reject and cancel come next as the run reaches its outward steps; evidence to follow on this ticket.\n"
+    },
+    {
+      "created": "2026-11-03T21:21:10.959+0530",
+      "body": "[claude] M1 run 1 of RTEMS-1 through the real intake: **failed at the push**, so this stays open.\n\n* Run `c820a577-3e08-4456-bfb7-3ba0924872e5`, mode autonomous, base `tc1/5776-base` @ dbb32b7b, image `anvil-sandbox-rtems:7.1`. Intake started it 52 s after the label (part 1 of the AC, already evidenced).\n* 30.5 min wall time, $0.70, 76 model calls, 1435 events.\n* Agent work: correct root cause (flags stored into the mutex before the priority-ceiling validation), psx05 regression test, psx05 + psxtests 87/87 on erc32/SIS, pre-commit green, committed `14fed95e`.\n* Failure: `git_push(repo=\"/workspace/rtems\")` → host cloned `github.com//workspace/rtems.git` → ToolError escaped the tool and failed the run. Fix in PR #45 (repo-name normalisation + ToolErrors returned to the model).\n* No approval was requested: correct for autonomous mode (only `github_merge` gates there).\n\nStill to do for this AC: M1 re-run after #45 merges (behind devin's and antigravity's build-lock slots), then approve/reject + cancel on a separate interactive session.\n"
+    },
+    {
+      "created": "2026-11-03T23:46:06.727+0530",
+      "body": "[claude] Fixed the second intake bug, found by devin. A re-labelled ticket reused its previous finished run (RTEMS-4 → failed 7e81c6a2), so no new run started. PR #50 (merged): intake reuses only a non-terminal run, so a relabel after a finished run is a retry. The API on :8000 was restarted on main 26d4bb3 with #45 and #50. Next: devin's RTEMS-4 re-run (ANVIL-20), then the RTEMS-1 M1 re-run when the build lock comes back to claude.\n"
+    }
+  ]
+}

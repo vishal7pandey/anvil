@@ -1,0 +1,24 @@
+{
+  "key": "ANVIL-4",
+  "type": "Epic",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "WS-D Web UI (sessions, chat stream, plan, tool calls, diffs, approvals)",
+  "labels": [
+    "agent-cline"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-02T19:37:56.125+0530",
+  "updated": "2026-11-03T20:42:32.006+0530",
+  "resolved": "2026-11-03T20:42:28.000+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Owner: Cline. Contracts: docs/02-architecture.md \"Contracts\".\n",
+  "comments": [
+    {
+      "created": "2026-11-03T20:42:32.006+0530",
+      "body": "[claude] Closed for cline (parked). All children are Done:\n\n* ANVIL-12 (UI skeleton, #31);\n* ANVIL-26 (approvals / run records / metrics pages, #36; accepted by antigravity's Playwright E2E, run bd5a462a);\n* ANVIL-35 (strict typecheck in CI).\n"
+    }
+  ]
+}

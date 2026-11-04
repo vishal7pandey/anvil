@@ -1,0 +1,25 @@
+{
+  "key": "ANVIL-15",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Local stack up: compose (Postgres + LiteLLM), OpenAI key from Windows Credential Manager",
+  "labels": [
+    "M0",
+    "agent-claude"
+  ],
+  "epic": "ANVIL-2",
+  "epic_summary": "WS-B Agent runtime (Deep Agents, Docker sandbox backend, subagents, skills, stuck detection)",
+  "created": "2026-11-02T19:39:43.685+0530",
+  "updated": "2026-11-03T09:25:34.121+0530",
+  "resolved": "2026-11-03T09:25:34.098+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "## Do\n\n* `scripts/up.ps1`: read the OpenAI key from Windows Credential Manager (where the owner stored it) into the process environment only, then `docker compose -f deploy/compose.yaml up -d`. The key never lands in a file.\n* Verify the gateway answers on aliases `anvil-main`, `anvil-fast`, `anvil-embed` and logs spend.\n\n## Acceptance\n\n* A curl to `localhost:4000/v1/chat/completions` with model `anvil-fast` returns; spend visible in LiteLLM.\n",
+  "comments": [
+    {
+      "created": "2026-11-02T20:22:57.409+0530",
+      "body": "[claude] PR https://github.com/vishal7pandey/anvil/pull/1 open, waiting for codex review. Stack is running on this laptop: anvil-postgres (5433, healthy), anvil-gateway (4000, healthy). Verified: anvil-fast and anvil-main answer, anvil-embed returns 1536-dim vectors, spend logged per request. Not re-verified: a cold `scripts/up.ps1` run after raising the healthcheck retries.\n"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "key": "ANVIL-10",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Runtime walking skeleton: DockerSandbox backend + build_agent + event adapter",
+  "labels": [
+    "M1",
+    "agent-claude"
+  ],
+  "epic": "ANVIL-2",
+  "epic_summary": "WS-B Agent runtime (Deep Agents, Docker sandbox backend, subagents, skills, stuck detection)",
+  "created": "2026-11-02T19:39:26.449+0530",
+  "updated": "2026-11-03T01:29:29.790+0530",
+  "resolved": "2026-11-03T01:29:29.768+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "## Do\n\n* `backend/anvil/sandbox.py`: `DockerSandbox(BaseSandbox)` (execute, upload_files, download_files, id) over the docker SDK; CPU/mem limits; non-root; no env secrets.\n* `backend/anvil/agent.py`: `build_agent(run)` = `create_deep_agent` with gateway model `anvil-main`, CompositeBackend (`/workspace` -> sandbox, `/memories` -> store), Postgres checkpointer, `interrupt_on` policy.\n* `backend/anvil/events.py`: LangGraph stream -> event contract (docs/02-architecture.md).\n\n## Acceptance\n\n* Script: \"build erc32 and run hello\" in a fresh sandbox completes, events printed as contract JSON, unit tests for the event adapter.\n",
+  "comments": [
+    {
+      "created": "2026-11-02T21:43:28.466+0530",
+      "body": "[claude] PR https://github.com/vishal7pandey/anvil/pull/6 open for review (codex). DockerSandbox, build_agent, EventMapper, live smoke with a real model passes. Contract gained `cancelled`. Remaining acceptance (erc32 build from the agent) waits for the sandbox image.\n"
+    },
+    {
+      "created": "2026-11-03T01:29:28.585+0530",
+      "body": "[claude] Acceptance met. End-to-end agent run in `anvil-sandbox-rtems:7` (run smoke-ea53d4dc, 2026-11-03 01:24-01:29): gpt-5 via the gateway, Deep Agents runtime, DockerSandbox. Planned with write_todos, cloned rtems, configured and built sparc/erc32, ran hello.exe with rtems-test on SIS: Passed 1, Failed 0. 299 s, 26 tool calls, 6 sandbox commands, all streamed as contract events. Code merged in #6. Note for the defect-fix skill: the agent built with -j2; tell it to use $(nproc).\n"
+    }
+  ]
+}

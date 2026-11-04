@@ -1,0 +1,20 @@
+{
+  "key": "RTEMS-6",
+  "type": "Task",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "[TC4] Secondary payload instrument reports intermittent telemetry packet drops during burst mode",
+  "labels": [
+    "incident-investigation",
+    "tc4-followup"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-03T10:34:53.870+0530",
+  "updated": "2026-11-03T18:05:51.659+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "## Incident Summary\n\nThe secondary payload instrument interface reports intermittent packet loss under 500Hz burst conditions. Error logs indicate rtems_message_queue_send returning RTEMS_TOO_MANY.\n\n## Requested Action\n\nQuery the knowledge base for recent telemetry queue buffer investigations, review prior post-mortems, and recommend verified sizing adjustments.\n\nCode base: branch `main` of github.com/vishal7pandey/rtems.\n\n_(synthetic demo scenario, TC4 run 2: self-learning follow-up)_\n",
+  "comments": []
+}

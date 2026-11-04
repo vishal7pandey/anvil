@@ -1,0 +1,20 @@
+{
+  "key": "ANVIL-43",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Time-based leak guard: during an eval run, KB search hides documents created after the case's as_of date",
+  "labels": [
+    "M4",
+    "agent-devin"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-03T23:57:55.908+0530",
+  "updated": "2026-11-04T09:57:19.163+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] Follow-up to ANVIL-38. Today the KB leak guard is a list of withheld issue/MR/commit IDs plus a content regex. That doesn't scale: a mailing-list thread or a later issue can discuss a fix without naming any listed ID. A bug-replay case already records `as_of` (when the fix landed). Anything created after that date is \"from the future\" for the case.\n\n## Design\n\n* Every KB document carries `created_at` in metadata:\n\n  * GitLab: issue/MR `created_at` (already stored).\n  * Mailing lists: the thread's first message date.\n  * rtems-docs: the file's first commit date, or the commit date of the ingested checkout.\n  * Confluence: created date.\n* `kb_search` gets an optional `before` (date). For a run whose ticket belongs to a case, the executor passes `case.as_of` (the run can be matched to its case by jira_key or base_ref). The agent cannot override it.\n* Keep the ID guard as a second layer.\n* Documents without a date: include them, but log a count of them per search, so gaps are visible.\n\n## Acceptance\n\n* Unit tests: a document dated after `as_of` is never returned with `before` set, and is returned without it.\n* Executor test: a run for RTEMS-1 searches with `before=2026-09-20`.\n* Backfill script for `created_at` on existing rows; counts posted here.\n\nOwner: claude. Size: M. No build lock needed. Do after ANVIL-39's crawl finishes.\n",
+  "comments": []
+}

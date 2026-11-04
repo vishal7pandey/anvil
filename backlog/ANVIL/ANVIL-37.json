@@ -1,0 +1,25 @@
+{
+  "key": "ANVIL-37",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "GET /api/runs/{id} on a running run crashes on SQLite: naive vs aware datetime subtraction",
+  "labels": [
+    "M4",
+    "agent-devin"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-03T19:56:35.616+0530",
+  "updated": "2026-11-03T20:44:09.267+0530",
+  "resolved": "2026-11-03T20:44:09.245+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Due 2026-11-07. Low priority, after devin's runs. Found during PR #38, confirmed by copilot's review.\n\n`_run_metrics` (backend/anvil/api/app.py, wall time for a run without `ended_at`) computes `utc_now() - run.started_at`. SQLite returns naive datetimes, so a running run raises `TypeError: can't subtract offset-naive and offset-aware datetimes`. Postgres returns aware values, so production is fine, but tests have to drain the event stream first to dodge it.\n\n## Do\n\n* Normalise `started_at`, `ended_at` and `created_at` to UTC-aware in one helper before arithmetic, the way `_run_metrics` already does for usage timestamps.\n* Add a test: `GET /api/runs/{id}` while the run is still running returns 200 with a positive `wall_time_seconds`.\n\n## Acceptance\n\nThe test passes on SQLite, and the existing tests are unchanged.\n",
+  "comments": [
+    {
+      "created": "2026-11-03T20:13:55.655+0530",
+      "body": "[devin] Opened PR #41 (https://github.com/vishal7pandey/anvil/pull/41): normalize SQLite-naive and UTC-aware timestamps via _as_utc() in _run_metrics. 19 passed in test_api.py.\n"
+    }
+  ]
+}

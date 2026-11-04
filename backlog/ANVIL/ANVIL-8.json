@@ -1,0 +1,53 @@
+{
+  "key": "ANVIL-8",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Sandbox image: smoke passes, pre-commit installed, published to GHCR",
+  "labels": [
+    "M0",
+    "agent-codex"
+  ],
+  "epic": "ANVIL-1",
+  "epic_summary": "WS-A Sandbox image (RTEMS toolchain + SIS, pre-commit, GHCR)",
+  "created": "2026-11-02T19:39:12.652+0530",
+  "updated": "2026-11-03T09:25:43.400+0530",
+  "resolved": "2026-11-03T09:25:43.382+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Image definition: `sandbox/rtems/Dockerfile` (first build started by Claude on 2026-11-02, local tag `anvil-sandbox-rtems:7`).\n\n## Do\n\n* Make `anvil-smoke` pass inside the image (erc32 BSP builds, `hello.exe` passes on SIS via `rtems-test`). Fix the Dockerfile/smoke script as needed.\n* Install `pre-commit` in the image; add `sandbox/rtems/pre-commit-config.rtems.yaml` (clang-format on changed lines, trailing whitespace, cppcheck on changed C files, commit-msg check `^[A-Z]+-[0-9]+: `).\n* Push to `ghcr.io/vishal7pandey/anvil-sandbox-rtems:7` (public package), record the digest in `sandbox/rtems/README.md`.\n* Document in `sandbox/rtems/README.md`: how to build a BSP, run one test, run the psxtests subset (the agent's skill will quote this).\n\n## Acceptance\n\n* `docker run --rm anvil-sandbox-rtems:7 anvil-smoke` prints `ANVIL SMOKE: PASS` (paste the tail in the PR).\n* Running `psx05` on erc32 passes; time for a full erc32 build noted.\n",
+  "comments": [
+    {
+      "created": "2026-11-02T21:29:19.561+0530",
+      "body": "[codex] started, branch codex/anvil-8-gha-image\n"
+    },
+    {
+      "created": "2026-11-02T21:33:21.794+0530",
+      "body": "[codex] Opened workflow PR: https://github.com/vishal7pandey/anvil/pull/7\n\nThe PR adds the GHCR build/publish workflow with four build jobs and GHA cache, digest-pinned Syft/OSV Scanner plus Bear/Java/pre-commit, an erc32 smoke check for hello and psx05, and usage/pre-commit docs. `git diff --check` passed. Docker/RTEMS validation is deferred to Actions; local image and RTEMS locks remain held by Claude.\n"
+    },
+    {
+      "created": "2026-11-02T21:41:52.942+0530",
+      "body": "[codex] Pushed review fixes in commit `fcb7bb7` to PR #7: https://github.com/vishal7pandey/anvil/pull/7. Set the Docker build context to `sandbox/rtems`, installed the staged-line formatter in the image and updated the hook entry, and restored the Dockerfile `JOBS=6` default (Actions explicitly passes `JOBS=4`). `git diff --check` passes; ready for re-review.\n"
+    },
+    {
+      "created": "2026-11-02T22:03:16.260+0530",
+      "body": "[codex] PR #7 merged as `facb77d`; the automatic main-branch image workflow is running: https://github.com/vishal7pandey/anvil/actions/runs/41482286881. Build and push is in progress; smoke test will run after publishing.\n"
+    },
+    {
+      "created": "2026-11-02T23:21:17.858+0530",
+      "body": "[codex] First image run failed after 75 minutes because the Actions runner exhausted disk space (diagnostic annotation: `No space left on device`). Follow-up PR #18 adds runner cleanup and removes RSB build intermediates in the same Docker layer: https://github.com/vishal7pandey/anvil/pull/18. I’m dispatching the updated workflow from this branch to validate the fix.\n"
+    },
+    {
+      "created": "2026-11-02T23:24:12.417+0530",
+      "body": "[claude] First full local build failed after ~4 h in the last package (sis install: `/usr/bin/install-info: not found`); the whole toolchain was one RUN, so nothing was cached. Actions run 41482286881 will fail the same way. Fix: PR https://github.com/vishal7pandey/anvil/pull/19 (install-info, host-tool preflight, cached RSB downloads). Local rebuild from #19 started; ETA ~03:00. Lesson: preflight host tools before multi-hour builds.\n"
+    },
+    {
+      "created": "2026-11-02T23:32:22.157+0530",
+      "body": "[codex] Claude's PR #19 is reviewed and merged as `74c14ee`; it adds `install-info`, a fast host-tool preflight, and BuildKit caches for RSB downloads. The original run 41482286881 had already failed from runner disk exhaustion; my duplicate run 41495066832 was cancelled. The new main-branch build is running: https://github.com/vishal7pandey/anvil/actions/runs/41496713294. PR #18 still contains the runner disk cleanup in case this run hits the same issue.\n"
+    },
+    {
+      "created": "2026-11-03T01:21:59.266+0530",
+      "body": "[claude] Local build from main (PR #19) succeeded at 01:17: `anvil-sandbox-rtems:7`, image 15e3705829d0, 5.78 GB. Smoke (erc32 + hello + psx05 on SIS) running; pushing to GHCR as `:7-rc1`, retagged `:7` after the smoke passes. Hosted Actions builds are abandoned (runner disk); Actions only verifies the published image (#20).\n"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "key": "ANVIL-42",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Second real bug-replay case from the TC1 shortlist, added with no code changes (proves ANVIL-38 is generic)",
+  "labels": [
+    "M2",
+    "agent-devin"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-03T23:57:54.283+0530",
+  "updated": "2026-11-04T09:56:53.650+0530",
+  "resolved": "2026-11-04T09:56:53.630+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] Split out of the ANVIL-38 acceptance. The case machinery is merged (#48, #49). This ticket proves it is generic: a second upstream RTEMS fix becomes a case **without touching code**.\n\n## Steps\n\n1. Pick one from the shortlist already withheld in `cases/rtems-5776.toml` (issues 5806, 5723, 5750, 5749, 5760; docs/03-demo-scenarios.md has the notes). Prefer a single-commit fix with a POSIX/classic-API regression test that runs on erc32/SIS.\n2. Write `cases/rtems-<issue>.toml` + `.ticket.md`: symptoms only (no fix, no expected outcome; see the RTEMS-4 lesson). Move that issue's IDs from the rtems-5776 `[withheld]` block into the new case's `[upstream]` block (the union stays the same).\n3. `python -m anvil.cases build-base rtems-<issue>` (dry run), then `--push`; `ticket --create` (it adds no `anvil` label). Put the new key in the case file.\n4. One dry run: `tc1_dry_run.py --case rtems-<issue>` (needs the build lock), scored with `score_tc1.py --case`.\n\n## Acceptance\n\n* No changes under `backend/` in the PR; only `cases/`.\n* Base built and pushed by the CLI, ticket created by the CLI.\n* One dry run scored and posted here.\n\nOwner: devin (after the current lock slot). Size: M. Steps 1-3 need no lock.\n",
+  "comments": [
+    {
+      "created": "2026-11-04T09:20:39.036+0530",
+      "body": "[devin] PR #54 open: https://github.com/vishal7pandey/anvil/pull/54 - second case rtems-5806 (issue 5806 / MR !1526 / fix 97cf8529, counter conversion overflow) as cases/*.toml + ticket.md only, no code changes. Verified: cases show/withheld union (5806+1526+97cf8529 now withheld), build-base dry run (parent 1cfb8b0e, 5 infra files from tc1/5776-base snapshot, commit 988b042c, not pushed). Base push + Jira ticket stay with claude.\n"
+    },
+    {
+      "created": "2026-11-04T09:56:52.382+0530",
+      "body": "[claude] Done. The second bug-replay case **rtems-5806** went in with **no code changes**, which proves the case mechanism is generic.\n\n* **#54 (devin):** `cases/rtems-5806.toml` + ticket. Upstream issue 5806, MR !1526, fix 97cf8529. `as_of` is 2026-10-08. Scoring is on `cpucounterconverter.c` + `spcpucounter01`.\n* **Shared infra overlay **`infra/anvil-ci` on the mirror:\n\n  * CI runs on `tc1/**` and `case/**`;\n  * erc32 CI builds sptests too, so a classic-API regression test actually runs.\n* **Base:** `tc1/5806-base` = 05d595e8. Its parent is `97cf8529^`, and the target file is identical to the pre-fix blob.\n* **Ticket:** RTEMS-7, filed without the `anvil` label.\n* **#55:** pins `base.sha` and `ticket.key`; `build-base` reports `same_tree: true`.\n* **The KB guard** now withholds the union of both cases.\n\nFollow-up: ANVIL-49 (reset and preflight must protect case tickets).\n"
+    }
+  ]
+}

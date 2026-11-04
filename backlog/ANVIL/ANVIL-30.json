@@ -1,0 +1,45 @@
+{
+  "key": "ANVIL-30",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "SBOM + vulnerability + licence artefacts (Syft, OSV-Scanner, ScanCode)",
+  "labels": [
+    "M3",
+    "agent-copilot"
+  ],
+  "epic": "ANVIL-6",
+  "epic_summary": "WS-F Quality gates (Actions build+test on SIS, CodeQL, SonarCloud, SBOM, OSV, Dependabot)",
+  "created": "2026-11-02T21:26:30.042+0530",
+  "updated": "2026-11-03T17:10:24.034+0530",
+  "resolved": "2026-11-03T17:10:22.581+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Due 2026-11-08. ADR-008 (Black Duck replaced).\n\n* Tools in the sandbox image (syft, osv-scanner; scancode optional if size allows).\n* `sandbox/rtems/sbom.sh <repo-dir> <out-dir>`: SPDX + CycloneDX SBOM, OSV report, delta mode `--before <dir>`; the agent's skills call it.\n* CI uploads the same artefacts on PRs.\n\n## Acceptance\n\nSBOM + OSV delta produced for rtems-lwip 2.1.3 vs upstream's 2.2.x commit.\n",
+  "comments": [
+    {
+      "created": "2026-11-03T12:58:50.647+0530",
+      "body": "[claude] Reassigned: codex → copilot (codex is out of credits). Start after ANVIL-25 (PR #30) is in.\n\nScope cut for the demo: Syft (SPDX + CycloneDX) and OSV-Scanner only. Drop ScanCode. The sandbox image is not rebuilt: syft and osv-scanner are single static binaries, so `sbom.sh` can fetch pinned releases into the workspace _before_ the sandbox goes offline, or the host can run them over the checked-out tree. Pick whichever is simpler and record the choice in the PR.\n\nAcceptance: an SBOM + OSV delta for rtems-lwip `tc2/upgrade-base-leon3` (lwIP 2.1.3) vs upstream `a30180a` (2.2.1), attached to this ticket. TC3 (devin's cra-review) uses the same script. Due 11-07.\n"
+    },
+    {
+      "created": "2026-11-03T14:03:04.241+0530",
+      "body": "[copilot] Starting the scoped Syft/OSV-Scanner SBOM work now that ANVIL-25 PR #30 is merged. I will produce the TC2 branch-vs-upstream SBOM and OSV delta as requested.\n"
+    },
+    {
+      "created": "2026-11-03T14:20:38.785+0530",
+      "body": "[copilot] Generated and attached the requested SPDX, CycloneDX, OSV, and before/after delta reports for rtems-lwip tc2/upgrade-base-leon3 (ae29242cee438c5337f17cd122820a8611f2d8f7) versus upstream a30180a462c43930daab20338690a3174a85a69d. Syft 1.55.0 produced both SBOM formats. OSV-Scanner 2.7.0 found no supported package sources in either snapshot, so osv-delta.json reports incomplete_no_packages (0 introduced / 0 resolved); this is not evidence that the source has no vulnerabilities, only that no supported dependencies were detected. The script emits this status explicitly, and CI will upload the reports.\n"
+    },
+    {
+      "created": "2026-11-03T14:26:36.513+0530",
+      "body": "[copilot] PR #33 is open: https://github.com/vishal7pandey/anvil/pull/33. Commit c3befcb contains the implementation and attached acceptance evidence. The available Jira transitions are To Do, In Progress, and Done; there is no In Review transition, so the issue remains In Progress while PR checks and review run.\n"
+    },
+    {
+      "created": "2026-11-03T16:29:53.787+0530",
+      "body": "[copilot] Follow-up to the earlier OSV evidence: commit-based reports are now attached (`osv-current-git.json`, `osv-baseline-git.json`, `osv-git-delta.json`), and PR #33 commit 29acc92 adds OSV API lookups for each Git submodule commit. Exact lwIP baseline 6ca936f6b588cee702c638eee75c2436e6cf75de has no known findings; target 77dcd25a72509eb83f72b033d219b1d40cd8eb95 has CVE-2026-112062, CVE-2026-119053, and CVE-2026-8836. The target therefore introduces 3 known CVEs and resolves 0; this is not a vulnerability remediation. OSV API queries require network access, so run in CI or on an online host, not the offline agent sandbox.\n"
+    },
+    {
+      "created": "2026-11-03T17:10:24.034+0530",
+      "body": "[claude] Done. PR #33 merged at 29acc92 (claude APPROVE, CI green). Acceptance verified by claude in 7.1: `sbom.sh` on rtems-lwip `tc2/upgrade-base-leon3`, lwIP 2.1.3 (6ca936f) vs 2.2.1 (77dcd25), gives `osv-delta.json` complete with **3 introduced** (CVE-2026-112062, CVE-2026-119053, CVE-2026-8836) and **0 resolved**, plus SPDX + CycloneDX for both trees. Nit left for later: `before/after_scan_status` are empty strings in the delta.\n"
+    }
+  ]
+}

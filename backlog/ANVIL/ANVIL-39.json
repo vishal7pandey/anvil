@@ -1,0 +1,33 @@
+{
+  "key": "ANVIL-39",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "KB sources: GitLab issues with comments, merge requests and mailing-list archives, config-driven across projects; ingest them",
+  "labels": [
+    "M4",
+    "agent-claude"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-03T21:38:56.702+0530",
+  "updated": "2026-11-04T00:17:21.900+0530",
+  "resolved": "2026-11-04T00:17:21.882+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] Owner requirement (2026-11-03): TC4 needs all documentation and ticket history in the knowledge base. Built generically, not for the demo only. The RTEMS Discord can't be read programmatically without its admins (bot invite), so we use the project's open channels instead.\n\n## Today\n\n* The KB holds 490 rtems-docs files + 12 Confluence pages. **0 GitLab issues are ingested**, although docs/scenarios/tc4.md lists them as a source.\n* The issue loader takes closed issues of one project only, title + description (no comments).\n* No merge requests, no mailing lists.\n\n## Target\n\n* Source list in config (env or YAML), e.g. GitLab projects `rtems/rtos/rtems`, `rtems/rtos/rtems-libbsd`, `rtems/tools/rtems-tools`, docs; mailing lists `devel`, `users`, `bugs`.\n* GitLab: issues in all states **with notes (comments)**; merge requests with description + discussion. Incremental (updated_after), rate-limit aware.\n* Mailing lists: pipermail monthly archives (`https://lists.rtems.org/pipermail/<list>/<YYYY-Month>.txt[.gz]`), parsed into threads (one document per thread), with quoted text trimmed.\n* Every document passes through the case leak guard (ANVIL-38): withheld issues/MRs/commits never enter the KB.\n* Run the ingestion against the demo DB and record the counts.\n\n## Acceptance\n\n* Loaders are unit-tested on recorded fixtures (no network in tests).\n* Ingestion run completed. Counts per source posted here.\n* A KB search for a known historical RTEMS bug returns its issue thread and the related mailing-list thread; a search for the withheld TC1 issue returns nothing.\n",
+  "comments": [
+    {
+      "created": "2026-11-03T22:07:52.607+0530",
+      "body": "[claude] PR #47: GitLab issues + MRs with comments, any project, resumable. Findings:\n\n* The default project path `rtems/rtems` 301s, which is why the KB had 0 issues.\n* Comments come through GraphQL, because REST `/notes` returns 401 to anonymous clients.\n\nThe full crawl of rtems/rtos/rtems is running now (60 req/min); counts will follow here. Mailing lists: cline (separate PR). The defaults exclude rtems-lwip, whose MRs contain the TC2 answer.\n"
+    },
+    {
+      "created": "2026-11-03T23:58:43.658+0530",
+      "body": "[claude] Progress and split.\n\n* **Issues: done.** 5,519 in the KB with comments (9,217 chunks). Exactly **6 excluded = the 6 withheld TC1 shortlist issues**, so the guard works on real data.\n* **MRs: crawling** (~1,550, ETA ~00:30 on 11-04).\n* antigravity's TC4 acceptance on the bigger KB: 3/3 at rank 1.\n\nSplit out:\n\n* **ANVIL-45:** mailing lists (cline; fallback claude at 12:00 on 11-04).\n* **ANVIL-44:** TC2 case spec, before rtems-lwip may enter the KB.\n* **ANVIL-43:** time-based leak guard.\n\nThis ticket closes when the MR crawl is done and the acceptance searches are posted.\n"
+    },
+    {
+      "created": "2026-11-04T00:17:20.709+0530",
+      "body": "[claude] **Crawl complete. Acceptance met** (the mailing-list part moved to ANVIL-45).\n\n| Source | Documents | Chunks | Excluded by the leak guard |\n|---|---|---|---|\n| gitlab-issue (rtems/rtos/rtems, all states, with comments) | 5,519 | 9,217 | 6 = the 6 withheld TC1 shortlist issues |\n| gitlab-mr (rtems/rtos/rtems, all states, with discussion) | 1,552 | 2,578 | 6 = the 6 withheld TC1 shortlist MRs |\n| rtems-docs | 490 |  |  |\n| confluence (RTKB) | 12 |  |  |\n| **KB total** | **7,573** | **14,654** |  |\n\n* **Known historical bug:** \"timeslice not working after task mode change\" → #1212 at rank 1 (with its patch in a comment), and the related #514 at rank 2.\n* **Withheld TC1 issue:** a search with RTEMS-1's symptoms returns rtems-docs mutex pages and older unrelated issues. **No #5776, no !1493.**\n* **Content scan of all chunks:** \"Defer mutex flags\" (the fix title) 0, \"a62e60b5\" 0, \"mutexinit\" 0. The 15 chunks containing \"5776\" are all coincidental substrings (commit hashes, binary sizes, addresses).\n* One transient embedding retry, recovered. The resume cursor is saved, so re-running `ingest-gitlab` fetches only updates.\n\nClosing.\n"
+    }
+  ]
+}

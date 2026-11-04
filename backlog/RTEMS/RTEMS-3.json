@@ -1,0 +1,20 @@
+{
+  "key": "RTEMS-3",
+  "type": "Task",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "[TC3] CRA Annex I compliance review of reference RTEMS networked device (RefDev)",
+  "labels": [
+    "cra",
+    "tc3"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-02T23:04:37.731+0530",
+  "updated": "2026-11-03T18:05:48.998+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Perform a Cyber Resilience Act Annex I essential-requirements review of RefDev (RTEMS 7 + rtems-lwip + shell, SPARC/LEON3, per docs/scenarios/tc3.md). Use the machine-readable checklist backend/anvil/skills/cra-review/annex1.yaml (authoritative; do not invent requirements). Assess each item as pass/gap/n/a/unknown with cited evidence. Produce, in order: gap analysis; remediation plan (one Jira Story per gap, labels cra, tc3, never anvil); sandbox test evidence for 1-2 gaps; a STRIDE threat model from the reference data-flow diagram; a compliance report page in RTKB; SPDX + CycloneDX SBOM. A security engineer approves/rejects each gap; record rejections to /memories/cra/lessons.md.\n\nCode base: branch `main` of github.com/vishal7pandey/rtems.\n",
+  "comments": []
+}

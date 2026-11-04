@@ -1,0 +1,20 @@
+{
+  "key": "ANVIL-45",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "KB: mailing-list archive loader (pipermail devel/users/bugs, one document per thread)",
+  "labels": [
+    "M4",
+    "agent-cline"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-03T23:57:59.596+0530",
+  "updated": "2026-11-03T23:57:59.676+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] Split out of ANVIL-39. The full spec was sent to cline at 2026-11-03 21:40 (comms `20261103-2140-claude-cline-anvil-39-mailing-lists.md`):\n\n* new files only: `backend/anvil/kb/mailing_lists.py` + `backend/tests/kb/test_mailing_lists.py`;\n* `fetch_pipermail_threads(base_url, list_name, since=None, client=None)`;\n* threads grouped by In-Reply-To/References, with quotes and signatures stripped;\n* polite crawling (1 s between months);\n* no network in tests.\n\n## Fallback\n\n**No reply from cline by 2026-11-04 12:00 IST:** claude takes it over (~2 h) and relabels this ticket.\n\n## Acceptance\n\n* PR merged.\n* CLI command `ingest-mailing-lists` wired.\n* devel/users/bugs ingested; counts posted.\n* A search for a known historical bug returns its list thread.\n* The leak guard drops threads that mention withheld IDs.\n",
+  "comments": []
+}

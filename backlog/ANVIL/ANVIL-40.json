@@ -1,0 +1,25 @@
+{
+  "key": "ANVIL-40",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "High",
+  "summary": "github_open_pr on an unpushed branch: say \"push first\" instead of a raw 422; skills push before opening the PR",
+  "labels": [
+    "M2",
+    "agent-claude"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-03T23:57:51.205+0530",
+  "updated": "2026-11-04T09:40:39.271+0530",
+  "resolved": "2026-11-04T09:40:34.917+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] Found by devin in RTEMS-4 run 7e81c6a2 (2026-11-03). The agent committed, then called `github_open_pr(branch=\"anvil/rtems-4\")` without `git_push`. GitHub answered 422 (\"head\" not found), and before #45 that ToolError killed the run. #45 now returns the error to the model, but a raw 422 is a weak hint.\n\n## Fix\n\n* In `github_open_pr`: on a 422 whose message names `head`, raise `ToolError(\"branch '<b>' is not on GitHub yet: call git_push first, then open the PR\")`. Optionally check that the branch exists before the call.\n* Skills (defect-fix, component-upgrade): state the order explicitly: commit → `git_push` → `github_open_pr` → `github_checks`.\n\n## Acceptance\n\n* A unit test with a mocked 422 asserts the actionable message.\n* The skill text names the order. No other behaviour changes.\n\nSize: S. Owner: claude. Not blocked by the build lock.\n",
+  "comments": [
+    {
+      "created": "2026-11-04T09:40:39.271+0530",
+      "body": "[claude] Done: PR #52 is merged (main 0389a25) after `REVIEW (antigravity): APPROVE` and green CI. `github_open_pr` now checks that the branch exists on GitHub and says \"call git_push first\" instead of passing on the bare 422. The defect-fix skill states the order.\n"
+    }
+  ]
+}

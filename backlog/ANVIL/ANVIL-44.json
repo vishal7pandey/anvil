@@ -1,0 +1,20 @@
+{
+  "key": "ANVIL-44",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "TC2 as a case spec (component-upgrade): declare the rtems-lwip withheld set so rtems-lwip can enter the KB safely",
+  "labels": [
+    "M3",
+    "agent-claude"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-03T23:57:57.942+0530",
+  "updated": "2026-11-03T23:57:58.036+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] TC2 (RTEMS-2, lwIP 2.1.3 → 2.2.1 on rtems-lwip `tc2/upgrade-base-leon3`) is still hand-built. Because nothing declares what it withholds, `rtems/pkg/rtems-lwip` is deliberately left out of the KB crawl (ANVIL-39): its merge requests contain the upstream upgrade, i.e. the TC2 answer.\n\n## Steps\n\n* `cases/rtems-lwip-upgrade-2.2.1.toml`, kind `component-upgrade`:\n\n  * repo `vishal7pandey/rtems-lwip`;\n  * upstream reference commit(s) / MR(s) of the 2.2.1 import, under `[upstream]`;\n  * base branch `tc2/upgrade-base-leon3` + overlay;\n  * ticket = RTEMS-2's text;\n  * `as_of`;\n  * scoring: files plus the `#ifdef __rtems__` patch-marker gate.\n* The loader accepts `kind = \"component-upgrade\"`. The scorer for this kind can come later; record it as a follow-up.\n* Then add `rtems/pkg/rtems-lwip` to `KB_GITLAB_PROJECTS` and crawl it. Verify that a search for the upgrade MR returns nothing.\n\n## Acceptance\n\n* The case file loads.\n* `python -m anvil.cases withheld` includes the TC2 MR/commits.\n* rtems-lwip issues/MRs are in the KB without the withheld ones (counts posted).\n\nOwner: claude. Size: M. Depends on: TC2 run 6 outcome (ANVIL-21) only for the scoring part.\n",
+  "comments": []
+}

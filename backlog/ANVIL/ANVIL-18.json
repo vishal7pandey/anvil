@@ -1,0 +1,24 @@
+{
+  "key": "ANVIL-18",
+  "type": "Task",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "anvil smoke test (safe to delete)",
+  "labels": [
+    "anvil-smoke-done"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-02T21:13:20.056+0530",
+  "updated": "2026-11-02T21:13:27.521+0530",
+  "resolved": "2026-11-02T21:13:27.505+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Created by `scripts/smoke_jira.py`.\n",
+  "comments": [
+    {
+      "created": "2026-11-02T21:13:21.839+0530",
+      "body": "[devin] smoke: **bold**, `code`, [link](https://github.com)\n"
+    }
+  ]
+}

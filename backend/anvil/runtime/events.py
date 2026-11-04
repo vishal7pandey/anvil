@@ -6,6 +6,7 @@ Contract: docs/02-architecture.md "Event stream". Feed every item of
 
 from __future__ import annotations
 
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -35,6 +36,10 @@ class EventMapper:
         self.seq = 0
         self._calls: dict[str, dict[str, Any]] = {}
         self._aliases = model_aliases or {}
+        # Step timing (ANVIL-83): LangGraph reports a node when it finishes, so the time since the
+        # previous update is that node's wall time (a model call, or a tools step).
+        self._last_update = time.monotonic()
+        self._step_ms = 0
 
     def event(self, type_: str, data: dict[str, Any], agent: str = "main") -> dict[str, Any]:
         self.seq += 1
@@ -62,6 +67,8 @@ class EventMapper:
     # -- updates mode: completed steps ----------------------------------------------------
 
     def _map_updates(self, update: dict[str, Any], agent: str) -> list[dict[str, Any]]:
+        now = time.monotonic()
+        self._step_ms, self._last_update = int((now - self._last_update) * 1000), now
         events: list[dict[str, Any]] = []
         for node, state in update.items():
             if node == "__interrupt__":
@@ -86,7 +93,7 @@ class EventMapper:
             if text:
                 out.append(self.event("message", {"role": "assistant", "text": text}, agent))
             for call in msg.tool_calls or []:
-                self._calls[call["id"]] = {"name": call["name"], "args": call.get("args", {})}
+                self._calls[call["id"]] = {"name": call["name"], "args": call.get("args", {}), "t0": time.monotonic()}
                 out.append(self.event("tool.call", {"call_id": call["id"], "name": call["name"], "args": call.get("args", {})}, agent))
                 if call["name"] == "task":
                     args = call.get("args", {})
@@ -97,13 +104,18 @@ class EventMapper:
                 model = (msg.response_metadata or {}).get("model_name", "")
                 out.append(self.event("usage", {"model_alias": self._aliases.get(model, model),
                                                 "input_tokens": usage.get("input_tokens", 0),
-                                                "output_tokens": usage.get("output_tokens", 0)}, agent))
+                                                "output_tokens": usage.get("output_tokens", 0),
+                                                "latency_ms": self._step_ms}, agent))
         elif isinstance(msg, ToolMessage):
             call = self._calls.get(msg.tool_call_id, {"name": msg.name or "?", "args": {}})
             output = _text(msg.content)
             ok = msg.status != "error"
+            t0 = call.get("t0")
             out.append(self.event("tool.result", {"call_id": msg.tool_call_id, "name": call["name"], "ok": ok,
-                                                  "output": output[:MAX_TOOL_OUTPUT]}, agent))
+                                                  "output": output[:MAX_TOOL_OUTPUT],
+                                                  # the tools step's wall time; parallel calls share it
+                                                  "duration_ms": int((time.monotonic() - t0) * 1000) if t0 else None},
+                                  agent))
             if call["name"] == "execute":
                 artifact = msg.artifact if isinstance(msg.artifact, dict) else {}
                 out.append(self.event("sandbox.exec", {"cmd": call["args"].get("command", ""),

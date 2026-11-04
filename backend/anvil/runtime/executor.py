@@ -339,6 +339,9 @@ class DeepAgentExecutor:
                     return
                 for ev in mapper.map(item):
                     waiting = waiting or ev["type"] == "approval.request"
+                    if ev["type"] == "sandbox.exec" and hasattr(sandbox, "take_timing"):
+                        # Exact command time from the sandbox (ANVIL-83), not the tools step's.
+                        ev["data"].update(sandbox.take_timing(ev["data"].get("cmd", "")) or {})
                     if ev["type"] in ("tool.call", "sandbox.exec"):
                         recent = (recent + [ev])[-12:]
                     if ev["type"] == "tool.result" and ev["data"].get("name") in PROGRESS_TOOLS:

@@ -9,7 +9,6 @@ from anvil.api.metrics import (
     build_spend_totals_statement,
     create_litellm_engine,
     ensure_spend_log_index,
-    estimate_cost,
     load_litellm_spend_totals,
 )
 
@@ -94,18 +93,3 @@ def test_load_litellm_spend_totals_retries_index_lazily():
     assert getattr(engine, "_spend_log_index_ensured", False) is True
 
     engine.dispose()
-
-
-def test_estimate_cost_from_tokens_and_events():
-    # Token-based estimate: $3/1M input, $15/1M output
-    cost = estimate_cost(10_000, 2_000)
-    assert cost == 0.06
-
-    # From usage event carrying usd
-    class DummyEvent:
-        def __init__(self, data):
-            self.type = "usage"
-            self.data = data
-
-    event_cost = estimate_cost(10_000, 2_000, [DummyEvent({"usd": 0.012345})])
-    assert event_cost == 0.012345

@@ -70,25 +70,6 @@ def ensure_spend_log_index(engine: Engine) -> bool:
         return False
 
 
-def estimate_cost(
-    input_tokens: int,
-    output_tokens: int,
-    events: list[Any] | None = None,
-) -> float:
-    """Estimate USD cost from token counts or usage events when spend rows lag."""
-    if events:
-        event_usd = sum(
-            float(e.data.get("usd", 0) or 0)
-            for e in events
-            if getattr(e, "type", None) == "usage" and isinstance(getattr(e, "data", None), dict)
-        )
-        if event_usd > 0:
-            return round(event_usd, 6)
-
-    # Standard model blended rate: $3.00/1M input, $15.00/1M output
-    est = (input_tokens * 3.0 + output_tokens * 15.0) / 1_000_000.0
-    return round(est, 6)
-
 
 def create_litellm_engine(database_url: str) -> Engine | None:
     url = make_url(normalize_database_url(database_url))

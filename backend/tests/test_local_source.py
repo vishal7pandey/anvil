@@ -51,7 +51,10 @@ def test_github_names_are_not_local(repo):
     assert not source.is_local(repo)
 
 
-@pytest.mark.parametrize("bad", ["C:\\my work\\rtems", "C:\\work\\..\\x", "/tmp/x;rm -rf /", "C:\\work\\$(id)", "C:\\"])
+# Since ANVIL-91 the host path never reaches a shell (subprocess argument lists only; the sandbox
+# sees a slug), so spaces and shell characters are fine. Quotes, '..' and a bare drive are not.
+@pytest.mark.parametrize("bad", ["C:" + chr(92) + "work" + chr(92) + ".." + chr(92) + "x",
+                                 "C:" + chr(92) + "work" + chr(92) + 'a"b', "C:" + chr(92)])
 def test_unsafe_local_paths_are_refused(bad):
     with pytest.raises(ValueError):
         source.validate_local(bad, check_exists=False)
@@ -59,7 +62,7 @@ def test_unsafe_local_paths_are_refused(bad):
 
 def test_api_accepts_an_existing_working_copy_and_refuses_a_missing_one(host_repo, tmp_path):
     assert normalize_repository(str(host_repo)) == str(host_repo)
-    with pytest.raises(ValueError, match="not a git working copy"):
+    with pytest.raises(ValueError, match="does not exist"):
         normalize_repository(str(tmp_path / "nope"))
     assert normalize_repository("vishal7pandey/rtems") == "vishal7pandey/rtems"
 

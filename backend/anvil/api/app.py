@@ -773,10 +773,18 @@ def _get_or_create_intake_run(
             return existing.id, message, existing.status == "queued"
 
         repo_value = issue.get("repo") or code_base_repo or "vishal7pandey/rtems"
+        # normalize_repository validates both shapes: owner/repo, or a local project in any shape (ANVIL-91).
+        repo_checked = normalize_repository(repo_value)
+        if base_ref is None:
+            # Only a local path may leave the branch out: its current branch (or 'main' for a snapshot).
+            from anvil.runtime import source as _source
+
+            if not _source.is_local(repo_checked):
+                raise ValueError("a GitHub code base needs its branch: 'Code base: branch <ref> of github.com/<o>/<r>'")
+            base_ref = _source.default_base(repo_checked)
         session = Session(
             user_id=user_id,
-            # normalize_repository validates both shapes since ANVIL-55 (paths must exist as git repos).
-            repo=normalize_repository(repo_value),
+            repo=repo_checked,
             environment="local",
             mode=_jira_mode(issue),
             merge_policy="human",
@@ -812,31 +820,58 @@ def _get_or_create_intake_run(
 # "Code base: branch `tc1/5776-base` of github.com/vishal7pandey/rtems." anywhere in the ticket
 # (backticks and the "of github.com/..." part optional). Answer-leak control: a TC ticket's base
 # branch is what keeps the withheld fix out of the sandbox, so never guess it.
-# "of" accepts github.com/<owner>/<repo> or an absolute local path (ANVIL-56 offline path); a path
-# with spaces is not supported, say so in the ticket docs.
+# "of" accepts github.com/<owner>/<repo> or an absolute local path (ANVIL-56 offline path). A local
+# path with spaces is written in double quotes (ANVIL-91).
 _CODE_BASE = re.compile(
     r"code base:\s*(?:branch\s+)?`?(?P<ref>[A-Za-z0-9._/-]+?)`?"
     r"(?:\s+of\s+(?:(?:https?://)?github\.com/(?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?"
-    r"|(?P<path>(?:[A-Za-z]:[\\/]|/)\S+)))?"
+    r"|\"(?P<qpath>(?:[A-Za-z]:[\\/]|/)[^\"\n]+)\"|(?P<path>(?:[A-Za-z]:[\\/]|/)\S+)))?"
     r"(?=[\s.,;)]|$)",
+    re.IGNORECASE,
+)
+# A local path without a branch (ANVIL-91): "Code base: C:\work\app" or 'Code base: "C:\My Projects\app"'.
+# The base is then the working copy's current branch (or 'main' for a folder/archive snapshot).
+_CODE_BASE_PATH_ONLY = re.compile(
+    r"code base:\s*(?:of\s+)?(?:\"(?P<qpath>(?:[A-Za-z]:[\\/]|/)[^\"\n]+)\"|(?P<path>(?:[A-Za-z]:[\\/]|/)\S+))",
     re.IGNORECASE,
 )
 
 _LOCAL_PATH = re.compile(r"^(?:[A-Za-z]:[\\/]|/)")
 
 
+def _session_base(repo: str) -> str:
+    """Base branch for a UI message: a local project's current branch (ANVIL-91: a junior's repo may be
+    on master or anything else); 'main' for a GitHub repo, as before."""
+    from anvil.runtime import source
+
+    if source.is_local(repo):
+        try:
+            return source.default_base(repo)
+        except ValueError:
+            return "main"  # the checkout reports the real problem (missing path) as a failed setup
+    return "main"
+
+
 def _is_local_path(value: str | None) -> bool:
     return bool(value) and bool(_LOCAL_PATH.match(value))
 
 
-def _code_base(description: str) -> tuple[str | None, str]:
-    """(repo or None, base ref) from the ticket's "Code base:" line; ValueError if there is none."""
+def _code_base(description: str) -> tuple[str | None, str | None]:
+    """(repo or None, base ref or None) from the ticket's "Code base:" line; ValueError if there is none.
+
+    A GitHub repo always needs its branch (answer-leak control: never guess a TC base). A local path
+    may leave the branch out (ref None: the project's current branch, ANVIL-91)."""
+    path_only = _CODE_BASE_PATH_ONLY.search(description)
+    if path_only is not None:
+        path = (path_only.group("qpath") or (path_only.group("path") or "").rstrip(".,;")).strip()
+        return path or None, None
     match = _CODE_BASE.search(description)
     if match is None:
         raise ValueError(
             "Jira intake candidate has no 'Code base: branch <ref> of github.com/<owner>/<repo>' line"
         )
-    return (match.group("repo") or (match.group("path") or "").rstrip(".,;")) or None, match.group("ref")
+    local = match.group("qpath") or (match.group("path") or "").rstrip(".,;")
+    return (match.group("repo") or local.strip()) or None, match.group("ref")
 
 
 def _jira_labels(issue: dict[str, Any]) -> list[str]:
@@ -1110,7 +1145,7 @@ def create_app(
             mode=session.mode,
             input_text=payload.text,
             network="offline",
-            base_ref="main",
+            base_ref=_session_base(session.repo),
             run_record={"scenario": payload.scenario} if payload.scenario else {},
         )
         db.add(run)

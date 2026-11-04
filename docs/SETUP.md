@@ -247,6 +247,33 @@ Open your browser to `http://localhost:5173`.
 
 ---
 
+## 5b. Pointing Anvil at your own project (any shape)
+
+Anvil does not need GitHub. Give it the **absolute path** to your project, either in the New Session dialog's repository field or in a ticket's `Code base:` line. It accepts:
+
+| Your project is… | What Anvil does |
+|---|---|
+| a git working copy, on any branch | Copies the **committed** history of the branch (default: the branch you have checked out). Uncommitted changes are *not* copied; the run says how many there were. |
+| a plain folder (no git) | Makes a one-commit snapshot of it (your `.gitignore` applies; `node_modules/`, `build/`, `dist/`, `.venv/`, `__pycache__/` are skipped). Your folder is only read, never written to. |
+| a `.zip`, `.tar.gz`, `.tgz` or `.tar` | Extracts it safely (refusing `..`, absolute paths and links), then treats it like a plain folder. |
+
+Paths with spaces are fine. In a ticket, put them in double quotes. The branch is optional for a local path:
+
+```text
+Code base: "C:\Users\Asha Rao\Projects\Sensor App"
+Code base: branch develop of "C:\Users\Asha Rao\Projects\Sensor App"
+Code base: branch `tc1/5776-base` of C:\work\rtems
+```
+
+**What you get back:**
+- `private\runs\<run_id>\<run_id>.patch` and `.bundle`.
+- In a git working copy: `git am <patch>`, or `git fetch <bundle> <branch>`.
+- In a plain folder: `git apply <patch>`. This works without the folder being a git repository.
+
+**Limits today:** git submodules in a local project are not copied. The sandbox builds with the tools in the Anvil image (RTEMS 7 / SPARC, Python 3, common build tools). A project that needs other toolchains will build only as far as those tools allow.
+
+---
+
 ## 6. Troubleshooting & FAQs
 
 ### Q: Does local checkout support git submodules?

@@ -76,6 +76,7 @@ class Case:
     acceptance: tuple[Check, ...] = ()
     required_checks: tuple[str, ...] = ()   # CI checks that gate the PR; others are advisory
     web_allow: tuple[str, ...] = ()         # [web] allow: trusted web_search sources (ANVIL-64); () = any
+    build: dict[str, str] = field(default_factory=dict)  # [build]: the BSP's configure/build/test recipe
     path: Path | None = field(default=None, compare=False)
 
     @property
@@ -91,6 +92,16 @@ def _strs(value: object, where: str) -> tuple[str, ...]:
     if not isinstance(value, list) or not all(isinstance(v, (str, int)) for v in value):
         raise CaseError(f"{where}: expected a list of strings")
     return tuple(str(v) for v in value)
+
+
+def _build(value: object) -> dict[str, str]:
+    """[build] is a table of step name -> shell command (ANVIL-90). Empty or missing is fine."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict) or not all(isinstance(k, str) and isinstance(v, str)
+                                             for k, v in value.items()):
+        raise CaseError("build must be a table of step names to command strings")
+    return dict(value)
 
 
 def _checks(value: object, where: str) -> tuple[Check, ...]:
@@ -143,7 +154,8 @@ def load_case(path: Path) -> Case:
             tolerance=int(scoring.get("tolerance", 3)),
             acceptance=_checks(raw.get("acceptance", {}).get("checks", []), path.name),
             required_checks=_strs(raw.get("ci", {}).get("required_checks"), "ci.required_checks"),
-            web_allow=_strs(raw.get("web", {}).get("allow"), "web.allow"), path=path,
+            web_allow=_strs(raw.get("web", {}).get("allow"), "web.allow"),
+            build=_build(raw.get("build")), path=path,
         )
         if not case.base_sha and any("{base_sha}" in a for c in case.acceptance for a in c.args):
             raise CaseError(f"{path.name}: acceptance uses {{base_sha}} but base.sha is not pinned")

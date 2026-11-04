@@ -54,6 +54,24 @@ name = "a regression test is part of the change"
 script = "changed_files_match.py"
 args = ["--base-commit", "{base_sha}", "--pattern", "testsuites/*", "--what", "regression test"]
 
+
+# The BSP's real recipe (erc32 + SIS), as the defect-fix skill and the CI overlay run it. Injected
+# into the agent's task as "the build and test commands for this code base" (ANVIL-90): a recipe,
+# not a hint about the fix.
+[build]
+configure = '''
+cat > config.ini <<'INI'
+[sparc/erc32]
+BUILD_SAMPLES = False
+BUILD_PSXTESTS = True
+INI
+./waf configure --prefix="$RTEMS_PREFIX"'''
+build = './waf -j"$(nproc)"'
+# One test exe after a change (review on #90); the whole directory is test_suite — run once, before
+# committing, not after every edit.
+test_one = 'rtems-test --rtems-bsp=erc32-sis build/sparc/erc32/testsuites/psxtests/<test>.exe  # pick the test for the area you changed'
+test_suite = 'rtems-test --rtems-bsp=erc32-sis build/sparc/erc32/testsuites/psxtests/'
+
 # Trusted web_search sources (ANVIL-64): results drawing on anything else are withheld.
 # The leak blocklist (upstream tracker, lists, mirrors) applies on top.
 [web]

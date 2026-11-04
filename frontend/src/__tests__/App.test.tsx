@@ -322,13 +322,13 @@ describe('attach race (review on #79)', () => {
 
   it("a slow attach for session A cannot overwrite session B's chat", async () => {
     const fetchMock = vi.mocked(globalThis.fetch);
-    let resolveA: (v: unknown) => void = () => {};
+    let resolveA: (v: Response) => void = () => {};
     fetchMock
       .mockResolvedValueOnce({ ok: true, json: async () => [session, session2] } as Response)
       .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
       // A's mount-attach stays in flight: its listRunsForSession resolves late
       .mockImplementationOnce(
-        () => new Promise((resolve) => { resolveA = resolve; }) as Promise<Response>,
+        () => new Promise<Response>((resolve) => { resolveA = resolve; }),
       )
       .mockResolvedValueOnce(jsonRes([{ id: 'rB', status: 'succeeded', trigger: 'ui' }]))
       .mockResolvedValueOnce(jsonRes([

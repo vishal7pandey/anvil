@@ -50,9 +50,10 @@ A ticket describes wrong behaviour (crash, wrong return value, leak, hang) in an
    `rtems-test --rtems-bsp=erc32-sis build/sparc/erc32/testsuites/psxtests/` (must not regress).
    Paste the pass/fail summary.
 8. **Review.** Ask the `reviewer` subagent to review `git diff`. Address findings.
-9. **Pre-commit.** If `.pre-commit-config.yaml` exists: `pre-commit run --files <changed files>`
-   (the files in `git status --porcelain`). Never `--all-files`: on RTEMS it runs for 30 minutes
-   and the sandbox refuses it. Fix what it reports (formatting of changed lines only).
+9. **Pre-commit.** `git add` any new files, then call `lint_changed`: it runs the repo's hooks on
+   exactly the files you changed (and says so when there is no config). Do not run pre-commit
+   yourself: whole-tree runs take 30 minutes on RTEMS and the sandbox refuses them. Fix what it
+   reports (formatting of changed lines only).
 10. **Commit** on your `anvil/...` branch:
     ```
     <JIRA-KEY>: <component>: <what was fixed>

@@ -27,7 +27,9 @@ A ticket describes wrong behaviour (crash, wrong return value, leak, hang) in an
    Extend that test (prefer extending over adding a new test program: new programs need
    build-spec entries under `spec/build/testsuites/`). The new check must fail on the
    unfixed code for the reported reason.
-4. **Build and run the failing test** (via the `builder` subagent or directly):
+4. **Build and run the failing test** (via the `builder` subagent or directly).
+   If your task names "the build and test commands for this code base", use those exactly — they are
+   the case's declared recipe for this BSP, not a suggestion. Otherwise the default erc32 recipe:
    ```sh
    cd /workspace/rtems
    cat > config.ini <<'EOF'

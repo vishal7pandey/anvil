@@ -111,6 +111,22 @@ def repo_path(repo: str) -> str:
     return f"/workspace/{validate_repo(repo).split('/')[1]}"
 
 
+def _task_message(run: dict[str, Any], message: str, checkout: dict[str, Any]) -> str:
+    """The user message the agent sees: ticket text, repo/branch context, and — when the run's case
+    declares a [build] section — that recipe as the code base's build and test commands (ANVIL-90)."""
+    task = (f"{message}\n\n[Anvil context] Repository {run['repo']} is checked out at {checkout['path']} "
+            f"on branch {checkout['branch']} (base {checkout['base_ref']} @ {checkout['base_sha']}).")
+    if run.get("jira_key"):
+        task += f" Jira ticket: {run['jira_key']}."
+    from anvil.cases import case_for_run
+
+    case = case_for_run(run)
+    if case is not None and case.build:
+        steps = "; ".join(f"{name}: `{cmd}`" for name, cmd in case.build.items())
+        task += f" The build and test commands for this code base are: {steps}."
+    return task
+
+
 def graph_config(run: dict[str, Any]) -> dict[str, Any]:
     """The graph's checkpoint thread is the run, not the session (ANVIL-72).
 
@@ -296,10 +312,7 @@ class DeepAgentExecutor:
             yield mapper.event("run.status", {"status": "failed"})
             return
         yield mapper.event("run.record", self.run_record(run, checkout))
-        task = (f"{message}\n\n[Anvil context] Repository {run['repo']} is checked out at {checkout['path']} "
-                f"on branch {checkout['branch']} (base {checkout['base_ref']} @ {checkout['base_sha']}).")
-        if run.get("jira_key"):
-            task += f" Jira ticket: {run['jira_key']}."
+        task = _task_message(run, message, checkout)
         async for ev in self._stream(run, sandbox, mapper, {"messages": [{"role": "user", "content": task}]}):
             yield ev
 

@@ -191,8 +191,8 @@ export default function App() {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
-      <header className="h-16 bg-blue-900 text-white px-6 flex items-center gap-3 shrink-0">
-        <div className="w-8 h-8 rounded bg-blue-400 flex items-center justify-center text-white font-bold">
+      <header className="h-14 bg-white border-b border-slate-200 text-slate-900 px-6 flex items-center gap-3 shrink-0">
+        <div className="w-7 h-7 rounded bg-slate-900 flex items-center justify-center text-white text-sm font-bold">
           A
         </div>
         <h1 className="font-semibold text-lg">Anvil</h1>
@@ -207,8 +207,10 @@ export default function App() {
               key={view}
               onClick={() => setActiveView(view)}
               aria-current={activeView === view ? 'page' : undefined}
-              className={`rounded px-3 py-2 text-sm ${
-                activeView === view ? 'bg-blue-700 text-white' : 'text-blue-100 hover:bg-blue-800'
+              className={`border-b-2 px-3 py-4 text-sm ${
+                activeView === view
+                  ? 'border-blue-600 font-medium text-slate-900'
+                  : 'border-transparent text-slate-500 hover:text-slate-900'
               }`}
             >
               {label}
@@ -234,8 +236,8 @@ export default function App() {
               selected={selectedSession}
               onSelect={handleSelectSession}
             />
-            <div className="flex-1 min-w-0 flex">
-              <div className="flex-1 min-w-0 flex flex-col">
+            <div className="flex-1 min-w-0 min-h-0 flex">
+              <div className="flex-1 min-w-0 min-h-0 flex flex-col">
                 <ChatStream
                   session={selectedSession}
                   run={currentRun}

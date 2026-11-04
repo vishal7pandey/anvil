@@ -6,6 +6,7 @@ export type EventType =
   | 'tool.call'
   | 'tool.result'
   | 'sandbox.exec'
+  | 'run.record'
   | 'diff'
   | 'approval.request'
   | 'subagent'

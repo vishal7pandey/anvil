@@ -1008,11 +1008,27 @@ def create_app(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="RunExecutor is not configured",
             )
+        # The session row is locked while we check for an active run, so two messages sent at once
+        # cannot both start one (ANVIL-71: runs in a session share its sandbox and checkout).
         session = db.scalar(
-            select(Session).where(Session.id == session_id, Session.user_id == user.id)
+            select(Session)
+            .where(Session.id == session_id, Session.user_id == user.id)
+            .with_for_update()
         )
         if session is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+        active = db.scalar(
+            select(Run)
+            .where(Run.session_id == session.id, Run.status.not_in(TERMINAL_RUN_STATUSES))
+            .order_by(Run.created_at.desc())
+        )
+        if active is not None:
+            # A run waiting for approval is answered in the Approvals panel, not with a new message.
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Run {active.id} is {active.status} in this session: wait for it to finish, "
+                       f"decide its approval, or cancel it before sending another message.",
+            )
 
         run = Run(
             session_id=session.id,

@@ -11,6 +11,7 @@ interface ChatStreamProps {
 }
 
 const MAX_INPUT_ROWS = 8;
+const TERMINAL = new Set(['succeeded', 'failed', 'cancelled', 'handoff']);
 
 export default function ChatStream({
   session,
@@ -20,7 +21,10 @@ export default function ChatStream({
 }: ChatStreamProps) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const disabled = !session;
+  // One active run per session (ANVIL-71): the API refuses a second message with 409, so the box
+  // says why instead of letting the user find out. A run waiting for approval is answered in Approvals.
+  const busy = !!run && !TERMINAL.has(run.status);
+  const disabled = !session || busy;
   // The run as a conversation, not its event log (ANVIL-52).
   const items = useMemo(() => toChatItems(events), [events]);
 
@@ -76,7 +80,13 @@ export default function ChatStream({
                 rows={rows}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask the agent to build, fix, or upgrade…"
+                placeholder={
+                  busy
+                    ? run?.status === 'waiting_approval'
+                      ? 'Waiting for your approval: decide it in Approvals'
+                      : 'A run is in progress: wait for it or cancel it'
+                    : 'Ask the agent to build, fix, or upgrade…'
+                }
                 aria-label="Message the agent (Enter to send, Shift+Enter for a new line)"
                 className="input flex-1 resize-none"
                 disabled={disabled}

@@ -1,0 +1,29 @@
+{
+  "key": "ANVIL-46",
+  "type": "Task",
+  "status": "Done",
+  "priority": "High",
+  "summary": "One command to (re)start the demo API from main with the repo .env loaded",
+  "labels": [
+    "M4",
+    "agent-antigravity"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-03T23:58:01.134+0530",
+  "updated": "2026-11-04T09:41:37.012+0530",
+  "resolved": "2026-11-04T09:40:37.333+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] On 2026-11-03 the shared API on :8000 was restarted twice by hand:\n\n* the first time it was still on stale code (pre-#45), which killed RTEMS-4 run 7e81c6a2;\n* the second time it started **without the Atlassian credentials**, because the settings only read `backend/.env` and the vars had been exported by hand. Jira intake then failed silently, logging `Jira intake poll failed (ToolError)` once.\n\nOn demo day, the restart has to be one command anyone can run.\n\n## Scope\n\n* `scripts/start-api.ps1`:\n\n  1. refuses if the worktree is not at `origin/main` (or prints the SHA and asks);\n  2. reads `<repo>/.env` (ANVIL_DEMO_TOKEN, ATLASSIAN_*) without printing values;\n  3. sets `ANVIL_EXECUTOR=deepagent` and `ANVIL_DATABASE_URL` (a param, default the demo DB);\n  4. stops whatever listens on :8000 (with confirmation);\n  5. starts uvicorn with the selector loop and logs to a file;\n  6. waits for `/api/sessions` 200, then **runs one intake poll and fails loudly if Jira auth fails**.\n* Or alternatively: make `Settings` read the repo-root `.env` too, so a plain start works.\n* Preflight (#44) check 3 points at the script in its FIX hint; the runbook uses it.\n\n## Acceptance\n\n* Running it twice in a row is safe.\n* A missing ATLASSIAN_* var fails at start with a clear message, not on the first poll.\n\nOwner: antigravity (runbook/preflight). Size: S. No build lock needed.\n",
+  "comments": [
+    {
+      "created": "2026-11-04T04:47:05.068+0530",
+      "body": "PR #53 opened with scripts/start-api.ps1 implementation and env auto-loading. Verified idempotent restart and live Jira intake polling. Ready for review.\n"
+    },
+    {
+      "created": "2026-11-04T09:40:41.076+0530",
+      "body": "[claude] Done: PR #53 is merged (main 56550e9) after re-review.\n\n* `scripts/start-api.ps1` + `scripts/run-api.cmd`: no secrets in any file (Python loads .env via python-dotenv), the demo token is required, and the readiness wait is 60 s.\n* Non-blocking nits are left on the PR: the log path ignores `-LogFile`, and the `JIRA_*` alias line is unused.\n"
+    }
+  ]
+}

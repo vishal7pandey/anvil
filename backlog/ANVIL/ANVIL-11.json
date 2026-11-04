@@ -1,0 +1,49 @@
+{
+  "key": "ANVIL-11",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Control API skeleton: models, REST and SSE per contract",
+  "labels": [
+    "M1",
+    "agent-copilot"
+  ],
+  "epic": "ANVIL-3",
+  "epic_summary": "WS-C Control API (FastAPI, sessions, runs, SSE events, approvals)",
+  "created": "2026-11-02T19:39:29.246+0530",
+  "updated": "2026-11-02T23:20:14.674+0530",
+  "resolved": "2026-11-02T23:20:13.647+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Contracts: docs/02-architecture.md \"Contracts\" (REST, event stream, run record). Python 3.12, uv, FastAPI, SQLAlchemy 2, Alembic, Postgres from `deploy/compose.yaml` (port 5433).\n\n## Do\n\n* `backend/` uv project; package `anvil.api`. Tables: users, sessions, runs, events (run_id, seq, ts, type, agent, data jsonb), approvals.\n* Endpoints: `POST /api/sessions`, `GET /api/sessions`, `POST /api/sessions/{id}/messages`, `GET /api/runs/{id}`, `GET /api/runs/{id}/events` (SSE, resume from `Last-Event-ID` = seq), `POST /api/approvals/{id}`.\n* A `RunExecutor` interface with one method `start(run, message) -> async iterator of events`; the runtime story (Claude) plugs in. Until then, no fake executor in `main`; tests use a test double only under `tests/`.\n* Bearer token auth with one demo user from `.env`.\n\n## Acceptance\n\n* `uv run python -m pytest` green; OpenAPI at `/docs`; SSE resume test.\n",
+  "comments": [
+    {
+      "created": "2026-11-02T20:26:20.413+0530",
+      "body": "[claude] on behalf of copilot (its Jira CLI returns AUTH_INVALID): started, branch copilot/anvil-11-control-api. Ticket text sent to copilot via comms.\n"
+    },
+    {
+      "created": "2026-11-02T20:43:47.670+0530",
+      "body": "[copilot] started, branch copilot/anvil-11-control-api\n"
+    },
+    {
+      "created": "2026-11-02T21:48:58.179+0530",
+      "body": "[copilot] PR #9: https://github.com/vishal7pandey/anvil/pull/9 — API models/migration, authenticated REST + SSE, executor dispatch, and Jira intake. Initial API commit is pushed; runtime resume/cancel, network and run-record support will follow on this PR. Validation on the rebased base commit: 24 tests passed. Status remains In Progress pending review.\n"
+    },
+    {
+      "created": "2026-11-02T21:54:15.264+0530",
+      "body": "[copilot] Follow-up commit 4e16da4 is pushed to PR #9: resume/cancel runtime hooks, grouped approval decisions, terminal cancelled status, base_ref/jira_key/network fields, and run.record persistence. Jira online access is limited to issues labeled anvil-online; other runs default offline. Backend suite: 25 passed. PR remains open for review; ANVIL-11 remains In Progress.\n"
+    },
+    {
+      "created": "2026-11-02T22:14:38.598+0530",
+      "body": "[copilot] Latest PR #9 commit 40acfb9 aligns the runtime payload: last_seq plus last_event_seq, canonical GitHub owner/repository values, and a five-second cancel timeout before task-cancel fallback. The API preserves executor event sequence numbers exactly. Current suite: 26 passed. PR remains open; no status change.\n"
+    },
+    {
+      "created": "2026-11-02T22:26:47.849+0530",
+      "body": "[copilot] PR #9 follow-up c23e3d6 applies Claude's sequence-ownership decision: the API assigns seq/ts under the run lock; executor seq is advisory. Added interleaving coverage including cancel; backend suite remains 26 passed. PR is open for Claude re-review; ANVIL-11 remains In Progress.\n"
+    },
+    {
+      "created": "2026-11-02T23:20:14.674+0530",
+      "body": "[copilot] PR #9 merged as e34119c95726eb5882c0e5a989e3c2c947e4b7e5. Authenticated live smoke used the isolated anvil_copilot database: session creation succeeded; message submission returned the expected HTTP 503 because no RunExecutor is configured yet. PRs #6 and #8 are still open, so the SSE leg remains blocked until runtime wiring is available.\n"
+    }
+  ]
+}

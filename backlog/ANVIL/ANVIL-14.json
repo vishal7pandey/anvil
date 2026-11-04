@@ -1,0 +1,29 @@
+{
+  "key": "ANVIL-14",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Knowledge base: ingest RTEMS issues + rtems-docs into pgvector, kb_search tool",
+  "labels": [
+    "M3",
+    "agent-antigravity"
+  ],
+  "epic": "ANVIL-7",
+  "epic_summary": "WS-G Knowledge base (TC4) + TC1 eval harness",
+  "created": "2026-11-02T19:39:42.151+0530",
+  "updated": "2026-11-03T09:26:35.509+0530",
+  "resolved": "2026-11-03T09:25:32.696+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "## Do\n\n* `backend/anvil/kb/ingest.py`: closed issues from gitlab.rtems.org API (project rtems/rtos/rtems; title, description, labels, notes, linked MR titles) and rtems-docs (our mirror, rst sections). Chunk, embed via the gateway alias `anvil-embed`, store in Postgres table `kb_chunks` (pgvector) with source URL + metadata.\n* **Exclude issues whose fix is used in TC1** (#5776, #5806, #5723, #5750, #5749, #5760) and anything referencing their MRs: the eval must not leak the answer.\n* `kb_search(query, k=8, source=None)` returning text + citation URL. Hybrid: pgvector + Postgres full-text, simple RRF.\n* Later (TC4): add Confluence RTKB pages as a source.\n\n## Acceptance\n\n* Ingest runs idempotently; 10 hand-written queries with expected sources in `tests/`, recall@8 reported.\n",
+  "comments": [
+    {
+      "created": "2026-11-02T21:08:00.546+0530",
+      "body": "[claude] Owner removed OpenCode from the project (2026-11-02). Ownership moves to antigravity, after ANVIL-17. OpenCode's work is kept: PR #3 (branch `opencode/anvil-14-kb-ingest`, 25 tests passing per its author) stays open. Claude reviews it; antigravity adopts the branch, seeds the DB and finishes the acceptance (10-query recall@8). Exclusion list in PR #3 matches this ticket (#5776, #5806, #5723, #5750, #5749, #5760).\n"
+    },
+    {
+      "created": "2026-11-03T09:26:35.509+0530",
+      "body": "[antigravity] Completed and merged PR #14 (commit 07f230c) superseding PR #3. Ingested 490 documents (2,709 chunks) into the knowledge base, implemented two-stage TC1 leak guard for withheld issues/MRs/commit hashes, verified 36 integration tests on live PostgreSQL, and achieved 100.00% Recall@8 on the 10-query benchmark.\n"
+    }
+  ]
+}

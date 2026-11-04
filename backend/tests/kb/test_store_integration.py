@@ -213,3 +213,53 @@ def test_planted_chunk_referencing_mr_or_fix_is_filtered(store):
     hits = store.search("planted leak", k=10)
     assert not any("!1493" in h.content or "#5776" in h.content for h in hits)
 
+
+
+def test_snapshot_round_trip_keeps_exact_chunks_and_guard(store, tmp_path):
+    from anvil.kb.snapshot import export_snapshot, import_snapshot
+
+    store.ingest([
+        _doc("rtems-docs", "user/intro.rst", "Intro", "RTEMS scheduler overview.\n\nMore text."),
+        _doc("gitlab-issue", "rtems/rtos/rtems#6000", "safe issue", "an unrelated closed issue"),
+    ])
+    with store.engine.connect() as conn:
+        before = conn.execute(text("SELECT content FROM kb_chunks ORDER BY content")).scalars().all()
+    manifest = export_snapshot(store, tmp_path)
+    assert manifest["documents"] == 2 and manifest["chunks"] == len(before)
+
+    with store.engine.begin() as conn:
+        conn.execute(text("TRUNCATE kb_chunks, kb_documents RESTART IDENTITY CASCADE"))
+    report = import_snapshot(store, tmp_path)
+    assert report.documents_added == 2 and report.chunks_written == len(before)
+    with store.engine.connect() as conn:
+        after = conn.execute(text("SELECT content FROM kb_chunks ORDER BY content")).scalars().all()
+    assert after == before
+    assert store.search("scheduler overview", k=1)[0].external_id == "user/intro.rst"
+
+    again = import_snapshot(store, tmp_path)  # idempotent
+    assert again.documents_skipped == 2 and again.documents_added == 0
+
+
+def test_snapshot_import_skips_withheld_and_rejects_a_corrupt_file(store, tmp_path):
+    import gzip
+    import json
+
+    from anvil.kb.snapshot import MANIFEST_FILE, SNAPSHOT_FILE, import_snapshot
+
+    lines = [
+        {"source": "gitlab-issue", "external_id": "rtems/rtos/rtems#5776", "title": "withheld", "url": None,
+         "content_sha256": content_hash("x"), "metadata": {}, "chunks": ["the withheld defect"]},
+        {"source": "rtems-docs", "external_id": "b.rst", "title": "B", "url": None,
+         "content_sha256": content_hash("y"), "metadata": {}, "chunks": ["interrupt latency"]},
+    ]
+    with gzip.open(tmp_path / SNAPSHOT_FILE, "wt", encoding="utf-8") as fh:
+        fh.writelines(json.dumps(line) + "\n" for line in lines)
+    import hashlib
+    digest = hashlib.sha256((tmp_path / SNAPSHOT_FILE).read_bytes()).hexdigest()
+    (tmp_path / MANIFEST_FILE).write_text(json.dumps({"sha256": digest}))
+    report = import_snapshot(store, tmp_path)
+    assert report.documents_excluded == 1 and report.documents_added == 1
+
+    (tmp_path / MANIFEST_FILE).write_text(json.dumps({"sha256": "0" * 64}))
+    with pytest.raises(ValueError, match="does not match its manifest"):
+        import_snapshot(store, tmp_path)

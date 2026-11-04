@@ -1,0 +1,49 @@
+{
+  "key": "ANVIL-33",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "CI for the anvil repo: backend pytest + frontend tests on every PR",
+  "labels": [
+    "M1",
+    "agent-claude"
+  ],
+  "epic": "ANVIL-6",
+  "epic_summary": "WS-F Quality gates (Actions build+test on SIS, CodeQL, SonarCloud, SBOM, OSV, Dependabot)",
+  "created": "2026-11-02T22:54:33.841+0530",
+  "updated": "2026-11-03T13:18:58.778+0530",
+  "resolved": "2026-11-03T13:18:58.771+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Due 2026-11-03. AGENTS.md says \"merge after APPROVE and green CI\", but the anvil repo has no PR CI, so reviewers run every suite by hand (4-8 min each).\n\n## Do\n\n* `.github/workflows/ci.yml` on pull_request + push to main: backend job (`uv sync`, `uv run python -m pytest`) with a Postgres+pgvector service container for the DB-backed tests and Docker available for the sandbox integration tests (ubuntu-latest has Docker; tests use small public images); frontend job (`npm ci && npm test`) when `frontend/package.json` exists.\n* Tests needing the live gateway/Jira/GitHub stay opt-in (env flags), never in CI.\n* Cache uv and npm.\n* Required status check on main if the plan allows (private repo: may not; then document).\n\n## Acceptance\n\nGreen run on an open PR; a deliberately failing test turns it red.\n",
+  "comments": [
+    {
+      "created": "2026-11-02T23:14:06.487+0530",
+      "body": "[codex] Started ANVIL-33 on branch `codex/anvil-33-ci`. I’m adding backend pytest CI with a pgvector Postgres service, Docker availability, uv caching, and a conditional frontend npm job with caching.\n"
+    },
+    {
+      "created": "2026-11-02T23:15:08.852+0530",
+      "body": "[codex] Opened PR #17: https://github.com/vishal7pandey/anvil/pull/17. It adds backend pytest CI with a Postgres 17 pgvector service, Docker availability, uv caching, and conditional Node/npm tests with npm caching when the frontend package exists. CI is running on the PR; no local tests were run.\n"
+    },
+    {
+      "created": "2026-11-02T23:22:24.707+0530",
+      "body": "[codex] PR #17 is open and CI is green: https://github.com/vishal7pandey/anvil/pull/17. Backend tests passed against the pgvector/Postgres 17 service; Docker availability passed. Frontend is currently absent, and its conditional job passed with npm steps skipped.\n"
+    },
+    {
+      "created": "2026-11-03T10:30:23.536+0530",
+      "body": "[codex] Opened PR #25 to run the seven live pgvector integration tests in CI by setting ANVIL_TEST_DATABASE_URL to the existing Postgres service, and to fail rather than skip if the database is unreachable. CI will provide the execution evidence; local tests were not run. Review: https://github.com/vishal7pandey/anvil/pull/25\n"
+    },
+    {
+      "created": "2026-11-03T10:31:49.941+0530",
+      "body": "[codex] CI is green on PR #25: backend tests passed (including the live pgvector integration suite) and frontend tests passed. Run: https://github.com/vishal7pandey/anvil/actions/runs/41581275329. Waiting for Claude review and merge before closing ANVIL-33.\n"
+    },
+    {
+      "created": "2026-11-03T10:35:41.027+0530",
+      "body": "[claude] Assigned: **codex**. PR #25 (run the 7 pgvector tests in CI, fail instead of skip) is open. Reviewer: claude. Closes when #25 merges with CI green.\n"
+    },
+    {
+      "created": "2026-11-03T12:58:51.568+0530",
+      "body": "[claude] Owner label moved from codex to claude (codex is out of credits). No work remains: PR #25 is approved and green, and this closes when the owner merges it.\n"
+    }
+  ]
+}

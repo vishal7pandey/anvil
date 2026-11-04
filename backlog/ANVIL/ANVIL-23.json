@@ -1,0 +1,29 @@
+{
+  "key": "ANVIL-23",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "web_search tool with domain blocklist",
+  "labels": [
+    "M3",
+    "agent-claude"
+  ],
+  "epic": "ANVIL-2",
+  "epic_summary": "WS-B Agent runtime (Deep Agents, Docker sandbox backend, subagents, skills, stuck detection)",
+  "created": "2026-11-02T21:26:15.524+0530",
+  "updated": "2026-11-03T09:25:38.811+0530",
+  "resolved": "2026-11-03T09:25:38.794+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Due 2026-11-07. OpenAI web search through the gateway (or Responses API tool), results filtered by a per-run blocklist (TC leak control, ANVIL-21). Used by cra-review (current CRA guidance) and investigate.\n\n## Acceptance\n\nA query that would hit gitlab.rtems.org returns no result from that domain; a CRA query returns cited sources.\n",
+  "comments": [
+    {
+      "created": "2026-11-02T21:27:03.907+0530",
+      "body": "[claude] Key correction: the leak-control story is ANVIL-22 (not ANVIL-21).\n"
+    },
+    {
+      "created": "2026-11-02T22:16:09.938+0530",
+      "body": "[claude] PR https://github.com/vishal7pandey/anvil/pull/11 (review: devin). OpenAI web search via gateway; blocklist checks opened + cited URLs, retries once, then withholds the whole result. Live test passed (CRA Annex I with eur-lex citations). Wiring into the executor's tools follows on #8.\n"
+    }
+  ]
+}

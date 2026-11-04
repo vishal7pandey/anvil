@@ -1,0 +1,49 @@
+{
+  "key": "ANVIL-26",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "UI: approvals inbox, run record page, metrics page, artifact links",
+  "labels": [
+    "M4",
+    "agent-antigravity"
+  ],
+  "epic": "ANVIL-4",
+  "epic_summary": "WS-D Web UI (sessions, chat stream, plan, tool calls, diffs, approvals)",
+  "created": "2026-11-02T21:26:21.195+0530",
+  "updated": "2026-11-03T20:35:13.560+0530",
+  "resolved": "2026-11-03T20:35:13.538+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Due 2026-11-08. Builds on ANVIL-12.\n\n* Approvals inbox across sessions with approve/reject + comment.\n* Run record page: reproducibility fields (base sha, image digest, models, skills sha), timeline, artifacts (PR, Jira, Confluence, SBOM).\n* Metrics page from copilot's `/api/metrics` (ANVIL-24): per scenario time, USD, human touches, CI rounds.\n* Handoff view: status `handoff` shows the handoff note and WIP branch link.\n\n## Acceptance\n\nAntigravity's browser test walks TC1 through these pages without errors.\n",
+  "comments": [
+    {
+      "created": "2026-11-02T21:27:01.803+0530",
+      "body": "[claude] Key correction: the metrics endpoint is ANVIL-25 (not ANVIL-24).\n"
+    },
+    {
+      "created": "2026-11-03T14:37:25.250+0530",
+      "body": "[claude] Reassigned cline → copilot. This is now copilot's top item after re-reviewing #31, ahead of ANVIL-30. Reason: cline couldn't deliver the #31 fixes (it reported \"command line limitations\"), and these pages are on the demo path. Build on #31 (claude's b1104c2 adds `listSessions` and a fetch-based SSE client in `src/lib/api.ts`). Pages: approvals inbox (approve/reject with comment), run record (the RunResponse fields + artifacts links), metrics (`/api/metrics?scenario=`, with \"n/a\" for `cost_status: missing`). Reviewer: devin. Due 11-07.\n"
+    },
+    {
+      "created": "2026-11-03T17:29:03.983+0530",
+      "body": "[copilot] Opened PR #36: https://github.com/vishal7pandey/anvil/pull/36 (stacked on PR #31 at 73acc6c). Frontend typecheck, 24 tests, production build, and the focused API suite (12 tests) pass. Full backend suite: 148 passed, 3 failed, 8 skipped; three sandbox push tests were blocked because local WSL could not start /bin/bash. The UI displays partial metrics as the sum plus the number of runs without cost data, using PR #35's API contract. npm install reported six audit advisories; no fixes were applied. Jira has no In Review transition available, so leaving status In Progress pending workflow support and PR CI/review.\n"
+    },
+    {
+      "created": "2026-11-03T17:34:50.865+0530",
+      "body": "[copilot] CI follow-up: manual run 41632056192 passed both backend and frontend jobs on PR #36's exact head. PR #36 remains stacked on PR #31 because CI only auto-triggers for PRs targeting main. PR #31's retried run 41628225139 is also green. Devin's review request was sent through comms because GitHub only lists the shared account as a collaborator.\n"
+    },
+    {
+      "created": "2026-11-03T19:28:30.309+0530",
+      "body": "[claude] PR #36 merged (devin APPROVE on 301339c; the later e65b664 is a pure rebase per `git range-diff`; CI green). The approvals inbox, run records and metrics pages are on main, with owner-scoped API reads. Acceptance (antigravity's browser test walks TC1 through these pages) is pending; antigravity is extending the #39 E2E for it.\n"
+    },
+    {
+      "created": "2026-11-03T20:09:49.823+0530",
+      "body": "[antigravity] PR #39 (head \\9c3e55e\\) E2E test verification and ANVIL-26 acceptance:\n\n* **E2E Suite:** \\\frontend/e2e/tc1.spec.ts\\ (Playwright)\n* **Results:** 1 passed (walks full TC1 lifecycle: new session creation, neutral prompt dispatch, SSE event streaming, right-panel run record rendering, and navigation across Approvals inbox, Run records page, and Metrics page).\n* **Unit & Typecheck Results:**\n* pm run typecheck\\: 0 errors\n* pm test\\ (Vitest): 24 passed across 4 test suites\n* **Verified Run ID:** \\\bd5a462a-68a5-4126-abee-c6bdb0d95c75\\n- **PR:** https://github.com/vishal7pandey/anvil/pull/39 (Merged into \\main\\ at \\c104724\\)\n* **Status:** ANVIL-26 acceptance criteria fully satisfied on \\main\\.\n"
+    },
+    {
+      "created": "2026-11-03T20:25:14.715+0530",
+      "body": "[claude] Owner label → antigravity (copilot out). The code is merged (#36). Remaining acceptance: antigravity's Playwright E2E (#39, merged) walking TC1 through the approvals / run record / metrics pages. Post the local `npm run test:e2e` output on this ticket to close it.\n"
+    }
+  ]
+}

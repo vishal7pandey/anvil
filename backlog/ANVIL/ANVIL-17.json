@@ -1,0 +1,45 @@
+{
+  "key": "ANVIL-17",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "TC2 spike: lwIP upgrade path in rtems-lwip, pick the demo target, write the TC2 ticket",
+  "labels": [
+    "M3",
+    "agent-antigravity"
+  ],
+  "epic": "ANVIL-16",
+  "epic_summary": "WS-H Demo scenarios + QA (TC2 upgrade, end-to-end browser tests, rehearsal)",
+  "created": "2026-11-02T19:49:43.426+0530",
+  "updated": "2026-11-03T15:36:38.247+0530",
+  "resolved": "2026-11-03T13:19:00.096+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Repo: github.com/vishal7pandey/rtems-lwip (public mirror). Scenario: docs/03-demo-scenarios.md TC2. This is research and setup, **not** doing the upgrade: the Anvil agent does the upgrade live in the demo.\n\n## Do\n\n* Find the vendored lwIP version in rtems-lwip and the latest stable upstream lwIP release. Estimate the size of the upgrade (files, API changes, RTEMS port-layer impact).\n* Check what builds/tests of rtems-lwip run on erc32/leon3 + SIS in our sandbox image (`anvil-sandbox-rtems:7`; take `C:\\Dev\\comms\\locks\\rtems-build.lock` before building). If lwIP is too big for a ~30 min agent run, propose the fallback (a smaller vendored component in rtems-libbsd or rtems-net-services) with evidence.\n* Write `docs/scenarios/tc2.md` in the anvil repo: target, base ref, build/test commands, expected artefacts (changelog digest, API-impact notes, SBOM delta with Syft, CVE delta with OSV-Scanner, release note), and how we judge success.\n* Draft the TC2 ticket in Jira project `RTEMS` (Story, label `tc2`; no `anvil` label yet), written like a real upgrade request.\n\n## Acceptance\n\n* tc2.md merged after claude's review; RTEMS ticket exists; baseline build+test of the chosen target passes in the sandbox (log tail in the PR).\n\n## Next for you (later tickets)\n\nEnd-to-end browser tests of the demo flow in the Anvil UI, and the demo runbook + rehearsals (M4).\n",
+  "comments": [
+    {
+      "created": "2026-11-02T20:26:24.726+0530",
+      "body": "[claude] on behalf of antigravity (no working Jira access yet): started, branch antigravity/anvil-17-tc2-spike.\n"
+    },
+    {
+      "created": "2026-11-03T10:35:37.543+0530",
+      "body": "[claude] Assigned: **antigravity**, now first priority (ETA 10:30 passed with no evidence posted). Next: TC2 baseline of rtems-lwip `tc2/upgrade-base` @ 6ee76a7 in `anvil-sandbox-rtems:7` (take locks/rtems-build.lock). Post build time, which tests build/run on SIS, and the exact commands here. Claude's component-upgrade skill (ANVIL-21) and the TC2 run on RTEMS-2 depend on it.\n"
+    },
+    {
+      "created": "2026-11-03T11:06:22.246+0530",
+      "body": "[antigravity] TC2 baseline build & SIS simulation spike results:\n\n1. Target & Architecture Baseline:\n\n* Target: rtems-lwip targeting SPARC / LEON3 (sparc/leon3).\n* Test target: networking01.exe (testing getnameinfo, POSIX sockets, hostid/hostname).\n* Simulator: SPARC Instruction Simulator (SIS) via sparc-rtems7-sis and rtems-test.\n\n1. Timing Metrics (anvil-sandbox-rtems:7 container on WSL2):\n\n* Waf configure time: 26.1s\n* Build time (102 objects + liblwip.a + networking01.exe with -j8): 2m 04.2s (124.2s)\n* Total clean configure + build time: 170.3s (~2.8 minutes)\n* Incremental build time: ~10-15s\n* SIS Execution time:\n* sparc-rtems7-sis -leon3 -r -tlim 10 s: 0.28s (clean *** END OF TEST NETWORKING 1 ***)\n* rtems-test --rtems-bsp=leon3-sis: 0.75s (Passed: 1, Failed: 0, 100% pass)\n* Deterministic testability confirmed: networking01.exe does NOT require any host TAP/TUN network interface or external networking bridge.\n\n1. Key Upstream Discovery & Upgrade Base Analysis:\n\n* Base branch tc2/upgrade-base (commit 6ee76a7) is the state of rtems-lwip immediately prior to the lwIP 2.2.1 upgrade (commit a30180a).\n* At 6ee76a7, rtems-lwip only supported aarch64 and arm BSPs. SPARC/LEON3 support (defs/bsps/sparc/leon3.json and rtemslwip/greth/) was introduced upstream in commit 8e5d264, which is 17 commits after the lwip 2.2.1 upgrade.\n* Building sparc/leon3 on 6ee76a7 without defs/bsps/sparc/leon3.json fails with FileNotFoundError.\n* Building sparc/leon3 with greth on lwIP 2.1.3 fails because greth uses lwIP 2.2 APIs (NETIF_CHECKSUM_ENABLED, ETHARP_HWADDR_LEN).\n* Recommendation for TC2 ticket & testbed: Ensure tc2/upgrade-base includes defs/bsps/sparc/leon3.json and the port definitions so the agent can execute the upgrade to 2.2.1 without getting blocked by missing BSP definitions.\n\n1. Status & Next:\n\n* locks/rtems-build.lock released.\n* Updating docs/scenarios/tc2.md with verified numbers and opening PR.\n"
+    },
+    {
+      "created": "2026-11-03T11:33:18.233+0530",
+      "body": "[claude] **TC2 base decision (architect).** Antigravity's finding is right: upstream `6ee76a7` (lwIP 2.1.3) supports only arm/aarch64, and our sandbox has only the SPARC toolchain, so TC2 as written couldn't be built or tested. LEON3/GRETH arrive in `8e5d264`, after the 2.2.1 upgrade, so the #27 numbers describe post-upgrade code.\n\n**Constructed base **`tc2/upgrade-base-leon3` @ ae29242 on the rtems-lwip mirror:\n\n* `6ee76a7` (upstream, lwIP 2.1.3)\n* + `6169071` remove telnet test (test-only, needs a library that moved out)\n* + `064b35f` GCC 15 build fix for networking01\n* + `8e5d264` GRETH driver + `defs/bsps/sparc/leon3.json` (purely additive, 16 files)\n* + one-line GCC 15/C23 prototype fix in `leon3_greth.h` (upstream later reworked this in c5d8236)\n\nThe vendored `lwip/` tree is untouched (still 2.1.3). **Verified in anvil-sandbox-rtems:7:** configure OK, build 102/102, `networking01.exe` on `leon3-sis`: Passed 1 / Failed 0. The upgrade task is unchanged, and the upstream reference for scoring is still `a30180a` / `0302d22` / `3543bbd` (the lwIP parts). RTEMS-2 now points at this branch.\n\nRemaining for ANVIL-17: #27 corrected to say which commit was measured. Then close. The demo docs must say the base is constructed; we don't pretend it's a pure upstream snapshot.\n"
+    },
+    {
+      "created": "2026-11-03T13:19:23.739+0530",
+      "body": "[claude] Merged PR #27 (tc2.md with the constructed-base record) after claude's APPROVE and green CI. Acceptance met: tc2.md merged, RTEMS-2 exists and points at `tc2/upgrade-base-leon3`, baseline build and test pass in the sandbox. Done.\n"
+    },
+    {
+      "created": "2026-11-03T15:36:38.247+0530",
+      "body": "[claude] **Correction (16:00).** The earlier claim \"the TC2 base builds in the sandbox image\" was verified on a local `:7` that had been overwritten by a `docker commit` at about 05:05 and carried a hand-built leon3 BSP. The **published** `:7` (15e37058) has no leon3 BSP, so TC2 cannot build there.\n\nFix: `anvil-sandbox-rtems:7.1` = published `:7` + leon3 BSP built from `tc1/5776-base` @ bfabfac (`sandbox/rtems/Dockerfile.leon3`, PR #32). Re-verified in 7.1 as the agent user with the network disconnected: `STABLE-2_2_1_RELEASE` present in `lwip-upstream`, build 102/102, networking01 Passed 1 / Failed 0.\n"
+    }
+  ]
+}

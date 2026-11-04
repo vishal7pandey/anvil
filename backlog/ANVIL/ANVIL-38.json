@@ -1,0 +1,33 @@
+{
+  "key": "ANVIL-38",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Generic bug-replay eval cases: any upstream fix becomes a TC1-style case (base, ticket, withheld set, scorer) from one spec file",
+  "labels": [
+    "M2",
+    "agent-claude"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-03T21:38:54.257+0530",
+  "updated": "2026-11-03T23:58:56.787+0530",
+  "resolved": "2026-11-03T23:58:56.767+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] Owner requirement (2026-11-03): the solution must be generic and scalable, not hardcoded for the demo.\n\n## Today (hardcoded to one bug)\n\n* Base branch `tc1/5776-base` was built by hand on the rtems mirror.\n* `scripts/tc1_dry_run.py` embeds the RTEMS-1 ticket text and `UPSTREAM_FILES`.\n* `scripts/score_tc1.py` (PR #43) hardcodes commit `a62e60b5` and `mutexinit.c`.\n* `anvil/kb/config.py` hardcodes the TC1 withheld issue/MR/commit IDs as constants.\n\n## Target\n\nOne spec file per case, e.g. `cases/rtems-5776.yaml`: repo, upstream issue(s), fix commit(s), withheld IDs (issues, MRs, commit prefixes), ticket title/body (symptoms only, never the fix), and the build/test commands.\n\nA `case` CLI that:\n\n1. creates the base branch on the mirror at the parent of the first fix commit (pre-fix state), verified to build;\n2. creates the Jira ticket from the spec (with the required \"Code base: branch ...\" line);\n3. scores a finished run against the withheld fix (files hit, hunk overlap, regression test present and failing on base / passing on head).\n\nThe KB leak guard reads its withheld set from **all** case files (union), not constants. The dry-run and scorer scripts take `--case`.\n\n## Acceptance\n\n* RTEMS-1 / 5776 expressed as a case spec; existing behaviour unchanged (same base SHA, same exclusions).\n* A second real upstream RTEMS fix added as a case with **no code changes**, base built and ticket created by the CLI.\n* Tests for spec parsing, the exclusion union, and the scorer on fixture diffs.\n",
+  "comments": [
+    {
+      "created": "2026-11-03T22:07:51.181+0530",
+      "body": "[claude] PR #48 (stacked on #47).\n\n* `cases/rtems-5776.toml` + `anvil.cases` (list / show / withheld / build-base / ticket).\n* build-base rebuilds `tc1/5776-base` from the spec with an **identical tree**: `a62e60b5^` + 5 infra files overlaid.\n* The KB guard now takes the union over case files (identical to the old TC1 lists, tested). `tc1_dry_run.py --case`.\n* Open: the case-driven scorer (devin, on #43), a second real case, and enforcing `as_of` in KB search (time-based leak guard).\n"
+    },
+    {
+      "created": "2026-11-03T23:43:26.730+0530",
+      "body": "[claude] Merged #48 (case specs, base builder, KB guard from cases) and #49 (devin: case-driven scorer, `score_tc1.py --case`, `tc1_dry_run.py` scores via the case).\n\nAcceptance status:\n\n* RTEMS-1/5776 as a case spec, with identical base tree and identical exclusions: **done**.\n* Tests for spec, union and scorer: **done**.\n* A second real upstream fix as a case with no code changes: **open**.\n\nAlso open: enforce `as_of` in KB search for eval runs (a time-based leak guard).\n"
+    },
+    {
+      "created": "2026-11-03T23:58:44.847+0530",
+      "body": "[claude] Split the remaining acceptance into tickets of their own:\n\n* **ANVIL-42** (devin): a second real case with no code changes.\n* **ANVIL-43** (claude): enforce `as_of` in KB search.\n\nThe core of this ticket is merged (#48, #49), so I'm closing it.\n"
+    }
+  ]
+}

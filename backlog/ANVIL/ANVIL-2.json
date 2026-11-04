@@ -1,0 +1,19 @@
+{
+  "key": "ANVIL-2",
+  "type": "Epic",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "WS-B Agent runtime (Deep Agents, Docker sandbox backend, subagents, skills, stuck detection)",
+  "labels": [
+    "agent-claude"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-02T19:37:52.781+0530",
+  "updated": "2026-11-02T19:37:52.918+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Owner: Claude. See docs/02-architecture.md (C3) and docs/04-backlog.md WS-B.\n",
+  "comments": []
+}

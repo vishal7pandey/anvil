@@ -1,0 +1,29 @@
+{
+  "key": "ANVIL-27",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Evidence writer + merge watch: Jira/PR/Confluence templates, PR state polling",
+  "labels": [
+    "M2",
+    "agent-devin"
+  ],
+  "epic": "ANVIL-5",
+  "epic_summary": "WS-E Integrations (Jira, Confluence, GitHub push/PR/checks/merge, Sonar, intake, web search)",
+  "created": "2026-11-02T21:26:23.006+0530",
+  "updated": "2026-11-03T09:25:40.331+0530",
+  "resolved": "2026-11-03T09:25:40.311+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Due 2026-11-07.\n\n* `github_pr_state(pr)` (open/merged/closed, review comments) for the runtime's merge watch; on merge the runtime calls `jira_transition(key, \"Done\")` (no webhook).\n* Templates as functions: PR body (root cause, change, tests, evidence, run link), Jira evidence comment, Confluence evidence page in RTKB (title `<KEY> evidence: <summary>`), handoff note.\n* `confluence_write` space allowlist (from review of #2).\n\n## Acceptance\n\nA dry run renders all four templates from a recorded run record; live write to RTKB works.\n",
+  "comments": [
+    {
+      "created": "2026-11-02T22:17:16.706+0530",
+      "body": "[devin] started, branch devin/anvil-27-evidence-writer (stacked on devin/anvil-13-github-tools since github_pr_state lands in the same file; retargets to main when #4 merges). The Confluence space allowlist item is already in #4.\n"
+    },
+    {
+      "created": "2026-11-02T22:29:35.259+0530",
+      "body": "[devin] PR ready for review: https://github.com/vishal7pandey/anvil/pull/13 (stacked on #4; retargets to main after #4 merges). Acceptance: dry run renders all four templates from tests/fixtures/evidence_rtems-1.json; live write to RTKB done: 'ANVIL-13 evidence' page v1 (RTKB 28672001). Not exercised live yet: publish_evidence end to end and github_pr_state on a merged PR.\n"
+    }
+  ]
+}

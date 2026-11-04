@@ -1,0 +1,33 @@
+{
+  "key": "ANVIL-31",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "TC4 spec + seed RTKB knowledge space + RTEMS ticket",
+  "labels": [
+    "M3",
+    "agent-antigravity"
+  ],
+  "epic": "ANVIL-7",
+  "epic_summary": "WS-G Knowledge base (TC4) + TC1 eval harness",
+  "created": "2026-11-02T21:26:32.957+0530",
+  "updated": "2026-11-03T10:35:33.126+0530",
+  "resolved": "2026-11-03T10:35:33.106+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Due 2026-11-08. Scenario in docs/03-demo-scenarios.md TC4 (event/interrupt storm investigation).\n\n* `docs/scenarios/tc4.md`: the incident, the knowledge sources, the expected investigation path, where the SME must step in.\n* Seed Confluence RTKB with 8-15 pages marked \"(synthetic)\": runbooks, past incident notes, meeting notes, design notes that make the investigation possible but not trivial.\n* Add RTKB as a KB source in ANVIL-14.\n* RTEMS ticket text for the incident (no `anvil` label).\n\n## Acceptance\n\nkb_search answers the scenario's three key questions with RTKB citations.\n",
+  "comments": [
+    {
+      "created": "2026-11-03T09:28:22.594+0530",
+      "body": "[antigravity] PR #16 merged to main (c069b31) containing docs/scenarios/tc4.md. Next steps: seed 10 synthetic pages into RTKB space, add Confluence as a KB source, index into PostgreSQL, and verify kb_search.\n"
+    },
+    {
+      "created": "2026-11-03T10:11:17.372+0530",
+      "body": "[antigravity] PR #24 opened (https://github.com/vishal7pandey/anvil/pull/24) completing all remaining ANVIL-31 deliverables:\n\n* Seeded 10 synthetic pages into Confluence space RTKB (Devin's ANVIL-13 evidence untouched).\n* Added Confluence knowledge source loader in anvil.kb.sources and ingest-confluence sub-command in anvil.kb.cli.\n* Ingested RTKB into live pgvector KB (502 documents, 2721 chunks).\n* Ran evaluation (scripts/evaluate_tc4_acceptance.py): 3/3 PASS (100.0% acceptance), all 3 scenario queries returned target synthetic Confluence pages at Rank 1.\n* Q1 (Queue Sizing): [synthetic] Architecture Note: Payload Telemetry Flow and Queue Specifications (Rank 1)\n* Q2 (Look-alike Discrimination): [synthetic] Post-Mortem: 2025 Payload Guidance Timing Overrun Incident (Rank 1)\n* Q3 (Triage Runbook): [synthetic] Runbook: Real-Time Deadline Overrun & Directive Failure Triage (Rank 1)\n* Unit tests: 6/6 passed in tests/kb/test_sources.py.\n"
+    },
+    {
+      "created": "2026-11-03T10:35:31.928+0530",
+      "body": "[claude] Closing. All deliverables are in: spec (PR #16); 10 [synthetic] RTKB pages + Confluence KB source (PR #24, merged); acceptance independently rerun by claude, 3/3 PASS at rank 1 (502 docs / 2721 chunks). The RTEMS tickets were created from tc4.md section 6: RTEMS-5 (run 1 incident) and RTEMS-6 (run 2 self-learning follow-up), no `anvil` label. The spec calls them RTEMS-101/103; the demo uses RTEMS-5/6. Follow-up moved to ANVIL-32: the reset script must delete agent-written RTKB pages between rehearsals, but keep run 1's post-mortem for run 2.\n"
+    }
+  ]
+}

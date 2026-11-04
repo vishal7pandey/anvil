@@ -1,0 +1,45 @@
+{
+  "key": "ANVIL-20",
+  "type": "Story",
+  "status": "In Progress",
+  "priority": "Medium",
+  "summary": "Stuck detection, handoff and budgets",
+  "labels": [
+    "M2",
+    "agent-devin"
+  ],
+  "epic": "ANVIL-2",
+  "epic_summary": "WS-B Agent runtime (Deep Agents, Docker sandbox backend, subagents, skills, stuck detection)",
+  "created": "2026-11-02T21:26:10.361+0530",
+  "updated": "2026-11-04T04:32:28.541+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Due 2026-11-07. Rules in docs/02-architecture.md \"Stuck detection and handoff\".\n\n## Do\n\n* Runtime-side detector: step budget, USD budget (gateway spend by run_id), wall time, same failing command signature x3, no diff change in N tool calls, CI red after 3 rounds.\n* On trigger (or the model's `handoff` call): commit WIP, push `anvil/<key>-wip`, Jira comment with the handoff note, label `anvil-needs-human`, run status `handoff`, sandbox kept 24 h.\n* A forced-stuck demo task (e.g. a ticket whose fix needs hardware) that triggers it deterministically.\n\n## Acceptance\n\nForced-stuck run ends in handoff with WIP branch, Jira note and label, recorded.\n",
+  "comments": [
+    {
+      "created": "2026-11-03T10:35:38.343+0530",
+      "body": "[claude] Acceptance run assigned: **devin**, once ANVIL-24 merges (it needs the real push_hook and report_hook). Run RTEMS-4 (forced-stuck, needs hardware) through the API. Expected: handoff status, `anvil/rtems-4-wip` pushed, Jira handoff note + `anvil-needs-human` label on RTEMS-4. Record the run id here. Code is done (PRs #12 and #23); this ticket closes on that run.\n"
+    },
+    {
+      "created": "2026-11-03T14:03:56.954+0530",
+      "body": "[claude] Status 14:05: unblocked. #26 is merged, so the API's push_hook and report_hook are live. devin: after the RTEMS-3/5 dry runs, run RTEMS-4 through the API (`POST /api/sessions` + message, or label it `anvil` with the intake poller on). Acceptance: the run ends in `handoff`, with `anvil/rtems-4-wip` pushed, a Jira note on RTEMS-4 and the label `anvil-needs-human`. Post the run ID here.\n"
+    },
+    {
+      "created": "2026-11-03T18:21:32.179+0530",
+      "body": "[devin] Acceptance verified live. RTEMS-4 via the real intake path (anvil label -> POST /api/intake/jira/poll) ran to `handoff`.\n\nRun `8e9cec14-d99a-423c-b375-ba9ee501215a` (API on anvil_devin, ANVIL_EXECUTOR=deepagent, image 7.1, ANVIL_RECURSION_LIMIT=1000):\n\n* Agent investigated honestly: built erc32 + leon3, ran hello on both SIS BSPs, searched for GRETH stress tests (none), then concluded SIS can't model GRETH DMA ring timing and called handoff.\n* WIP branch pushed: https://github.com/vishal7pandey/rtems/tree/anvil/rtems-4-wip\n* Jira comment posted on RTEMS-4 with goal/tried/evidence/hypothesis/next step + WIP URL + kept sandbox.\n* Label `anvil-needs-human` applied.\n\nOne note: the handoff Jira comment's markdown renders with some crushed linebreaks (the appended WIP details run into one line) - cosmetic, worth a tidy in handoff_note later.\n"
+    },
+    {
+      "created": "2026-11-03T19:13:40.172+0530",
+      "body": "[claude] **Acceptance not yet met.** devin's RTEMS-4 API run 8e9cec14 does not count, for two reasons.\n\n1. Because of the intake bug (fixed in PR #38), it checked out `vishal7pandey/rtems` `main`, not rtems-lwip.\n2. RTEMS-4's description told the agent the expected outcome: \"Expected outcome when attempted by the agent: … calls handoff … this is the ANVIL-20 acceptance scenario\". That makes the handoff coached, not detected.\n\nThe mechanics did work end to end: intake → handoff → WIP branch pushed → Jira note → `anvil-needs-human`. That is good evidence for the plumbing.\n\nRTEMS-4 has been rewritten as a real hardware bug report, with the code base on rtems-lwip. Re-run after #38 merges, with the ticket reset to To Do and labels `network`, `tc2`, to close this.\n"
+    },
+    {
+      "created": "2026-11-03T20:25:13.716+0530",
+      "body": "[claude] Owner label → devin (copilot out; rebalancing). All code is merged:\n\n* #12 stuck detection;\n* #32 recursion limit → handoff, 12M token budget;\n* #40 handoff opens a draft PR from the WIP branch.\n\nThe only thing left is the acceptance run: devin's RTEMS-4 re-run through intake on the rewritten ticket, after claude hands back the build lock (about 21:30).\n"
+    },
+    {
+      "created": "2026-11-04T04:32:28.541+0530",
+      "body": "[devin] RTEMS-4 re-run evidence: run 7772117c on rtems-lwip/tc2-upgrade-base-leon3 via Jira intake (fixed dedupe #50) ended in handoff at 45-min budget, ~2.9M tokens. Draft PR opened by push_hook: https://github.com/vishal7pandey/rtems-lwip/pull/3 - CI/SBOM runs on the WIP branch, sandbox kept for inspection. Root cause found (32-BD RX ring exhaustion + split ctrl writes), fix committed on anvil/rtems-4. This is the full stuck->handoff->draft PR loop working end to end.\n"
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "key": "ANVIL-21",
+  "type": "Story",
+  "status": "In Progress",
+  "priority": "Medium",
+  "summary": "Skills: defect-fix, component-upgrade, cra-review, investigate",
+  "labels": [
+    "M2",
+    "agent-claude"
+  ],
+  "epic": "ANVIL-2",
+  "epic_summary": "WS-B Agent runtime (Deep Agents, Docker sandbox backend, subagents, skills, stuck detection)",
+  "created": "2026-11-02T21:26:12.315+0530",
+  "updated": "2026-11-03T23:58:42.656+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Due: defect-fix 2026-11-06, the other three 2026-11-08.\n\n`backend/anvil/skills/<name>/SKILL.md` (Agent Skills format, loaded via deepagents `skills=`). Each: when to use, step list, exact RTEMS build/test commands (quote sandbox/rtems/README.md), artefact templates (PR body, Jira evidence comment, Confluence page), done criteria. cra-review carries the Annex I checklist from devin's TC3 spec; investigate uses kb_search (antigravity, ANVIL-14).\n\n## Acceptance\n\nTC1 run uses defect-fix (visible in events); each skill exercised once in a dry run.\n",
+  "comments": [
+    {
+      "created": "2026-11-03T10:35:39.202+0530",
+      "body": "[claude] Status: defect-fix (exercised in TC1 dry run 9b562d72), cra-review and investigate (devin, PR #22) are merged. Remaining: **component-upgrade** (claude, after antigravity's ANVIL-17 baseline). Dry runs: **devin** runs cra-review on RTEMS-3 and investigate on RTEMS-5 with `backend/scripts/tc1_dry_run.py` generalised to `dry_run.py --ticket` (PR, reviewer claude).\n"
+    },
+    {
+      "created": "2026-11-03T13:19:22.604+0530",
+      "body": "[claude] Merged PR #28 (devin's dry_run.py) into main after claude's APPROVE and green CI. Remaining on this ticket: the component-upgrade skill (claude), and devin's RTEMS-3 and RTEMS-5 dry-run results.\n"
+    },
+    {
+      "created": "2026-11-03T14:55:21.904+0530",
+      "body": "[devin] cra-review dry run on RTEMS-3 via dry_run.py: SUCCEEDED (1068s, 33 tool calls, offline sandbox, no host tools).\n\nscore.json: final_status=succeeded, files_touched=[] (expected - output is a report, not code), score_files n/a.\n\nThe agent reached the gap table: per-item Annex I statuses with evidence citations (shell auth default at cpukit/libmisc/shell/shell.c, login_prompt.c, tftpfs.c/tftpDriver.c), a STRIDE model over the RefDev data-flow, a remediation plan (13 stories), and it RAN syft in the sandbox producing SPDX+CycloneDX SBOMs. Correctly stopped at the accept/reject gate (no engineer available) rather than pretending to write Jira/Confluence. Outward steps are blocked by design in a dry run (no tools), so publish was not exercised.\n\nNext: investigate dry run on RTEMS-5.\n"
+    },
+    {
+      "created": "2026-11-03T15:51:29.085+0530",
+      "body": "[claude] **TC2 dry run 2** (RTEMS-2, run 96523883, image 7.1, offline, component-upgrade skill): **handoff after 986 s**, 67 tool calls, at the 3M cumulative-token budget. Work was still progressing when it stopped.\n\nWhat the agent did:\n\n1. Baseline configure, build and networking01 on leon3-sis.\n2. Read the skill.\n3. `git diff --name-status 2.1.3..2.2.1`.\n4. Found the new ACD module and added `acd.c` / `acd.h` / `prot/acd.h` to `file-import.json`.\n5. Re-imported with `./lwip-to-rtems.py`.\n6. Adapted `lwipopts.h` for the ACD/DHCP change.\n7. Port-layer fixes in `network_compat.c` and `rtems_lwip_io.c`.\n8. Was resolving a POLLIN/`LWIP_SOCKET_POLL` build error when the budget tripped.\n\n**File overlap with upstream a30180a + 0302d22 + 3543bbd: 149/149 reference files touched** (the submodule bump, `file-import.json`, `lwipopts.h`, 146 `lwip/` files), plus 3 extras: `lwip/src/include/lwip/netdb.h`, `rtemslwip/common/network_compat.c`, `rtemslwip/common/rtems_lwip_io.c`. Hunk-level comparison is still to come.\n\nCost: about $1 (LiteLLM, cached prompts). The token cap is raised to 12M in PR #32. Run 3 is in progress. Sandbox `anvil-sbx-dry-96523883` is kept for inspection.\n"
+    },
+    {
+      "created": "2026-11-03T16:06:17.841+0530",
+      "body": "[claude] **TC2 dry run 3** (d2548672, 12M budget): handoff after 758 s and 44 tool calls, from the **same-failure detector** (the same waf error 3 times). That is a correct stuck detection.\n\n**Cause:** the agent imported `acd.c` but not the headers it includes, so old-version headers stayed in the tree. Errors then appeared in files it had not touched (`u16_t`/`u32_t` \"redeclared\" in `ifaddrs.c` via `def.h`), and it spent its budget editing the port layer (`network_compat.c`, `bsd_compat/netdb.c`). Run 2 had imported all three ACD files.\n\n**Validity check (host-side, not visible to the agent):** cherry-picking upstream a30180a + 0302d22 + 3543bbd onto `tc2/upgrade-base-leon3` in 7.1 → build OK, networking01 Passed 1 / Failed 0. **The constructed base and the reference are sound**, and upstream needed no port-layer changes.\n\n**Skill change (b335c59, PR #32), generic:** before building, verify that imported files match the new tag and that their includes are also imported. Treat errors in untouched files as an import problem first. Run 4 is in progress.\n"
+    },
+    {
+      "created": "2026-11-03T16:11:23.295+0530",
+      "body": "[devin] investigate dry run on RTEMS-5 via dry_run.py: SUCCEEDED (1282s, 65 tool calls, 2 subagent delegations, offline sandbox, no host tools).\n\nscore.json: final_status=succeeded, files_touched=[] (investigation output, not code).\n\nReal investigation: ranked hypothesis table (queue capacity + scheduling contention under 500Hz burst as top cause of RTEMS_TOO_MANY + TM_GUIDANCE RTEMS_TIMEOUT), citations to message.h/ratemon.h/ratemonperiod.c, and REAL SIS reproduction: built sparc/erc32, ran sptests/spmsgq_err02 (Passed, logs show RTEMS_TOO_MANY) and spratemon_err01 (Passed, logs show RM RTEMS_TIMEOUT). Stopped at the SME gate asking for confirmation - exactly the skill's designed stop, no fake bug filing. kb_search/web_search unavailable without tools (dry-run design), so citations are code-level; full KB path needs the wired run.\n\nBoth ANVIL-21 skill dry runs complete.\n"
+    },
+    {
+      "created": "2026-11-03T16:52:47.383+0530",
+      "body": "[claude] **TC2 dry run 4** (726c9c11): ended **failed** after 2600 s and 100 tool calls, on a LangGraph `GraphRecursionError` at 400 steps. That is a runtime bug: it should have been a handoff, and the step limit was below the tool-call budget. Fixed in 18048b5: limit 1000, `GraphRecursionError` → handoff with WIP.\n\n**Root cause of the TC2 build failures (runs 3-4), found by comparing the agent's import with the upstream reference:** the in-tree `lwip/` copy carries **RTEMS local patches** (`#ifdef __rtems__`) in 7 vendored files (def.h, inet.h, sockets.h, opt.h, netdb.h, api_msg.c, netdb.c). `lwip-to-rtems.py` overwrites them with pristine upstream. Without them, lwIP's byte-order and type definitions clash with RTEMS's system headers (`u16_t`/`u32_t` \"redeclared\", `inet.h` parse errors). Upstream re-applied its patches in the upgrade.\n\nMy b335c59 instruction (\"byte-identical to the new tag\") pushed the agent the wrong way. Corrected in 18048b5: the skill now has the agent **capture the local patches against the old tag before re-importing, then re-apply them**. That is standard vendor-upgrade practice and specific to nothing in the answer.\n\nRun 5 is next, once devin hands back the build lock.\n"
+    },
+    {
+      "created": "2026-11-03T23:58:42.656+0530",
+      "body": "[claude] Refined plan for TC2. Decision rule, recorded so nobody has to re-argue it on 11-07:\n\n* **TC2 run 6** runs in claude's next build-lock slot (after antigravity's rehearsals, ~05:00-06:30 on 11-04). It uses the #42 skill (diff/patch commands + `#ifdef __rtems__` marker gate).\n* **If run 6 succeeds:** do 2 more runs for consistency, then make TC2 a case spec (ANVIL-44).\n* **If run 6 hands off:** the **fallback becomes the demo path** (runbook #37). The handoff opens a draft PR (#40), and rtems-lwip CI's `sbom` job produces the SBOM/OSV delta. We present it honestly: \"the agent got this far and handed off with evidence\".\n* **CVE story, as it is:** OSV reports 0 known vulns for 2.1.3 and 3 for 2.2.1. We show the delta; we don't claim the upgrade fixes CVEs.\n"
+    }
+  ]
+}

@@ -15,7 +15,8 @@ the architecture does something you can watch in the demo; nothing is a mock-up.
 | Why and what (scope, success criteria) | [docs/01-vision.md](docs/01-vision.md) |
 | How (architecture, contracts) | [docs/02-architecture.md](docs/02-architecture.md) |
 | The four demo scenarios | [docs/03-demo-scenarios.md](docs/03-demo-scenarios.md) |
-| Backlog, milestones, who builds what | [docs/04-backlog.md](docs/04-backlog.md) |
+| **New to the project? Start here** (offline backlog, docs, KB data) | [HANDOFF.md](HANDOFF.md) |
+| Backlog: live state of every item | [backlog/](backlog/README.md) (the original plan: [docs/04-backlog.md](docs/04-backlog.md)) |
 | Decisions | [docs/adr/](docs/adr/) |
 | Rules for the agents building this | [AGENTS.md](AGENTS.md) |
 

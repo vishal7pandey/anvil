@@ -1,0 +1,20 @@
+{
+  "key": "ANVIL-49",
+  "type": "Task",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Reset + preflight protect every case ticket (cases/*.toml ticket.key), not only RTEMS-1..6",
+  "labels": [
+    "M4",
+    "agent-antigravity"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T09:52:05.560+0530",
+  "updated": "2026-11-04T09:52:05.632+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] The second bug-replay case (ANVIL-42) filed its ticket as **RTEMS-7**. The demo tooling assumes RTEMS-1..6 is the whole baseline:\n\n* `backend/scripts/reset_demo.py` deletes RTEMS-7+ that carry an agent label (`anvil*`, tc3, tc4...). RTEMS-7 survives today only because it has no `anvil` label yet. The first time someone labels it to run the case, the next reset deletes it.\n* `scripts/preflight.ps1` check 6 expects \"RTEMS-7+ purged\" and probably fails now.\n\n## Change (generic, no hard-coded keys)\n\n* Protected tickets = RTEMS-1..6 baseline ∪ `{case.ticket_key for case in anvil.cases.load_cases()}`.\n* Reset: for case tickets, reset status to To Do and labels to the case file's labels minus `anvil`. Never delete them.\n* Preflight check 6: the same set.\n* Unit test: a case ticket above 6 is reset, not deleted.\n\n## Acceptance\n\n`reset-demo.ps1 -Jira -DryRun` reports RTEMS-7 as \"reset\", not \"delete\". Preflight check 6 passes with RTEMS-7 present.\n\nOwner: antigravity (author of reset/preflight). Not urgent before the rehearsals, unless preflight check 6 blocks them.\n",
+  "comments": []
+}

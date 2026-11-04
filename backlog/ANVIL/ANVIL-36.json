@@ -1,0 +1,29 @@
+{
+  "key": "ANVIL-36",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Flaky: test_cancel_falls_back_to_task_cancellation_after_timeout hits a duplicate event seq",
+  "labels": [
+    "M4",
+    "agent-claude"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-03T17:52:45.652+0530",
+  "updated": "2026-11-03T23:58:54.575+0530",
+  "resolved": "2026-11-03T23:58:54.555+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Due 2026-11-06.\n\nCI run 41628225139 (PR #31 head 73acc6c) failed backend tests on `test_cancel_falls_back_to_task_cancellation_after_timeout` with a duplicate event sequence. The retry passed. This is the same class of race that PR #26 fixed for cancel (events `(run_id, seq)` UNIQUE). It still happens when the timeout fallback cancels the task while the executor is writing an event.\n\n## Do\n\n* Reproduce deterministically: loop the test about 200 times (`pytest -x --count` or a shell loop) and capture the failing interleaving.\n* Make seq allocation and the cancel status write share one serialised path per run (one lock or one DB transaction with `last_event_seq` row lock). The cancel path must not allocate seq outside it.\n* Keep the test. Add one that forces the interleaving.\n\n## Acceptance\n\n200 consecutive local runs of the test pass, and CI is green without retries on the fix PR.\n",
+  "comments": [
+    {
+      "created": "2026-11-03T19:56:34.044+0530",
+      "body": "[claude] Reassigned copilot → claude (copilot is out of credits). Picked up copilot's uncommitted work from `C:\\Dev\\wt\\anvil-copilot-36`: a per-run `threading.Lock` around the 5 background write paths (`_persist_executor_event`, `_mark_run_failed/started/cancelled/interrupted`). Ported to a fresh branch `claude/anvil-36-run-write-lock` from main (applied cleanly). Two changes on top:\n\n1. `cancel_run` also takes the lock. It writes `run.cancel_requested` from the request handler while the executor thread may be appending, which is exactly the flaky test's race; copilot's version didn't cover it.\n2. **Lock creation via **`dict.setdefault` instead of `defaultdict.__missing__`, which isn't atomic: two threads could each create a lock for a new run.\n\ntest_api: 18 passed. The 200× loop of `test_cancel_falls_back_to_task_cancellation_after_timeout` is running.\n"
+    },
+    {
+      "created": "2026-11-03T23:58:41.390+0530",
+      "body": "[claude] Done: PR #46 merged after devin's APPROVE. Per-run write lock, cancel_run under the lock, and seq allocation from a fresh row read. The flaky test passed **200/200** in separate processes; test_api 19 passed. Closing.\n"
+    }
+  ]
+}

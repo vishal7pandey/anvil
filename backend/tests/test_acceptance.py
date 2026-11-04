@@ -131,6 +131,28 @@ def test_old_code_hidden_in_the_marker_arm_fails(project):  # marker-arm inversi
     assert vmu(project, "--allow-changed-patches", "src/a.c")[0] == 0  # declared by the case
 
 
+def test_a_comment_in_a_marker_arm_is_not_code(project):  # TC2 run 8: one added comment line
+    write(project / "vend/src/a.c", "int a = 2;" + chr(10))
+    write(project / "vend/src/b.h", "#define B 1" + chr(10) + "#ifdef __rtems__" + chr(10)
+          + "/* use the system definition */" + chr(10) + "#define RTEMS 1" + chr(10) + "#endif" + chr(10))
+    assert vmu(project)[0] == 0
+
+
+@pytest.mark.parametrize("arm,passes", [
+    ("/* a multi-line" + chr(10) + "   comment */", True),
+    ("// a line comment", True),
+    ("int a = 1; /* */", False),                 # devin: code with a trailing comment is code
+    ("/* */ int a = 1; /* */", False),           # devin: code between two comments is code
+    ("*p = f();", False),                        # devin: a statement starting with * is code
+    ('const char *s = "/* not a comment */";', False),  # comment markers inside a string are text
+])
+def test_only_comments_are_ignored_in_marker_arms(project, arm, passes):
+    write(project / "vend/src/a.c", "int a = 2;" + chr(10))
+    write(project / "vend/src/b.h", "#define B 1" + chr(10) + "#ifdef __rtems__" + chr(10) + arm + chr(10)
+          + "#define RTEMS 1" + chr(10) + "#endif" + chr(10))
+    assert (vmu(project)[0] == 0) is passes
+
+
 def test_submodule_not_at_tag_fails(project):
     write(project / "vend/src/a.c", "int a = 2;\n")
     git("checkout", "-q", "V1", cwd=project / "upstream")

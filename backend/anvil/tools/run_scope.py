@@ -10,6 +10,7 @@ text, PR number). Reads that are not tied to the run (jira_get, jira_search, con
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from anvil.tools import git_push as git_push_module
@@ -46,14 +47,28 @@ def run_tools(run: dict[str, Any], sandbox: Any) -> list[Any]:
         (or return the one already open). Call git_push first. Title must start with the Jira key."""
         return github.github_open_pr(repo, branch, title, body, base=base, draft=draft)
 
+    def _stop() -> str | None:
+        """Why a waiting tool must stop now: the run was cancelled, or its time budget ended (ANVIL-76)."""
+        event = getattr(sandbox, "stop_requested", None)
+        if event is not None and event.is_set():
+            return "cancelled"
+        deadline = getattr(sandbox, "deadline", None)
+        if deadline is not None and time.monotonic() >= deadline:
+            return "budget"
+        return None
+
+    def _budgeted(wait_seconds: int) -> int:
+        deadline = getattr(sandbox, "deadline", None)
+        return wait_seconds if deadline is None else max(0, min(wait_seconds, int(deadline - time.monotonic())))
+
     def github_checks(pr: int, wait_seconds: int = 900, poll_seconds: int = 20) -> dict[str, Any]:
         """Wait (up to wait_seconds) for the CI checks on your PR to finish.
 
         Returns state success|failure|pending|none with every check, and log tails for failed jobs.
         `none` means no CI ran: that is not a pass.
         """
-        return github.github_checks(repo, pr, wait_seconds=wait_seconds, poll_seconds=poll_seconds,
-                                    default_required=required)
+        return github.github_checks(repo, pr, wait_seconds=_budgeted(wait_seconds), poll_seconds=poll_seconds,
+                                    default_required=required, should_stop=_stop)
 
     def github_code_scanning_alerts(pr: int | None = None) -> list[dict[str, Any]]:
         """Open code-scanning alerts (CodeQL, cppcheck, ...) on your PR, to fix before review; without a
@@ -64,7 +79,8 @@ def run_tools(run: dict[str, Any], sandbox: Any) -> list[Any]:
 
     def github_pr_state(pr: int, wait_seconds: int = 0, poll_seconds: int = 30) -> dict[str, Any]:
         """Your PR's state (open|merged|closed) with review and issue comments; optionally wait for a change."""
-        return github.github_pr_state(repo, pr, wait_seconds=wait_seconds, poll_seconds=poll_seconds)
+        return github.github_pr_state(repo, pr, wait_seconds=_budgeted(wait_seconds), poll_seconds=poll_seconds,
+                                      should_stop=_stop)
 
     def github_merge(pr: int, method: str = "squash") -> dict[str, Any]:
         """Merge your PR (only when the run's merge policy allows it; always needs approval)."""

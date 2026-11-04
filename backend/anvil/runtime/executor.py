@@ -153,6 +153,7 @@ class DeepAgentExecutor:
         self.agent_factory = agent_factory
         self._docker = docker_client
         self._cancel: dict[str, asyncio.Event] = {}
+        self._live: dict[str, Any] = {}  # run_id -> sandbox while the agent streams (ANVIL-76)
         self._stack: contextlib.AsyncExitStack | None = None
         self._checkpointer: Any = None
         self._store: Any = None
@@ -313,12 +314,17 @@ class DeepAgentExecutor:
 
     async def cancel(self, run: dict[str, Any]) -> None:
         self._cancel.setdefault(run["run_id"], asyncio.Event()).set()
+        # A tool may be sleeping in a host thread (CI polling): tell it too, not only the stream loop.
+        live = self._live.get(run["run_id"])
+        if live is not None and hasattr(live, "stop_requested"):
+            live.stop_requested.set()
 
     # -- streaming -------------------------------------------------------------------------
 
     async def _stream(self, run: dict[str, Any], sandbox: DockerSandbox, mapper: EventMapper,
                       graph_input: Any) -> AsyncIterator[dict[str, Any]]:
         cancel = self._cancel.setdefault(run["run_id"], asyncio.Event())
+        self._live[run["run_id"]] = sandbox
         handoffs: list[dict[str, str]] = []
         # Commands run in the run's repo checkout, for the agent and its subagents alike.
         if hasattr(sandbox, "set_workdir"):
@@ -370,6 +376,7 @@ class DeepAgentExecutor:
             return
         finally:
             self._cancel.pop(run["run_id"], None)
+            self._live.pop(run["run_id"], None)
             sandbox.deadline = None
         if stuck or handoffs:
             note = handoffs[-1] if handoffs else self.auto_note(run, stuck or "", recent)

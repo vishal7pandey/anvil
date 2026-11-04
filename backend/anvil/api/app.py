@@ -877,11 +877,13 @@ async def poll_jira_intake(app: FastAPI) -> list[UUID]:
 
     started: list[UUID] = []
     user_id = app.state.settings.demo_user_id
+    first_exc: Exception | None = None
     for candidates_fn, transition_fn, source in sources:
         try:
             candidates = await run_in_threadpool(candidates_fn, max_results=20)
         except _jira_expected_errors() as exc:
             logger.error("%s intake poll failed (%s)", source, type(exc).__name__)
+            first_exc = first_exc or exc
             continue
         for issue in candidates:
             try:
@@ -904,6 +906,10 @@ async def poll_jira_intake(app: FastAPI) -> list[UUID]:
             if should_start:
                 _schedule_run(app, run_id, message)
                 started.append(run_id)
+    # A failed source still lets the others run, but the loop must see the failure so its backoff
+    # fires (ANVIL-80) — swallowing it here meant the backoff never engaged.
+    if first_exc is not None:
+        raise first_exc
     return started
 
 

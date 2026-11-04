@@ -70,3 +70,43 @@ def test_loop_starts_with_only_a_tickets_dir(tmp_path, monkeypatch):
 
     with TestClient(app):
         assert app.state.intake_task is not None
+
+
+def test_poll_reports_source_failures_so_the_loop_can_back_off(tmp_path, monkeypatch):
+    """A failing source must surface to the loop (its backoff), while other sources still run."""
+    import asyncio
+    import json
+    from pydantic import SecretStr
+    from sqlalchemy import select
+    from test_api import SuccessfulExecutor
+
+    from anvil.api.app import create_app, poll_jira_intake
+    from anvil.api.config import Settings
+    from anvil.api.models import Base, Run
+
+    for var in ("ATLASSIAN_SITE", "ATLASSIAN_EMAIL", "ATLASSIAN_API_TOKEN"):
+        monkeypatch.delenv(var, raising=False)
+    tickets = tmp_path / "tickets"
+    (tickets / "todo").mkdir(parents=True)
+    (tickets / "todo" / "D-1.json").write_text(json.dumps({
+        "key": "D-1", "type": "Task", "status": "To Do", "summary": "s",
+        "description": f"Code base: branch `main` of {tmp_path / 'r'}",
+        "labels": ["anvil"], "comments": [], "created": "2026-01-01T00:00:00+00:00"}))
+    (tmp_path / "r" / ".git").mkdir(parents=True)
+
+    def bad_candidates(max_results=20):
+        raise ValueError("jira is down")
+
+    app = create_app(
+        settings=Settings(demo_token=SecretStr("t"), demo_user_id="u", demo_user_email="u@x"),
+        database_url=f"sqlite:///{(tmp_path / 'c.db').as_posix()}",
+        executor=SuccessfulExecutor(), start_intake_loop=False, tickets_dir=str(tickets),
+        jira_candidates=bad_candidates, jira_transition=lambda *a: None)
+    Base.metadata.create_all(app.state.engine)
+
+    with pytest.raises(ValueError, match="jira is down"):
+        asyncio.run(poll_jira_intake(app))
+    # the healthy source still ran: its ticket moved to in-progress/ and a local run was made
+    assert (tickets / "in-progress" / "D-1.json").exists()
+    with app.state.session_factory() as db:
+        assert db.scalars(select(Run).where(Run.trigger == "local:D-1")).one()

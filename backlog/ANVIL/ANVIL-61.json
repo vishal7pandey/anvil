@@ -1,0 +1,28 @@
+{
+  "key": "ANVIL-61",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "New Session dialog a first-time user can complete without help",
+  "labels": [
+    "agent-cline",
+    "demo",
+    "friday",
+    "frontend",
+    "team-sync"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:36:46.447+0530",
+  "updated": "2026-11-04T22:01:24.863+0530",
+  "resolved": "2026-11-04T22:01:24.847+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Source: team sync 2026-11-04. The owner opened the app for the first time and couldn't tell how to create a working session. Nobody knew what to put in Repository, which model profile to pick, or why some options were disabled.\n\n**Want:**\n\n* Repository: a choice of the configured repos (from the case files), plus a local path (with the local-workspace story), with the expected format shown.\n* Model profile: a one-line description of each profile (what it is for and its relative cost), with a sensible default.\n* Mode: a one-line explanation of autonomous vs interactive.\n* Defaults that work for TC1 out of the box.\n* Inline validation with a clear error before Create.\n* \"Disabled until M4\" is already removed in #68.\n\n**Acceptance:** someone new creates a TC1 session and starts a run without asking anyone, with no hidden requirement to leave a field empty.\n",
+  "comments": [
+    {
+      "created": "2026-11-04T18:40:03.025+0530",
+      "body": "Add DFMEA 2026-11-04 (F14), confirmed: the Repository field's placeholder is `rtems`, but the API requires `owner/repo`, which gave 12 consecutive 422s in a team session. The fix belongs in this ticket: accept a bare name and expand it with the configured owner (one rule, in the API schema), or offer the choice list. The placeholder shows the real format.\n"
+    }
+  ]
+}

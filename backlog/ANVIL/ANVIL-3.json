@@ -1,7 +1,7 @@
 {
   "key": "ANVIL-3",
   "type": "Epic",
-  "status": "To Do",
+  "status": "In Progress",
   "priority": "Medium",
   "summary": "WS-C Control API (FastAPI, sessions, runs, SSE events, approvals)",
   "labels": [
@@ -10,7 +10,7 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-02T19:37:54.557+0530",
-  "updated": "2026-11-03T19:56:32.657+0530",
+  "updated": "2026-11-04T22:21:08.408+0530",
   "resolved": null,
   "links": [],
   "subtasks": [],

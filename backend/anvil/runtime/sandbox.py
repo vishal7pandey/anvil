@@ -8,12 +8,15 @@ rest of the filesystem API (read, write, edit, grep, glob, ls) comes from `BaseS
 from __future__ import annotations
 
 import io
+import os
 import posixpath
 import re
 import shlex
 import tarfile
+import threading
 import time
 from dataclasses import dataclass, field
+from typing import Any
 
 import docker
 from docker.errors import APIError, NotFound
@@ -38,6 +41,20 @@ _REFUSED = [
      "refused: `pre-commit run --all-files` checks the whole repository and takes longer than the run "
      "budget. Call the `lint_changed` tool instead: it runs the hooks on the files you changed."),
 ]
+
+# What a command's output may put into the model's context (ANVIL-89). Larger output is cut to its
+# head + tail, and the complete output is written to SPILL_DIR in the sandbox for grep/tail.
+MODEL_OUTPUT_BYTES = int(os.environ.get("ANVIL_MODEL_OUTPUT_BYTES", "16000"))
+MODEL_OUTPUT_HEAD = 2000
+SPILL_DIR = "/workspace/.anvil/out"
+
+
+def host_run(sandbox: Any, command: str, *, timeout: int | None = None) -> Any:
+    """Run a host-internal command whose output the host parses: complete output when the sandbox
+    offers `run_internal` (DockerSandbox), else plain `execute` (test fakes)."""
+    runner = getattr(sandbox, "run_internal", None)
+    return runner(command, timeout=timeout) if runner else sandbox.execute(command, timeout=timeout)
+
 
 
 def refusal(command: str) -> str | None:
@@ -95,8 +112,12 @@ class DockerSandbox(BaseSandbox):
         # (command, duration, timed_out) per execute, taken by the executor for sandbox.exec events.
         self.exec_log: list[dict] = []
         # Optional host hook: called with (command, FULL decoded output, exit_code) before the
-        # output is truncated for the agent (ANVIL-84 writes commands/NNNN.log through it).
+        # output is cut for the model (ANVIL-84 writes commands/NNNN.log through it).
         self.on_exec: Any = None
+        # Set by the executor when the run is cancelled; host tools that wait (CI polling) check it
+        # so a cancel does not wait out their sleep (ANVIL-76).
+        self.stop_requested = threading.Event()
+        self._spill_seq = 0
 
     # -- lifecycle -------------------------------------------------------------------------
 
@@ -160,6 +181,15 @@ class DockerSandbox(BaseSandbox):
     # -- core primitives -------------------------------------------------------------------
 
     def execute(self, command: str, *, timeout: int | None = None) -> ExecuteResponse:
+        """A command for the agent: its output is bounded for the model's context (ANVIL-89)."""
+        return self._run(command, timeout=timeout, for_model=True)
+
+    def run_internal(self, command: str, *, timeout: int | None = None) -> ExecuteResponse:
+        """A command the host runs for itself (checkout, diff state, verify, export, push): the complete
+        output, never cut or spilled, never shown to the agent. Same refusals and time budget."""
+        return self._run(command, timeout=timeout, for_model=False)
+
+    def _run(self, command: str, *, timeout: int | None, for_model: bool) -> ExecuteResponse:
         requested = timeout if timeout is not None else self._default_timeout
         reason = refusal(command)
         if reason:
@@ -178,17 +208,17 @@ class DockerSandbox(BaseSandbox):
             )
         except APIError as exc:
             return ExecuteResponse(output=f"sandbox error: {exc.explanation or exc}", exit_code=None)
-        raw = result.output or b""
+        full = result.output or b""
         if self.on_exec is not None:
             try:
-                self.on_exec(command, raw.decode("utf-8", errors="replace"), result.exit_code)
+                self.on_exec(command, full.decode("utf-8", errors="replace"), result.exit_code)
             except Exception:  # noqa: BLE001 - logging must never break a command result
                 pass
-        truncated = len(raw) > MAX_OUTPUT_BYTES
-        if truncated:
-            raw = raw[-MAX_OUTPUT_BYTES:]  # keep the tail: build errors are at the end
-        output = raw.decode("utf-8", errors="replace")
         elapsed = time.monotonic() - started
+        if not for_model:  # host-internal: the complete output, nothing spilled (ANVIL-89)
+            return ExecuteResponse(output=full.decode("utf-8", errors="replace"), exit_code=result.exit_code,
+                                   truncated=False)
+        output, truncated = self._for_model(full)
         timed_out = bool(result.exit_code == TIMEOUT_EXIT_CODE and effective and elapsed >= effective)
         if timed_out:
             output += f"\n[anvil] command timed out after {effective}s"
@@ -197,6 +227,27 @@ class DockerSandbox(BaseSandbox):
         # Exact timing for the run report (ANVIL-83); the executor attaches it to the sandbox.exec event.
         self.exec_log.append({"cmd": command, "duration_s": round(elapsed, 3), "timed_out": timed_out})
         return ExecuteResponse(output=output, exit_code=result.exit_code, truncated=truncated)
+
+    def _for_model(self, full: bytes) -> tuple[str, bool]:
+        """What the model sees of a command's output: all of it when small, else head + tail + a pointer.
+
+        Up to 512 KB per command used to go into the model's context, and every later call re-read
+        it: TC1 rehearsal 2's builder subagent took 5.15M input tokens in 197 calls, mostly waf logs
+        (ANVIL-89). The complete output is kept in the sandbox so the agent can grep or tail it.
+        """
+        if len(full) <= MODEL_OUTPUT_BYTES:
+            return full.decode("utf-8", errors="replace"), False
+        self._spill_seq += 1
+        path = f"{SPILL_DIR}/{int(time.time() * 1000)}-{self._spill_seq:04d}.log"  # unique across runs
+        kept = self.upload_files([(path, full[-MAX_OUTPUT_BYTES * 8:])])  # complete up to 4 MB
+        where = path if kept and not kept[0].error else None
+        head = full[:MODEL_OUTPUT_HEAD].decode("utf-8", errors="replace")
+        tail = full[-(MODEL_OUTPUT_BYTES - MODEL_OUTPUT_HEAD):].decode("utf-8", errors="replace")
+        omitted = len(full) - MODEL_OUTPUT_HEAD - (MODEL_OUTPUT_BYTES - MODEL_OUTPUT_HEAD)
+        note = (f"\n[anvil] ... {omitted} bytes of output omitted here"
+                + (f"; the complete output is in {where} (use grep, tail or sed on it)" if where else "")
+                + " ...\n")
+        return head + note + tail, True
 
     def take_timing(self, command: str) -> dict | None:
         """Pop the oldest recorded timing for `command` (tool calls may run in parallel)."""

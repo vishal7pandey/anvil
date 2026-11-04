@@ -1,0 +1,25 @@
+{
+  "key": "ANVIL-84",
+  "type": "Story",
+  "status": "Done",
+  "priority": "High",
+  "summary": "Observability 2: persistent, structured, run-correlated logs (no overwrite on restart) and full command output per run",
+  "labels": [
+    "agent-devin",
+    "observability"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T19:37:17.703+0530",
+  "updated": "2026-11-04T22:01:29.602+0530",
+  "resolved": "2026-11-04T22:01:29.580+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Owner ask 2026-11-04.\n\n**Today:**\n\n* `run-api.cmd` redirects with `>`, so `api-8000.log` and `.err.log` are **overwritten on every restart** and yesterday's evidence is gone.\n* Logs are plain text with no run id.\n* Sandbox command output is kept only as a tail (`output_tail`) in the event.\n\n**Want:**\n\n* JSON lines logging (`logging` + a small formatter) with `run_id`, `session_id`, `agent` and `event` on every record, via a contextvar set by the executor.\n* Daily-rotated files under `logs/` (gitignored), kept 14 days; the console stays human-readable.\n* Full output of every sandbox command written to `private/runs/<run_id>/commands/<seq>.log` (host-side, gitignored), with the event linking to it.\n* The Jira intake loop and the executor log state changes once, not every poll (pairs with ANVIL-81).\n\n**Acceptance:**\n\n* restarting the API keeps earlier logs;\n* `grep <run_id> logs/*.jsonl` shows that run's whole story;\n* a failing command's full output is on disk.\n",
+  "comments": [
+    {
+      "created": "2026-11-04T20:50:33.267+0530",
+      "body": "[devin] PR #83 up: https://github.com/vishal7pandey/anvil/pull/83 — JSONLFormatter + contextvar (run_id/session_id/agent) set per run; TimedRotatingFileHandler logs/api.jsonl daily, 14 days; console unchanged. record_commands wraps sandbox.execute: full output to private/runs/<run_id>/commands/NNNN.log with a run-tagged link line. run-api.cmd now appends (>>). run.status transitions logged once. 3 tests green.\n"
+    }
+  ]
+}

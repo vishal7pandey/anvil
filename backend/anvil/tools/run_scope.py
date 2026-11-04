@@ -10,6 +10,8 @@ text, PR number). Reads that are not tied to the run (jira_get, jira_search, con
 
 from __future__ import annotations
 
+from anvil.runtime.sandbox import host_run
+import time
 from typing import Any
 
 from anvil.tools import git_push as git_push_module
@@ -46,14 +48,28 @@ def run_tools(run: dict[str, Any], sandbox: Any) -> list[Any]:
         (or return the one already open). Call git_push first. Title must start with the Jira key."""
         return github.github_open_pr(repo, branch, title, body, base=base, draft=draft)
 
+    def _stop() -> str | None:
+        """Why a waiting tool must stop now: the run was cancelled, or its time budget ended (ANVIL-76)."""
+        event = getattr(sandbox, "stop_requested", None)
+        if event is not None and event.is_set():
+            return "cancelled"
+        deadline = getattr(sandbox, "deadline", None)
+        if deadline is not None and time.monotonic() >= deadline:
+            return "budget"
+        return None
+
+    def _budgeted(wait_seconds: int) -> int:
+        deadline = getattr(sandbox, "deadline", None)
+        return wait_seconds if deadline is None else max(0, min(wait_seconds, int(deadline - time.monotonic())))
+
     def github_checks(pr: int, wait_seconds: int = 900, poll_seconds: int = 20) -> dict[str, Any]:
         """Wait (up to wait_seconds) for the CI checks on your PR to finish.
 
         Returns state success|failure|pending|none with every check, and log tails for failed jobs.
         `none` means no CI ran: that is not a pass.
         """
-        return github.github_checks(repo, pr, wait_seconds=wait_seconds, poll_seconds=poll_seconds,
-                                    default_required=required)
+        return github.github_checks(repo, pr, wait_seconds=_budgeted(wait_seconds), poll_seconds=poll_seconds,
+                                    default_required=required, should_stop=_stop)
 
     def github_code_scanning_alerts(pr: int | None = None) -> list[dict[str, Any]]:
         """Open code-scanning alerts (CodeQL, cppcheck, ...) on your PR, to fix before review; without a
@@ -64,7 +80,8 @@ def run_tools(run: dict[str, Any], sandbox: Any) -> list[Any]:
 
     def github_pr_state(pr: int, wait_seconds: int = 0, poll_seconds: int = 30) -> dict[str, Any]:
         """Your PR's state (open|merged|closed) with review and issue comments; optionally wait for a change."""
-        return github.github_pr_state(repo, pr, wait_seconds=wait_seconds, poll_seconds=poll_seconds)
+        return github.github_pr_state(repo, pr, wait_seconds=_budgeted(wait_seconds), poll_seconds=poll_seconds,
+                                      should_stop=_stop)
 
     def github_merge(pr: int, method: str = "squash") -> dict[str, Any]:
         """Merge your PR (only when the run's merge policy allows it; always needs approval)."""
@@ -161,8 +178,8 @@ def verify_outcome(run: dict[str, Any], sandbox: Any) -> list[str]:
     path = shlex.quote(repo_path(run["repo"]))
     if is_local(run["repo"]):
         return _local_problems(sandbox, path) + case_problems(run, sandbox)
-    branch = sandbox.execute(f"git -C {path} rev-parse --abbrev-ref HEAD", timeout=60).output.strip()
-    changed = sandbox.execute(
+    branch = host_run(sandbox, f"git -C {path} rev-parse --abbrev-ref HEAD", timeout=60).output.strip()
+    changed = host_run(sandbox, 
         # committed + tracked edits; untracked build leftovers (config.ini, build/) don't count
         f"cd {path} && {{ git diff --name-only origin/{shlex.quote(base)} HEAD; git diff --name-only HEAD; }}",
         timeout=60,
@@ -184,7 +201,7 @@ def verify_outcome(run: dict[str, Any], sandbox: Any) -> list[str]:
 def _local_problems(sandbox: Any, qpath: str) -> list[str]:
     """A local source has no PR or CI: what can be checked is that the work is committed (the export
     takes commits only) and, for a case replay, the case's acceptance checks (ANVIL-55)."""
-    dirty = sandbox.execute(f"cd {qpath} && git status --porcelain --untracked-files=no", timeout=60).output.strip()
+    dirty = host_run(sandbox, f"cd {qpath} && git status --porcelain --untracked-files=no", timeout=60).output.strip()
     return ["the agent left uncommitted changes to tracked files (only commits are exported)"] if dirty else []
 
 

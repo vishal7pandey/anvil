@@ -1,0 +1,37 @@
+{
+  "key": "ANVIL-50",
+  "type": "Task",
+  "status": "To Do",
+  "priority": "High",
+  "summary": "TC3 readiness: make the CRA review runnable end to end (intake mode, device code base, scan inputs, acceptance)",
+  "labels": [
+    "M3",
+    "agent-claude"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T14:31:04.281+0530",
+  "updated": "2026-11-04T22:21:03.996+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] Assessment of TC3 (RTEMS-3, CRA Annex I review of RefDev), 2026-11-04. **TC3 has never been run.**\n\n**The spec is in good shape:** `docs/scenarios/tc3.md`, the `cra-review` skill, the 122-line `annex1.yaml` checklist, and the `refdev.md` device definition with its data-flow diagram.\n\n## Why it can't run as intended yet\n\n1. **No human gate in intake runs.**\n\n  * The Jira intake always starts runs in `autonomous` mode, where no outward tool pauses.\n  * The scenario's central step (\"a security engineer accepts/rejects each gap\") only exists in `interactive` mode, where each `jira_create` remediation story pauses for approve/reject.\n  * **Fix:** a ticket label `anvil-interactive` → the intake starts the run in interactive mode. There's precedent: `anvil-online` → network.\n2. **Wrong code base.**\n\n  * RTEMS-3 says \"branch `main` of github.com/vishal7pandey/rtems\", but RefDev's own firmware (lwIP stack, GRETH netif, networking app) is in **rtems-lwip**.\n  * A run clones exactly one repo and then goes offline.\n  * **Fix:** review `vishal7pandey/rtems-lwip`, branch `tc2/upgrade-base-leon3` (2.1.3 + LEON3 + GRETH), as the device repo. Treat the RTEMS kernel and shell as a third-party component, assessed via SBOM, docs and KB, the way a real CRA review treats an RTOS.\n3. **The ticket points at paths the agent can't see:** `backend/anvil/skills/...` and `docs/scenarios/tc3.md`. In the sandbox the checklist is at `/workspace/.anvil/skills/cra-review/annex1.yaml`. **Fix:** reword the ticket.\n4. **No scan input.**\n\n  * `github_code_scanning_alerts(pr)` and `sonar_issues(pr)` are PR-scoped, and a review has no PR. `sonar_issues` isn't even wired into the agent's tools.\n  * **Fix:** a run-bound `github_code_scanning_alerts` that reads alerts for the run's base branch when no PR is given.\n5. **RefDev's services don't exist as code.** The Telnet shell :23, UDP telemetry and TFTP updater are a paper definition; rtems-lwip has only `networking01`. The \"1-2 gaps with real sandbox test evidence\" step must use what exists: build and run `networking01` on SIS, inspect the stack's default config (`lwipopts.h`), and run the SBOM/OSV tools. That's fine for a demo, and the skill must say so plainly, so the agent never claims a scan of a service that isn't there.\n6. **Nothing verifies the outcome.** A review changes no code, so `verify_outcome` has nothing to check and the run \"succeeds\" on the agent's word. **Fix (ANVIL-44 style):** host-side acceptance for the review kind: every checklist item assessed with evidence, one story per gap, and the RTKB page exists.\n7. **Budget unknown:** about 24 checklist items plus 6 artefacts in 45 min. Measure on the first run.\n\n## Plan\n\n* **claude, no lock needed:** 1 (intake label), 3 (ticket text), 4 (scan by branch), 5 (skill wording), 6 (acceptance).\n* **First real run:** needs the build lock, after the TC1 rehearsals.\n* **Demo path:** an interactive UI session or the `anvil-interactive` label, so approve/reject is visible.\n\nOwner: claude.\n",
+  "comments": [
+    {
+      "created": "2026-11-04T14:50:00.580+0530",
+      "body": "[claude] Progress:\n\n* **PR #62 merged** (main 938abec), reviewed by devin:\n\n  * fix 1: the `anvil-interactive` intake label starts an interactive run, so the per-gap gate is the `jira_create` approval;\n  * fix 4: scan alerts by branch when there's no PR;\n  * fix 5: honest skill and `refdev.md` (\"what exists as code\").\n* **Fix 3 done:** RTEMS-3 is reworded. Code base is `tc2/upgrade-base-leon3` of rtems-lwip, the checklist and device definition are given at their sandbox paths, and the RTEMS kernel and shell are treated as a third-party component.\n* **Still open:**\n\n  * fix 6: host-side acceptance for the review kind;\n  * the first real run. It's in claude's lock slot, after TC2 run 8 (running now). It runs autonomous first, to measure time and tool use; the interactive run with the approve/reject gate comes after.\n"
+    },
+    {
+      "created": "2026-11-04T16:01:51.408+0530",
+      "body": "[claude] **First TC3 run** (`385ded03`, RTEMS-3 via intake, autonomous, main 938abec): **failed in setup after 216 s**, before the agent started.\n\n* gitlab.rtems.org returned HTTP 500 on rtems-lwip's `rtems_waf` submodule, then timed out entirely.\n* #61's error detail made it diagnosable at once.\n\n**Design fix:** PR #64.\n\n* Checkout fetches submodules through `git url.<mirror>.insteadOf` rewrites. The default maps gitlab.rtems.org/rtems/tools/ to github.com/RTEMS/, RTEMS's official mirrors, which carry the pinned commit.\n* Verified in a clean container while GitLab was down.\n* This removes a demo-day dependency for every rtems-lwip run (TC2 and TC3).\n\nRTEMS-3 is reset to To Do with the `anvil` label removed. It runs again once #64 merges.\n"
+    },
+    {
+      "created": "2026-11-04T17:51:49.809+0530",
+      "body": "PR #64 merged (80f7db1) with devin's approval. Submodules are now fetched through `ANVIL_GIT_URL_REWRITES` (default: gitlab.rtems.org tools → GitHub RTEMS mirrors). The gitlink SHAs still verify the content. The rtems_waf HTTP 500 outage that failed CI on #63 and #65 is gone after the update from main. TC3 re-run started on main d1c41b7: run f9181d40. Still open on this ticket: host-side acceptance for review runs.\n"
+    },
+    {
+      "created": "2026-11-04T22:21:02.659+0530",
+      "body": "Back to To Do (hygiene): nobody is working this before Friday. The Friday demo is the TC1 offline path.\n\n**State:**\n\n* done: #62 (intake mode, branch scan inputs), #64 (submodule mirrors), #67 (KB DSN);\n* the TC3 re-run is not done;\n* host-side acceptance for review runs is not built.\n\nThe ANVIL-89 output bounding will also help the CRA review, since SBOM and scan outputs are large. Pick this up after Friday.\n"
+    }
+  ]
+}

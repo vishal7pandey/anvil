@@ -1,0 +1,29 @@
+{
+  "key": "ANVIL-62",
+  "type": "Story",
+  "status": "In Progress",
+  "priority": "Medium",
+  "summary": "Where does a run's time go: per-phase timing, then the biggest speed levers",
+  "labels": [
+    "demo",
+    "team-sync"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:36:48.623+0530",
+  "updated": "2026-11-04T22:01:35.642+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Source: team sync 2026-11-04. A TC1 run took 25-30 min on the team's setup, and nobody had timed it. Related: ANVIL-41 (the 45-min budget).\n\n**Step 1, measure:**\n\n* the run record gets a phase breakdown: checkout, model time, tool time by tool, sandbox build, SIS test run, CI wait;\n* the Metrics page shows it.\n\n**Step 2, levers, decided from the data:**\n\n* the model per role (fast vs main);\n* parallel tool calls;\n* incremental builds (no clean rebuild per attempt);\n* caching the BSP build in the image;\n* shorter CI waits.\n\nKeep compile + test verification: the agent proves its own fix by building and running the tests, and comparing with the upstream fix is a separate evaluation step afterwards.\n\n**Acceptance:** a breakdown for 3 TC1 runs, plus one change that measurably cuts the biggest phase.\n",
+  "comments": [
+    {
+      "created": "2026-11-04T19:37:37.269+0530",
+      "body": "Step 1 (measure) is now ANVIL-83: per-step timing persisted, plus `python -m anvil.analyze <run_id>`. This ticket keeps step 2, the speed levers, decided from ANVIL-83's reports. Related: ANVIL-84 (logs), ANVIL-85 (traces), ANVIL-86 (team flow metrics).\n"
+    },
+    {
+      "created": "2026-11-04T20:22:45.008+0530",
+      "body": "First real breakdown, from ANVIL-83's `python -m anvil.analyze` on TC1 rehearsal 2 (run a62f1830, 48.0 min, handoff at budget, tests passed on SIS):\n\n| Where | Minutes | Share |\n|---|---|---|\n| tools | 27.1 | 56% |\n| model | 18.3 | 38% |\n| setup | 1.7 | 4% |\n\n**Findings, and the levers they point to, biggest first:**\n\n1. **Subagent token bloat:** `anvil-fast` made 197 calls with **5.15M input tokens** (main: 53 calls, 1.27M). `task` steps took 7.7 min. Lever: give subagents a narrow brief and a context cap, not the whole history.\n2. **Build recipe guessed:**\n\n  * five different `./waf configure` variants, two failing;\n  * five `./waf -j` builds;\n  * real build time only about 6.5 min, including one 286 s full build.\n  Lever: the case or skill states the exact configure, build and test commands for the BSP (they're known for TC1), plus incremental rebuilds.\n3. **Per-call sandbox overhead:** `ls` (58 calls), `read_file` (60) and `grep` (47) cost about 2.5 s each, about 7 min in total. Lever: a persistent shell in the sandbox, or batched file reads, instead of one `docker exec` per call.\n\nTimings marked `~` in the report are estimated from event times. Runs after ANVIL-83 merges carry exact command times.\n"
+    }
+  ]
+}

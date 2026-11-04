@@ -1,0 +1,23 @@
+{
+  "key": "ANVIL-55",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Highest",
+  "summary": "Local workspace as a session source: run on a folder on disk, no GitHub needed",
+  "labels": [
+    "agent-claude",
+    "demo",
+    "friday",
+    "offline",
+    "team-sync"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:36:37.414+0530",
+  "updated": "2026-11-04T19:59:08.775+0530",
+  "resolved": "2026-11-04T19:59:08.757+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Source: team sync 2026-11-04. Some team laptops can't reach github.com, so a session can't check out code at all. The owner committed to removing this dependency first.\n\n**Today:** the executor always `git clone`s from `ANVIL_GIT_BASE` (GitHub). Push, PR and checks are GitHub tools.\n\n**Want:**\n\n* A session's repo can be a local path (a git working copy on the host).\n* The host copies it into the sandbox (`git clone` from the local path, or `docker cp` of a bundle), so the agent works in the same `/workspace/<name>` layout.\n* The outcome is a local branch plus an exported patch / `git bundle` in the run's evidence, instead of a push and PR.\n* Verification uses the case's acceptance checks and the sandbox build/test; GitHub CI checks are skipped and say so.\n* The New Session dialog accepts a local path.\n\n**Acceptance:** with network to github.com blocked, a TC1 run from a local rtems checkout completes and produces a patch the host can `git am`.\n",
+  "comments": []
+}

@@ -11,10 +11,10 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-02T23:04:37.731+0530",
-  "updated": "2026-11-03T18:05:48.998+0530",
+  "updated": "2026-11-04T18:24:01.919+0530",
   "resolved": null,
   "links": [],
   "subtasks": [],
-  "description": "Perform a Cyber Resilience Act Annex I essential-requirements review of RefDev (RTEMS 7 + rtems-lwip + shell, SPARC/LEON3, per docs/scenarios/tc3.md). Use the machine-readable checklist backend/anvil/skills/cra-review/annex1.yaml (authoritative; do not invent requirements). Assess each item as pass/gap/n/a/unknown with cited evidence. Produce, in order: gap analysis; remediation plan (one Jira Story per gap, labels cra, tc3, never anvil); sandbox test evidence for 1-2 gaps; a STRIDE threat model from the reference data-flow diagram; a compliance report page in RTKB; SPDX + CycloneDX SBOM. A security engineer approves/rejects each gap; record rejections to /memories/cra/lessons.md.\n\nCode base: branch `main` of github.com/vishal7pandey/rtems.\n",
+  "description": "Perform a Cyber Resilience Act (Regulation (EU) 2024/2847) Annex I essential-requirements review of RefDev, a networked RTEMS device: RTEMS 7 + rtems-lwip + shell, SPARC/LEON3. The device definition and its data-flow diagram are in the cra-review skill (`/workspace/.anvil/skills/cra-review/refdev.md`).\n\nThe checklist `/workspace/.anvil/skills/cra-review/annex1.yaml` is authoritative: assess every item as pass, gap, n/a or unknown, with cited evidence, and do not invent requirements. The checkout is the device's own firmware (lwIP stack, RTEMS port layer, GRETH driver, networking test application); assess the RTEMS kernel and shell as a third-party component.\n\nProduce, in order:\n\n1. gap analysis;\n2. remediation plan: one Jira Story per gap in project RTEMS, labels `cra` and `tc3`, never `anvil`;\n3. sandbox test evidence for 1-2 gaps;\n4. a STRIDE threat model from the reference data-flow diagram;\n5. a compliance report page in Confluence space RTKB;\n6. SPDX and CycloneDX SBOMs.\n\nA security engineer approves or rejects each gap; record rejections in `/memories/cra/lessons.md`.\n\nCode base: branch `tc2/upgrade-base-leon3` of github.com/vishal7pandey/rtems-lwip.\n",
   "comments": []
 }

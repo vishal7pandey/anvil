@@ -34,6 +34,7 @@ async def main() -> int:
     ap.add_argument("--db", default="postgresql://anvil:anvil@localhost:5433/anvil_devin")
     ap.add_argument("--score-files", nargs="*", default=None,
                     help="Optional upstream-answer file paths; host-side scoring only, the agent never sees them")
+    ap.add_argument("--keep", action="store_true", help="Keep sandbox container at exit for inspection")
     args = ap.parse_args()
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -87,7 +88,11 @@ async def main() -> int:
     }
     (out / "score.json").write_text(json.dumps(score, indent=2), encoding="utf-8")
     print(json.dumps(score, indent=2))
-    print(f"sandbox kept for inspection: {sandbox.id}")
+    if args.keep:
+        print(f"sandbox kept for inspection: {sandbox.id}")
+    else:
+        sandbox.stop(remove=True)
+        print(f"sandbox removed: {sandbox.id}")
     return 0 if score["verified"] else 1
 
 

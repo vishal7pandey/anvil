@@ -1,0 +1,21 @@
+{
+  "key": "ANVIL-82",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Deterministic vendor re-import tool (three-way merge) for component upgrades",
+  "labels": [
+    "dfmea",
+    "post-demo",
+    "tc2"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:39:41.784+0530",
+  "updated": "2026-11-04T18:39:41.878+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Source: DFMEA 2026-11-04 (F11). The component-upgrade skill has the model drive `diff -u` / `patch -p1` / `.rej` handling across ~150 files. That failed in TC2 runs 2-6; run 8 passed (ANVIL-44), but the path is fragile.\n\n**Want:**\n\n* A `vendor_reimport(component, from_tag, to_tag)` tool in the sandbox that does a git three-way merge: base = the old upstream tag, ours = the current vendored tree with local patches, theirs = the new tag. It writes conflict markers only where a local patch truly collides.\n* The agent's job becomes resolving the listed conflicts, rebuilding and testing.\n* The ANVIL-44 acceptance check stays the judge.\n\n**Decide with the owner:** TC2 is meant to show the agent doing the upgrade. A tool that does the mechanical part is legitimate engineering, but say so in the demo.\n\n**Acceptance:** TC2 passes acceptance in 3/3 runs with the tool, with fewer tool calls than run 8.\n",
+  "comments": []
+}

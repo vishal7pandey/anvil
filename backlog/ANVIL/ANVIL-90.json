@@ -1,0 +1,26 @@
+{
+  "key": "ANVIL-90",
+  "type": "Task",
+  "status": "In Progress",
+  "priority": "Medium",
+  "summary": "Known build recipe: [build] section in cases/*.toml wired into the run prompt",
+  "labels": [
+    "agent-devin",
+    "friday",
+    "speed"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T21:25:20.894+0530",
+  "updated": "2026-11-04T22:21:15.291+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Source: ANVIL-62 rehearsal-2 analysis — the agent tried 5 `waf configure` variants, 2 failing, before building. A case-declared recipe saves minutes per run and removes a class of failures.\n\n**Fix:** a `[build]` section in `cases/*.toml` (configure, build, test commands for the BSP — TC1: erc32 + SIS, as the CI overlay runs them). The run prompt names it as \"the build and test commands for this code base\" (a recipe, not a hint about the fix), and the defect-fix skill uses it.\n\n**Acceptance:** a case with `[build]` puts those commands into the agent's task; a case without one changes nothing.\n",
+  "comments": [
+    {
+      "created": "2026-11-04T21:35:22.676+0530",
+      "body": "[devin] PR #90 up: https://github.com/vishal7pandey/anvil/pull/90 — [build] table in cases/*.toml parsed to Case.build; executor._task_message appends it as 'the build and test commands for this code base'; defect-fix skill points at it; rtems-5776 declares the erc32+SIS recipe. Proven by tests on the real case file and real task builder.\n"
+    }
+  ]
+}

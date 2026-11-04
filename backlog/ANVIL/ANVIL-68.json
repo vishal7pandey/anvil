@@ -1,0 +1,21 @@
+{
+  "key": "ANVIL-68",
+  "type": "Bug",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "KB time guard misses rtems-docs and Confluence documents: they carry no date",
+  "labels": [
+    "kb",
+    "leak-guard",
+    "team-sync"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:36:59.299+0530",
+  "updated": "2026-11-04T18:36:59.475+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Source: KB review 2026-11-04 (P7).\n\nThe time-based leak guard (ANVIL-43) hides documents created after a case's `as_of`. rtems-docs and Confluence documents have no date in their metadata, so the guard can't filter them. A doc page written after the fix could leak the answer.\n\n**Want:**\n\n* rtems-docs dated from the git log of each file (last commit date at the snapshot commit, or per-file history);\n* Confluence pages dated from their created/updated times;\n* undated documents are either excluded for a case with `as_of`, or the case's choice is recorded explicitly.\n\n**Acceptance:** tests show a post-`as_of` docs page and Confluence page are hidden for a TC1 case.\n",
+  "comments": []
+}

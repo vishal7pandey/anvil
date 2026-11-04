@@ -50,6 +50,10 @@ kb_documents = Table(
     Column("url", Text),
     Column("content_sha256", String(64), nullable=False),
     Column("doc_metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    # When the upstream document was created (issue/MR creation time, not crawl time). NULL for
+    # sources without a meaningful upstream date (docs, Confluence): those stay visible to every
+    # case, since a NULL "from the future" claim can't be made (ANVIL-43).
+    Column("created_at", DateTime(timezone=True)),
     Column(
         "fetched_at", DateTime(timezone=True), nullable=False, server_default=func.now()
     ),
@@ -88,6 +92,10 @@ def ensure_schema(engine: Engine) -> None:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
     kb_metadata.create_all(engine)
     with engine.begin() as conn:
+        # Existing databases predating ANVIL-43 lack the column; create_all only handles new ones.
+        conn.execute(
+            text("ALTER TABLE kb_documents ADD COLUMN IF NOT EXISTS created_at timestamptz")
+        )
         conn.execute(
             text(
                 "CREATE INDEX IF NOT EXISTS ix_kb_chunks_embedding_hnsw "

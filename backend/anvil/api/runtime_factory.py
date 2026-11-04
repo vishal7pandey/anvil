@@ -47,9 +47,8 @@ def create_executor_from_environment() -> RunExecutor | None:
     from anvil.kb.tool import make_kb_search
     from anvil.runtime.executor import DeepAgentExecutor
     from anvil.runtime.websearch import TC_BLOCKLIST, env_allowlist, make_web_search
-    from anvil.tools.confluence import CONFLUENCE_TOOLS
     from anvil.tools.errors import returning_errors
-    from anvil.tools.evidence import handoff_note, publish_evidence
+    from anvil.tools.evidence import handoff_note
     from anvil.tools.git_push import make_git_push
     from anvil.tools.github import github_open_pr
     from anvil.tools.jira import jira_comment, jira_set_labels
@@ -70,9 +69,9 @@ def create_executor_from_environment() -> RunExecutor | None:
     def tools_factory(sandbox: Any, run: dict[str, Any]) -> list[Any]:
         tools = [
             # Repo, base branch and ticket come from the run, never from the agent (ANVIL-32).
+            # run_tools also binds confluence_*/publish_evidence per-run: the local knowledge
+            # folder when the run is local or Atlassian is unset (ANVIL-60/59).
             *run_tools(run, sandbox),
-            *CONFLUENCE_TOOLS,
-            publish_evidence,
             make_web_search(blocklist=TC_BLOCKLIST, allowlist=_web_allowlist(run), run_id=run["run_id"]),
             make_kb_search(_case_as_of(run)),
             # The one way to run pre-commit: changed files only (ANVIL-74).

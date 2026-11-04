@@ -158,8 +158,8 @@ def test_deepagent_executor_receives_host_tools_and_hooks(
     assert names == [
         "git_push", "github_open_pr", "github_checks", "github_code_scanning_alerts", "github_pr_state",
         "github_merge", "jira_get", "jira_search", "jira_create", "jira_comment", "jira_transition",
-        "jira_set_labels", "confluence_tool", "publish_evidence_tool", "web_search_tool", "kb_search",
-        "lint_changed",
+        "jira_set_labels", "confluence_search", "confluence_get", "confluence_write",
+        "publish_evidence", "web_search_tool", "kb_search", "lint_changed",
     ]
     ui_names = [getattr(t, "__name__", t) for t in ui_tools]
     assert "jira_comment" not in ui_names and ui_names[-3:] == ["web_search_tool", "kb_search", "lint_changed"]  # no ticket writes

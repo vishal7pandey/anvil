@@ -94,6 +94,15 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(_report_dict("confluence", report)))
             return 0
 
+        if args.command == "ingest-local":
+            store.ensure_schema()
+            from anvil.kb.local import LocalKnowledge
+
+            documents = LocalKnowledge(args.dir).documents()
+            report = store.ingest(documents)
+            print(json.dumps(_report_dict("local", report)))
+            return 0
+
         if args.command == "export-snapshot":
             print(json.dumps(export_snapshot(store, args.out, with_vectors=args.with_vectors, include_local=args.include_local), indent=2))
             return 0
@@ -175,6 +184,12 @@ def _build_parser() -> argparse.ArgumentParser:
     confluence.add_argument("--space", default="RTKB", help="Confluence space key (default: RTKB)")
     confluence.add_argument("--limit", type=int, default=100, help="maximum pages to fetch")
 
+    from anvil.kb.local import knowledge_dir
+
+    loc = sub.add_parser("ingest-local", help="ingest the local knowledge folder (ANVIL-60)")
+    loc.add_argument("--dir", type=Path, default=knowledge_dir(),
+                     help="folder of Markdown pages (default: ANVIL_KNOWLEDGE_DIR or kb/local)")
+
     sub.add_parser("ingest-all", help="docs + issues + confluence")
 
     exp = sub.add_parser("export-snapshot", help="write documents + chunks (no vectors) to files")
@@ -191,7 +206,7 @@ def _build_parser() -> argparse.ArgumentParser:
     search.add_argument("--k", type=int, default=8)
     search.add_argument(
         "--sources", nargs="*",
-        choices=["rtems-docs", "gitlab-issue", "gitlab-mr", "mailing-list", "confluence"],
+        choices=["rtems-docs", "gitlab-issue", "gitlab-mr", "mailing-list", "confluence", "local"],
     )
     search.add_argument(
         "--as-of",

@@ -20,6 +20,9 @@ data/kb/kb-snapshot-vectors.manifest.json
 # Run-correlated structured logs (ANVIL-84)
 logs/
 
+# Local knowledge pages written by runs (ANVIL-60): runtime artifacts, never committed
+kb/local/
+
 # Sandbox image archives are large and shared out-of-band, never committed (ANVIL-57)
 data/sandbox/*.tar
 data/sandbox/*.tar.gz

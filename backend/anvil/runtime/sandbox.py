@@ -184,6 +184,29 @@ class DockerSandbox(BaseSandbox):
                 output += " (the run's time budget ended)"
         return ExecuteResponse(output=output, exit_code=result.exit_code, truncated=truncated)
 
+    def upload_tar(self, parent: str, data: bytes) -> None:
+        """Extract a tar under `parent`, owned by the sandbox user (ANVIL-55: a local source's .git).
+
+        Entries made on Windows carry uid 0 and no exec bits on directories; re-owned and made
+        traversable here so the non-root agent can work in what it receives.
+        """
+        if not parent.startswith("/"):
+            raise ValueError(f"upload_tar: {parent!r} is not absolute")
+        mk = self._container.exec_run(["mkdir", "-p", parent])
+        if mk.exit_code != 0:
+            raise RuntimeError(f"upload_tar: cannot create {parent}")
+        out = io.BytesIO()
+        with tarfile.open(fileobj=io.BytesIO(data)) as src, tarfile.open(fileobj=out, mode="w") as dst:
+            for info in src.getmembers():
+                if info.issym() or info.islnk() or info.isdev() or info.name.startswith(("/", "..")) or "/../" in info.name:
+                    raise ValueError(f"upload_tar: refusing entry {info.name!r}")
+                info.uid = info.gid = self._uid
+                info.uname = info.gname = ""
+                info.mode = 0o755 if info.isdir() else (info.mode | 0o644) & 0o755
+                dst.addfile(info, src.extractfile(info) if info.isfile() else None)
+        if not self._container.put_archive(parent, out.getvalue()):
+            raise RuntimeError(f"upload_tar: put_archive into {parent} failed")
+
     def upload_files(self, files: list[tuple[str, bytes]]) -> list[FileUploadResponse]:
         responses: list[FileUploadResponse] = []
         for path, content in files:

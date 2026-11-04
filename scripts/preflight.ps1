@@ -46,9 +46,9 @@ Write-Host ""
 Write-Host "1. Checking Docker Sandbox Image ($ExpectedSandboxImage)..." -ForegroundColor White
 $imageId = docker inspect --format='{{.Id}}' $ExpectedSandboxImage 2>$null
 if (-not $imageId) {
-    Write-CheckFail "Sandbox image" "$ExpectedSandboxImage is not present locally" "docker build -f sandbox/rtems/Dockerfile.leon3 -t $ExpectedSandboxImage sandbox/rtems"
+    Write-CheckFail "Sandbox image" "$ExpectedSandboxImage is not present locally" "Offline: .\scripts\import-sandbox-image.ps1 -ImagePath <archive.tar>; Online: docker build -f sandbox/rtems/Dockerfile.leon3 -t $ExpectedSandboxImage sandbox/rtems"
 } elseif (-not ($imageId -match $ExpectedSandboxIdPrefix)) {
-    Write-CheckFail "Sandbox image ID" "$ExpectedSandboxImage ID ($imageId) does not match expected prefix $ExpectedSandboxIdPrefix" "docker build -f sandbox/rtems/Dockerfile.leon3 -t $ExpectedSandboxImage sandbox/rtems"
+    Write-CheckFail "Sandbox image ID" "$ExpectedSandboxImage ID ($imageId) does not match expected prefix $ExpectedSandboxIdPrefix" "Re-import: .\scripts\import-sandbox-image.ps1 -ImagePath <archive.tar>; Or rebuild: docker build -f sandbox/rtems/Dockerfile.leon3 -t $ExpectedSandboxImage sandbox/rtems"
 } else {
     $shortId = if ($imageId -match 'sha256:([0-9a-f]{12})') { $matches[1] } else { $imageId }
     Write-CheckPass "Sandbox image" "$ExpectedSandboxImage present (ID: $shortId, matches $ExpectedSandboxIdPrefix)"

@@ -311,7 +311,9 @@ class DeepAgentExecutor:
                         detector.note_diff_state(await asyncio.to_thread(self.diff_state, sandbox, path))
                     stuck = stuck or detector.observe(ev)
                     yield ev
-                if stuck:
+                # ANVIL-77: a handoff call ends the run like stuck does. Its note is already in
+                # `handoffs`; keep streaming only until this item's events are out, then _handoff.
+                if stuck or handoffs:
                     break
         except GraphRecursionError:
             # Out of graph steps is a budget, not a crash: hand off with the WIP like any other budget.

@@ -73,7 +73,7 @@ if ($LASTEXITCODE -eq 0 -and $pyCheck -match "OK") {
 Write-Host "`n3. Checking Control API on :8000..." -ForegroundColor White
 $conns = Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue
 if (-not $conns) {
-    Write-CheckFail "Control API" "No process listening on port :8000" "Start API from latest main: cd backend; uv run --no-sync python -m anvil.api.serve"
+    Write-CheckFail "Control API" "No process listening on port :8000" "Start API from latest main: .\scripts\start-api.ps1"
 } else {
     $pids = @($conns | Select-Object -ExpandProperty OwningProcess -Unique)
     if ($pids.Count -gt 1) {
@@ -134,7 +134,7 @@ if (-not $conns) {
             if (-not $apiOk) {
                 Write-CheckFail "Control API Health" "GET /api/sessions returned unauthorized or connection failed with discovered tokens" "Verify ANVIL_DEMO_TOKEN in .env and restart API process"
             } elseif ($procStartTime -lt $mainCommitDate) {
-                Write-CheckFail "Control API Freshness" "Process PID $apiPid started at $procStartTime, older than latest main ($mainCommitDate)" "Restart API to ensure latest main code is loaded: Stop-Process -Id $apiPid; uv run --no-sync python -m anvil.api.serve"
+                Write-CheckFail "Control API Freshness" "Process PID $apiPid started at $procStartTime, older than latest main ($mainCommitDate)" "Restart API to ensure latest main code is loaded: .\scripts\start-api.ps1"
             } else {
                 Write-CheckPass "Control API" "PID $apiPid listening on :8000; started after latest main commit ($procStartTime); GET /api/sessions returns 200"
             }

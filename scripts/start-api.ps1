@@ -205,7 +205,7 @@ Write-Host "  [PASS] API is healthy and accepting requests (PID $actualApiPid)" 
 Write-Host "`n7. Validating Jira intake connectivity..." -ForegroundColor Yellow
 try {
     $pollRes = Invoke-RestMethod -Method Post -Uri "http://${HostAddress}:${Port}/api/intake/jira/poll" -Headers $authHeader -TimeoutSec 10 -ErrorAction Stop
-    $acceptedCount = if ($null -ne $pollRes.accepted) { $pollRes.accepted.Count } else { 0 }
+    $acceptedCount = [int]$pollRes.accepted  # an int (IntakeResponse.accepted), not a list: .Count was always 1
     Write-Host "  [PASS] Jira intake poll succeeded (accepted candidates: $acceptedCount)" -ForegroundColor Green
 } catch {
     Write-Error "Live Jira intake poll failed: $($_.Exception.Message). Check Jira credentials in .env and API logs at $logPath."

@@ -16,6 +16,7 @@ import tarfile
 import threading
 import time
 from dataclasses import dataclass, field
+from typing import Any
 
 import docker
 from docker.errors import APIError, NotFound
@@ -46,6 +47,13 @@ _REFUSED = [
 MODEL_OUTPUT_BYTES = int(os.environ.get("ANVIL_MODEL_OUTPUT_BYTES", "16000"))
 MODEL_OUTPUT_HEAD = 2000
 SPILL_DIR = "/workspace/.anvil/out"
+
+
+def host_run(sandbox: Any, command: str, *, timeout: int | None = None) -> Any:
+    """Run a host-internal command whose output the host parses: complete output when the sandbox
+    offers `run_internal` (DockerSandbox), else plain `execute` (test fakes)."""
+    runner = getattr(sandbox, "run_internal", None)
+    return runner(command, timeout=timeout) if runner else sandbox.execute(command, timeout=timeout)
 
 
 
@@ -173,6 +181,15 @@ class DockerSandbox(BaseSandbox):
     # -- core primitives -------------------------------------------------------------------
 
     def execute(self, command: str, *, timeout: int | None = None) -> ExecuteResponse:
+        """A command for the agent: its output is bounded for the model's context (ANVIL-89)."""
+        return self._run(command, timeout=timeout, for_model=True)
+
+    def run_internal(self, command: str, *, timeout: int | None = None) -> ExecuteResponse:
+        """A command the host runs for itself (checkout, diff state, verify, export, push): the complete
+        output, never cut or spilled, never shown to the agent. Same refusals and time budget."""
+        return self._run(command, timeout=timeout, for_model=False)
+
+    def _run(self, command: str, *, timeout: int | None, for_model: bool) -> ExecuteResponse:
         requested = timeout if timeout is not None else self._default_timeout
         reason = refusal(command)
         if reason:
@@ -198,6 +215,9 @@ class DockerSandbox(BaseSandbox):
             except Exception:  # noqa: BLE001 - logging must never break a command result
                 pass
         elapsed = time.monotonic() - started
+        if not for_model:  # host-internal: the complete output, nothing spilled (ANVIL-89)
+            return ExecuteResponse(output=full.decode("utf-8", errors="replace"), exit_code=result.exit_code,
+                                   truncated=False)
         output, truncated = self._for_model(full)
         timed_out = bool(result.exit_code == TIMEOUT_EXIT_CODE and effective and elapsed >= effective)
         if timed_out:

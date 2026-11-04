@@ -6,6 +6,7 @@ LangGraph thread per session (Postgres checkpointer), events in the docs/02 cont
 
 from __future__ import annotations
 
+from anvil.runtime.sandbox import host_run
 import asyncio
 import contextlib
 import hashlib
@@ -214,7 +215,7 @@ class DeepAgentExecutor:
             f"echo BASE_SHA=$(git rev-parse origin/{shlex.quote(base)}); echo HEAD_SHA=$(git rev-parse HEAD)"
         )
         sandbox.set_network("bridge")  # needed for the first clone; dropped again below for offline runs
-        res = sandbox.execute(script, timeout=1800)
+        res = host_run(sandbox, script, timeout=1800)
         if res.exit_code != 0:
             # Say what failed even when the command printed nothing (rehearsal 3e7db2f9: "checkout failed: ").
             raise RuntimeError(f"checkout failed (exit {res.exit_code}): "
@@ -246,7 +247,7 @@ class DeepAgentExecutor:
         path = repo_path(repo)
         sandbox.set_network(None)
         sandbox.upload_tar("/workspace", source.local_copy_tar(repo, base))
-        res = sandbox.execute(source.local_checkout_script(path, base, branch), timeout=900)
+        res = host_run(sandbox, source.local_checkout_script(path, base, branch), timeout=900)
         if res.exit_code != 0:
             raise RuntimeError(f"local checkout failed (exit {res.exit_code}): "
                                f"{res.output[-1500:].strip() or 'no output'}")
@@ -428,7 +429,7 @@ class DeepAgentExecutor:
     def diff_state(sandbox: DockerSandbox, path: str) -> str:
         # Tracked edits, plus the content of untracked files that aren't ignored (a rewritten config.ini
         # is progress; build/ output is gitignored and is not).
-        res = sandbox.execute(
+        res = host_run(sandbox, 
             f"cd {shlex.quote(path)} 2>/dev/null && (git diff HEAD; git status --porcelain; "
             f"git ls-files -o --exclude-standard -z | xargs -0 -r sha1sum) | sha1sum", timeout=60)
         return res.output.strip()[:40]
@@ -462,7 +463,7 @@ class DeepAgentExecutor:
         if push_wip:
             key = run.get("jira_key") or "ANVIL"
             message = f"{key}: WIP handoff (Anvil run {run['run_id']})"
-            commit = await asyncio.to_thread(sandbox.execute, (
+            commit = await asyncio.to_thread(host_run, sandbox, (
                 f"cd {shlex.quote(path)} && git add -A && git commit -q --no-verify --allow-empty -m {shlex.quote(message)} "
                 f"&& git branch -f {shlex.quote(wip)} HEAD && git rev-parse HEAD"), timeout=120)
             if commit.exit_code == 0 and source.is_local(run["repo"]):

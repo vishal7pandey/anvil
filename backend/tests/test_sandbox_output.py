@@ -8,6 +8,8 @@ import pytest
 from anvil.runtime import sandbox as sbmod
 from anvil.runtime.sandbox import MODEL_OUTPUT_BYTES, DockerSandbox
 
+SPILL_MARK = "bytes of output omitted"
+
 
 def bare_sandbox(uploads):
     sb = DockerSandbox.__new__(DockerSandbox)
@@ -62,5 +64,8 @@ def test_real_command_output_is_bounded_and_greppable():
         assert seen["n"] > 500_000 and seen["code"] == 0  # the hook got the complete output
         path = next(w for w in res.output.split() if w.startswith(sbmod.SPILL_DIR))
         assert sb.execute(f"grep -c '' {path}").output.strip() == "100001"  # all lines kept
+        # Host-internal commands (diff state, verify, acceptance JSON) get everything, unspilled.
+        full = sb.run_internal("seq 1 100000", timeout=120)
+        assert not full.truncated and len(full.output.splitlines()) == 100000 and SPILL_MARK not in full.output
     finally:
         sb.stop()

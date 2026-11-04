@@ -55,3 +55,8 @@ tolerance = 3
 name = "a regression test is part of the change"
 script = "changed_files_match.py"
 args = ["--base-commit", "{base_sha}", "--pattern", "testsuites/*", "--what", "regression test"]
+
+# Trusted web_search sources (ANVIL-64): results drawing on anything else are withheld.
+# The leak blocklist (upstream tracker, lists, mirrors) applies on top.
+[web]
+allow = ["docs.rtems.org", "pubs.opengroup.org", "man7.org"]

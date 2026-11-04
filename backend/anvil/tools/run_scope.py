@@ -10,6 +10,7 @@ text, PR number). Reads that are not tied to the run (jira_get, jira_search, con
 
 from __future__ import annotations
 
+from anvil.runtime.sandbox import host_run
 import time
 from typing import Any
 
@@ -177,8 +178,8 @@ def verify_outcome(run: dict[str, Any], sandbox: Any) -> list[str]:
     path = shlex.quote(repo_path(run["repo"]))
     if is_local(run["repo"]):
         return _local_problems(sandbox, path) + case_problems(run, sandbox)
-    branch = sandbox.execute(f"git -C {path} rev-parse --abbrev-ref HEAD", timeout=60).output.strip()
-    changed = sandbox.execute(
+    branch = host_run(sandbox, f"git -C {path} rev-parse --abbrev-ref HEAD", timeout=60).output.strip()
+    changed = host_run(sandbox, 
         # committed + tracked edits; untracked build leftovers (config.ini, build/) don't count
         f"cd {path} && {{ git diff --name-only origin/{shlex.quote(base)} HEAD; git diff --name-only HEAD; }}",
         timeout=60,
@@ -200,7 +201,7 @@ def verify_outcome(run: dict[str, Any], sandbox: Any) -> list[str]:
 def _local_problems(sandbox: Any, qpath: str) -> list[str]:
     """A local source has no PR or CI: what can be checked is that the work is committed (the export
     takes commits only) and, for a case replay, the case's acceptance checks (ANVIL-55)."""
-    dirty = sandbox.execute(f"cd {qpath} && git status --porcelain --untracked-files=no", timeout=60).output.strip()
+    dirty = host_run(sandbox, f"cd {qpath} && git status --porcelain --untracked-files=no", timeout=60).output.strip()
     return ["the agent left uncommitted changes to tracked files (only commits are exported)"] if dirty else []
 
 

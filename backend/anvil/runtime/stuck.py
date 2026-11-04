@@ -35,10 +35,29 @@ class Budgets:
     # Reading a large C code base legitimately takes many calls before the first edit (TC1 dry run:
     # 30 tripped mid-investigation), so this is generous.
     no_progress_tool_calls: int = field(default_factory=lambda: _env_int("ANVIL_NO_PROGRESS_CALLS", 80))
+    # Pre-first-diff bound (ANVIL-75, F06): read/grep-only runs never produce a diff report, so the
+    # no-progress rule never armed — only the 400-call guard and the clock bound pure reading.
+    # A run can override this via run["exploration_limit"] (an investigate run is read-only by
+    # design and needs its own limit).
+    exploration_tool_calls: int = field(default_factory=lambda: _env_int("ANVIL_EXPLORE_CALLS", 120))
     ci_red_rounds: int = 3
 
 
 _NOISE = re.compile(r"0x[0-9a-f]+|\b\d+\b|/tmp/\S+")
+
+
+def code_signature(diff_text: str) -> str:
+    """Signature of a diff ignoring comment-only and whitespace-only changes (ANVIL-75).
+
+    `strip_c_comments` (the ANVIL-44 checker) drops C comments while keeping line structure, then
+    all whitespace collapses — so `*p=f()` and `*p = f()` sign identically, and an edit that only
+    touches comments does not reset the repeated-failure counter. On non-C content the same
+    stripping may over-collapse; that errs toward *fewer* resets, i.e. a stricter detector.
+    """
+    from anvil.cases.checks.vendored_matches_upstream import strip_c_comments
+
+    collapsed = re.sub(r"\s+", "", strip_c_comments(diff_text))
+    return hashlib.sha1(collapsed.encode()).hexdigest()[:40]
 
 
 def failure_signature(cmd: str, output_tail: str) -> str:
@@ -63,6 +82,7 @@ class StuckDetector:
         self.ci_red = 0
         self._diff_state: str | None = None
         self._calls_since_progress = 0
+        self._explore_calls = 0
         self.reason: str | None = None
 
     @property
@@ -87,6 +107,9 @@ class StuckDetector:
         if t == "tool.call":
             self.tool_calls += 1
             self._calls_since_progress += 1
+            if self._diff_state is None:
+                # No diff report yet: pure exploration (reads, searches) — bounded separately.
+                self._explore_calls += 1
         elif t == "usage":
             self.tokens += int(d.get("input_tokens", 0)) + int(d.get("output_tokens", 0))
         elif t == "sandbox.exec" and d.get("exit_code") not in (0, None):
@@ -108,6 +131,8 @@ class StuckDetector:
             return self._trip(f"time budget reached ({self.b.max_seconds // 60} min)")
         if self._diff_state is not None and self._calls_since_progress >= self.b.no_progress_tool_calls:
             return self._trip(f"no change to the code in the last {self._calls_since_progress} tool calls")
+        if self._explore_calls >= self.b.exploration_tool_calls:
+            return self._trip(f"explored {self._explore_calls} tool calls without the first change to the code")
         return None
 
     def _trip(self, reason: str) -> str:

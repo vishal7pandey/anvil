@@ -105,18 +105,18 @@ def clean_tables(store):
         conn.execute(text("TRUNCATE kb_chunks, kb_documents RESTART IDENTITY CASCADE"))
 
 
-def _insert_doc(store, external_id, created_at, text_body):
+def _insert_doc(store, external_id, created_at, text_body, source="gitlab-issue", metadata=None):
     vector = _format_vector(DeterministicEmbedder().embed([text_body])[0])
     with store.engine.begin() as conn:
         document_id = conn.execute(
             insert(kb_documents)
             .values(
-                source="gitlab-issue",
+                source=source,
                 external_id=external_id,
                 title=text_body,
                 url="https://example.test/" + external_id,
                 content_sha256=content_hash(text_body),
-                doc_metadata={},
+                doc_metadata=metadata or {},
                 created_at=created_at,
             )
             .returning(kb_documents.c.id)
@@ -144,7 +144,46 @@ def test_search_hides_documents_created_after_as_of(store, clean_tables):
     bounded = store.search(query, k=10, as_of="2026-09-01")
     ids = {h.external_id for h in bounded}
     assert "new-1" not in ids          # after as_of: "from the future"
-    assert {"old-1", "doc-1"} <= ids   # before as_of and undated: visible
+    assert "doc-1" not in ids          # ANVIL-68: undated documents excluded when as_of is set
+    assert "old-1" in ids              # before as_of: visible
+
+
+def test_search_hides_post_as_of_docs_and_confluence_pages(store, clean_tables):
+    # Old doc before TC1 as_of (2026-09-20)
+    _insert_doc(
+        store, "docs-old.rst", datetime(2026, 6, 1, tzinfo=timezone.utc),
+        "rtems posix mutex docs old", source="rtems-docs"
+    )
+    # New doc written after TC1 as_of
+    _insert_doc(
+        store, "docs-new.rst", datetime(2026, 10, 1, tzinfo=timezone.utc),
+        "rtems posix mutex docs new", source="rtems-docs"
+    )
+    # Old Confluence page before TC1 as_of
+    _insert_doc(
+        store, "conf-1001", datetime(2026, 8, 15, tzinfo=timezone.utc),
+        "rtems posix mutex wiki old", source="confluence"
+    )
+    # New Confluence page written after TC1 as_of
+    _insert_doc(
+        store, "conf-1002", datetime(2026, 10, 5, tzinfo=timezone.utc),
+        "rtems posix mutex wiki new", source="confluence"
+    )
+    # Undated Confluence page
+    _insert_doc(
+        store, "conf-undated", None,
+        "rtems posix mutex wiki undated", source="confluence"
+    )
+
+    tc1_as_of = "2026-09-20"
+    results = store.search("rtems posix mutex", k=10, as_of=tc1_as_of)
+    visible_ids = {h.external_id for h in results}
+
+    assert "docs-old.rst" in visible_ids
+    assert "conf-1001" in visible_ids
+    assert "docs-new.rst" not in visible_ids
+    assert "conf-1002" not in visible_ids
+    assert "conf-undated" not in visible_ids
 
 
 def test_ingest_writes_created_at_from_metadata(store, clean_tables):

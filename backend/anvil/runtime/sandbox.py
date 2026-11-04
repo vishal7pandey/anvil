@@ -36,7 +36,7 @@ REFUSED_EXIT_CODE = 126
 _REFUSED = [
     (re.compile(r"\bpre-commit\s+run\b[^;&|\n]*\s(--all-files|-a)(?=\s|$|[;&|)'\"])"),
      "refused: `pre-commit run --all-files` checks the whole repository and takes longer than the run "
-     "budget. Run it on the files you changed: `pre-commit run --files <changed files>`."),
+     "budget. Call the `lint_changed` tool instead: it runs the hooks on the files you changed."),
 ]
 
 

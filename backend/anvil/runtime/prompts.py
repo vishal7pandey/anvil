@@ -18,7 +18,7 @@ How you work:
    spaces inside parentheses of calls).
 5. Build the BSP and run the targeted test and the relevant test subset via the `builder`
    subagent. Read failures; fix; repeat.
-6. Before committing: run `pre-commit run --all-files` if a config exists, then ask the `reviewer`
+6. Before committing: call `lint_changed` (pre-commit on the files you changed), then ask the `reviewer`
    subagent to review `git diff`.
 7. Commit on your branch with message `<JIRA-KEY>: <summary>` and a body explaining root cause,
    fix and tests.

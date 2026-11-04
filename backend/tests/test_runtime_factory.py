@@ -158,9 +158,10 @@ def test_deepagent_executor_receives_host_tools_and_hooks(
         "git_push", "github_open_pr", "github_checks", "github_code_scanning_alerts", "github_pr_state",
         "github_merge", "jira_get", "jira_search", "jira_create", "jira_comment", "jira_transition",
         "jira_set_labels", "confluence_tool", "publish_evidence_tool", "web_search_tool", "kb_search",
+        "lint_changed",
     ]
     ui_names = [getattr(t, "__name__", t) for t in ui_tools]
-    assert "jira_comment" not in ui_names and ui_names[-2:] == ["web_search_tool", "kb_search"]  # no ticket writes
+    assert "jira_comment" not in ui_names and ui_names[-3:] == ["web_search_tool", "kb_search", "lint_changed"]  # no ticket writes
     jira_tools[1]("anvil/rtems-1", "RTEMS-1: fix", "body")  # github_open_pr(branch, title, body)
     assert drafts.pop() == {"repo": "owner/repo", "branch": "anvil/rtems-1", "title": "RTEMS-1: fix",
                             "base": "tc1/5776-base", "draft": False}

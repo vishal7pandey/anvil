@@ -16,9 +16,9 @@ from tests.test_runtime_executor import RUN, FakeAgent, OfflineExecutor, collect
     'bash -lc "cd /workspace/rtems && pre-commit run -a"',
     "pre-commit run clang-format --all-files --show-diff-on-failure",
 ])
-def test_whole_repo_pre_commit_is_refused_with_the_right_command(cmd):
+def test_whole_repo_pre_commit_is_refused_and_points_to_lint_changed(cmd):
     reason = refusal(cmd)
-    assert reason and "pre-commit run --files" in reason
+    assert reason and "lint_changed" in reason  # the one way to lint (ANVIL-74)
 
 
 @pytest.mark.parametrize("cmd", [

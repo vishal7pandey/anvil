@@ -84,9 +84,9 @@ A ticket asks to move a vendored or submodule-tracked component to a newer upstr
      are not available, say so in the report and list the component name, old and new version
      and source URL instead. Never fabricate an SBOM or a CVE list.
 9. **Review.** Ask the `reviewer` subagent to review `git diff <base>` against the report.
-10. **Pre-commit** (if `.pre-commit-config.yaml` exists) on the changed files outside the
-    imported upstream tree: `pre-commit run --files <files>`. Never `--all-files` (it takes longer
-    than the run budget and the sandbox refuses it). Imported upstream files keep upstream formatting.
+10. **Pre-commit.** Call `lint_changed(exclude=["<imported upstream dir>/"])`: it runs the hooks on
+    the files you changed, leaving out the imported upstream tree, which keeps upstream formatting.
+    Do not run pre-commit yourself (whole-tree runs outlast the run budget and the sandbox refuses them).
 11. **Commit, push, PR.** Commits on your `anvil/...` branch, `<JIRA-KEY>: <component>: ...`.
     `git_push`, then `github_open_pr` with the report as the body, then `github_checks`; if CI
     fails, read the log, fix, push (max 3 rounds), else `handoff`.

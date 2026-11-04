@@ -1,214 +1,178 @@
-# Anvil Live Demonstration Runbook
+# Anvil Demonstration Runbook: Offline Team Laptop Path
 
-**Document Version:** 1.0  
-**Target Milestone:** M4 (Demo Ready)  
-**Applicable Scenarios:** TC1 (Defect Fix), TC2 (Component Upgrade), TC3 (CRA Review), TC4 (Incident Investigation & Self-Learning), Forced-Stuck Handoff.  
-**Audience:** Demonstration presenters, evaluators, and system operators.
+> **Offline Target:** Disconnected team laptops (Friday 11-06 demo). No GitHub (`github.com`), no Atlassian Cloud (`*.atlassian.net`). Standalone local stack + local file ticketing + pre-embedded KB + Docker compilation sandbox.  
+> **Format:** Checklist-driven runbook for presenters before and during the demonstration.
 
 ---
 
-## 1. System Setup & Pre-Flight Checklist
+## 1. Before Entering the Room (T-15m Setup Checklist)
 
-### 1.1 Local Stack Verification
-Before inviting evaluators or beginning recorded rehearsals, verify the host stack:
+Complete these steps on the laptop while setting up the presenter display:
 
-1. **Containers & Services:**
-   ```powershell
-   # Start background stack (Postgres on 5433, Model Gateway on 4000)
-   .\scripts\up.ps1
-   ```
-2. **Web UI & Backend API:**
-   - Backend API: `http://localhost:8000/api/runs`
-   - Frontend Web UI: `http://localhost:5173`
-   - Model Gateway: `http://localhost:4000/health`
-3. **Sandbox Image Available:**
-   ```powershell
-   docker image inspect anvil-sandbox-rtems:7 > $null
-   if ($LASTEXITCODE -ne 0) {
-       docker pull ghcr.io/vishal7pandey/anvil-sandbox-rtems:7
-       docker tag ghcr.io/vishal7pandey/anvil-sandbox-rtems:7 anvil-sandbox-rtems:7
-   }
-   ```
-4. **Environment Reset (The Clean Slate):**
-   Always run the demo reset before starting a demo run:
-   ```powershell
-   .\scripts\reset-demo.ps1
-   ```
-   *Verifies:*
-   - `RTEMS-1` through `RTEMS-6` tickets in Jira reset to `To Do` with baseline labels.
-   - Remote mirror branches (`anvil/*`) and unmerged PRs cleared.
-   - Confluence `RTKB` purged of agent-written pages (preserving the 10 synthetic baseline pages).
-   - Vector database re-ingested.
-   - Ephemeral `anvil-sbx-*` containers terminated.
+### 1.1 Stack & Containers
+- [ ] **Launch Local Stack:**
+  ```powershell
+  .\scripts\up.ps1
+  ```
+  *Check:* `anvil-postgres` healthy on port `5433` and `anvil-gateway` healthy on port `4000`.
+- [ ] **Verify / Import Docker Sandbox Image:**
+  ```powershell
+  docker image inspect anvil-sandbox-rtems:7.1 > $null
+  if ($LASTEXITCODE -ne 0) {
+      .\scripts\import-sandbox-image.ps1 -ImagePath data\sandbox\anvil-sandbox-rtems-7.1.tar
+  }
+  ```
+  *Check:* Image `anvil-sandbox-rtems:7.1` present locally.
+- [ ] **Import Pre-Embedded Knowledge Base Snapshot:**
+  ```powershell
+  uv run --directory backend python -m anvil.kb import-snapshot --from ..\data\kb
+  ```
+  *Check:* Vectors sidecar verified and imported into `kb_chunks` table without requiring live gateway embeddings.
 
-### 1.2 T-30 Minute Automated Preflight Check
-Exactly 30 minutes before presentation or recording, run the automated preflight verification script to detect and resolve host or infrastructure regressions before evaluators arrive:
+### 1.2 API & UI Daemons
+- [ ] **Start Control API Daemon (Terminal 1):**
+  ```powershell
+  .\scripts\start-api.ps1 -Force
+  ```
+  *Check:* API listening on `http://127.0.0.1:8000`. Fresh process spawned from latest `main`. Log active at `api-8000.log`.
+- [ ] **Start Frontend Web UI (Terminal 2):**
+  ```powershell
+  cd frontend
+  npm run dev
+  ```
+  *Check:* Vite dev server listening at `http://localhost:5173`. Open in presenter browser.
 
+### 1.3 Preflight & Local Ticket Staging
+- [ ] **Run Preflight Verification:**
+  ```powershell
+  .\scripts\preflight.ps1 -Presenter "presenter"
+  ```
+  *Criteria:* **Must pass all 8 checks [PASS]** (Sandbox image, signed Python runtime, API port 8000, stack health, lock free or held by presenter, container hygiene). Check 6 (Jira baseline) and Check 7 (submodule reachability) are ignored for offline execution.
+- [ ] **Stage the Target Ticket in `todo/`:**
+  Create ticket file `C:\work\tickets\todo\RTEMS-1.json`:
+  ```json
+  {
+    "key": "RTEMS-1",
+    "type": "Bug",
+    "status": "To Do",
+    "summary": "Mutex reports EBUSY / crashes after a failed pthread_mutex_init with an invalid priority ceiling",
+    "description": "Code base: branch tc1/5776-base of C:\\work\\rtems\n\nFix the ticket.",
+    "labels": ["anvil", "posix", "tc1"]
+  }
+  ```
+  *Check:* If using a custom codebase path with spaces, enclose in quotes: e.g. `Code base: "C:\work\My Projects\rtems"`.
+  > [!NOTE]
+  > If pointing to a plain folder (no `.git`), Anvil generates an ephemeral single-commit snapshot on the fly. For large codebases like RTEMS (~10k+ files), this initial stat snapshot takes ~111 seconds (~1.8m) on Windows NTFS. From a Git checkout, intake starts in 1–2 seconds.
+
+---
+
+## 2. The Run (Minute-by-Minute & Screen Tour)
+
+- **Target Ticket:** `RTEMS-1` (TC1: Mutex priority ceiling defect).
+- **Trigger:** Intake loop detects `C:\work\tickets\todo\RTEMS-1.json`, transitions it to `in-progress/RTEMS-1.json`, and triggers session `local:RTEMS-1`.
+- **Browser:** Open `http://localhost:5173` to the live session run stream.
+
+### 2.1 What Each Screen / Panel Shows
+| UI Panel | What Evaluators See | Presenter Notes |
+|---|---|---|
+| **Chat / Run Stream (Center)** | Live tool calls (`kb_search`, `bash`, `waf`), thoughts, and simulation runs (`sis`). | Streams SSE events directly from backend without page refresh. |
+| **Plan Panel (Right)** | Step-by-step checklist dynamically generated by the agent. | Shows status of reproduction, source editing, Waf compilation, and test execution. |
+| **Diff Tab (Top Right)** | Live unified diff of modified code (`mutexinit.c`). | Shows exact syntax edits applied inside the container sandbox. |
+| **Cost Meter (Top Right)** | Displays **"pending"** while spend logs lag. | Explain: LiteLLM spend rows flush asynchronously to Postgres; meter shows "pending" rather than synthetic estimates or 503 errors. Once rows land, displays actual USD cost. |
+
+### 2.2 Talk Track by Elapsed Time
+- **0:00 - 2:00 (Code Intake & KB Search):**
+  - *What's happening:* The agent checks out `tc1/5776-base`, reviews the defect description, locates mutex initialization code, and queries the offline Knowledge Base.
+  - *Talk track:*
+    > *"Notice that during the first two minutes, the model is reading the codebase and searching our offline engineering knowledge base using dense vector search. The upstream fix commits from late 2026 are strictly withheld by our historical time guard. The agent must deduce the bug independently."*
+- **2:00 - 4:00 (Reproduction & SIS Simulation):**
+  - *What's happening:* The agent reproduces the defect on the SPARC/ERC32 simulator (`sis`), verifying that `pthread_mutex_trylock()` returns `EBUSY` instead of `EINVAL`.
+  - *Talk track:*
+    > *"Notice the plan panel on the right. Anvil formulates a verification plan, cross-compiles for SPARC using RTEMS Waf inside the Docker sandbox, and reproduces the defect under the SIS architectural simulator without requiring physical hardware."*
+- **4:00 - 5:30 (Patch Application & Regression Testing):**
+  - *What's happening:* The agent patches `cpukit/posix/src/mutexinit.c`, rebuilds `sparc/erc32`, and executes regression tests (`psx05.exe` and test suite).
+  - *Talk track:*
+    > *"The agent applies the fix—ensuring ceiling attributes are verified before mutex flags are modified. It re-runs the regression suite on SIS: all 87 POSIX tests pass cleanly."*
+
+---
+
+## 3. The Approval Moment (Human-in-the-Loop Gate - ANVIL-24)
+
+Once acceptance tests pass, Anvil triggers the human governance gate before applying changes:
+
+### 3.1 The Approval Dialog
+The UI displays the interactive **Approval Dialog**:
+- Candidate code diff (`mutexinit.c`).
+- Verified test execution log on `sis`.
+- Proposed git commit message and summary.
+
+### 3.2 Exercising Both Decision Paths (Live or Dry Run)
+* **Path A: Approve (Nominal Flow)**
+  1. Click **Approve** in the UI.
+  2. Agent finalizes the session:
+     - Exports `.patch` and `.bundle` deliverables to `private/runs/<run_id>/`.
+     - Appends execution metrics to ticket file and moves it from `in-progress/RTEMS-1.json` to `done/RTEMS-1.json`.
+  3. *Talk track:* *"Anvil never commits to production without human consent. Lead engineers review the diff, click Approve, and Anvil generates host-side deliverables and updates the ticket store."*
+* **Path B: Reject with Feedback (Critique Loop)**
+  1. Enter feedback in the critique field (e.g., `"Please add an inline comment explaining why flags cannot be written before validation."`).
+  2. Click **Reject**.
+  3. Agent consumes the feedback event, updates its plan, edits the file to include the requested comment, re-runs Waf/SIS verification, and returns to the approval gate.
+  4. *Talk track:* *"Notice the interactive feedback loop. When a human reviewer requests adjustments, the agent resumes execution, addresses the feedback in context, and re-submits for verification."*
+
+---
+
+## 4. After the Run (Host Deliverables & Analysis)
+
+### 4.1 Host Deliverables
+Verify generated patch and bundle in the runs directory:
 ```powershell
-.\scripts\preflight.ps1 -Presenter "antigravity"
+Get-ChildItem -Path "private\runs" | Select-Object -Last 1
 ```
+* **Git Patch:** `private\runs\<run_id>\<run_id>.patch`
+  - In a git working copy: `git am <patch>`
+  - In a plain unversioned folder: `git apply <patch>`
+* **Git Bundle:** `private\runs\<run_id>\<run_id>.bundle`
+  - In git: `git fetch <bundle> <branch>`
+* **Ticket Status:** Verify ticket moved to `C:\work\tickets\done\RTEMS-1.json` with execution comments and duration metrics.
 
-The script evaluates 8 critical preconditions and outputs `[PASS]` or `[FAIL]` with a remediation hint for each. It exits with code `0` on 100% passage, or `1` if any check fails:
-
-| # | Check Area | Pass Criteria | Remediation on Failure |
-|---|---|---|---|
-| **1** | **Docker Sandbox Image** | `anvil-sandbox-rtems:7.1` present locally; image ID matches `sha256:bc17ec29...`. | Rebuild locally: `docker build -f sandbox/rtems/Dockerfile.leon3 -t anvil-sandbox-rtems:7.1 sandbox/rtems` |
-| **2** | **Backend Python Environment** | Signed CPython 3.13 venv; imports `unicodedata` and `requests` cleanly without Smart App Control interference. | Rebuild venv: `uv sync --directory backend --python "C:/Users/yedna/AppData/Local/Python/pythoncore-3.13-64/python.exe"` |
-| **3** | **Control API Freshness & Health** | Exactly one process listening on `:8000`, process start time is **newer** than latest merge on `origin/main`, and `GET /api/sessions` with `ANVIL_DEMO_TOKEN` returns 200. | Restart API from latest main: `.\scripts\start-api.ps1` |
-| **4** | **Local Stack Health** | `anvil-gateway` healthy on `/health/liveliness`, `anvil-postgres` healthy on 5433. | Re-launch local stack: `docker compose -f deploy/compose.yaml up -d --wait` |
-| **5** | **RTEMS Build Lock** | `comms/locks/rtems-build.lock` absent or held by the presenter. | Await active dry run completion or coordinate handover in comms. |
-| **6** | **Jira Demo Baseline** | `RTEMS-1` through `RTEMS-6` and case tickets at `To Do` with baseline labels, unmanaged tickets purged. | Reset tickets: `.\scripts\reset-demo.ps1 -Jira` |
-| **7** | **Submodule Reachability** | `github.com/lwip-tcpip/lwip` and `gitlab.rtems.org` reachable via HTTPS. | Verify host network/DNS connectivity. |
-| **8** | **Container Hygiene** | Zero leftover `anvil-sbx-*` ephemeral containers. | Prune containers: `.\scripts\reset-demo.ps1 -Containers` |
-
-> [!NOTE]
-> Run `preflight.ps1` only **after** executing `.\scripts\reset-demo.ps1 -Containers`, and **never** while another agent holds `locks/rtems-build.lock` (active dry runs maintain legitimate ephemeral sandbox containers and uncommitted Jira state).
-
----
-
-## 2. Minute-by-Minute Scenario Execution
-
-```mermaid
-flowchart LR
-    A[Reset Environment] --> B[TC1: Defect Fix]
-    B --> C[TC2: Component Upgrade]
-    C --> D[TC3: CRA Audit]
-    D --> E[TC4: Incident & Self-Learning]
-    E --> F[Forced-Stuck Handoff]
+### 4.2 Post-Run Analysis CLI
+Run the post-run diagnostic CLI:
+```powershell
+uv run --directory backend python -m anvil.analyze <run_id>
 ```
+*Outputs:*
+- Wall-clock step timing and tool execution durations.
+- Token consumption per model alias (`ANVIL_MAIN_MODEL`, `ANVIL_FAST_MODEL`).
+- Compaction events (verifies if `context.compacted` fired).
+- Actual USD spend recorded from LiteLLM PostgreSQL spend logs.
 
 ---
 
-### Scenario 1: TC1 Autonomous Defect Diagnosis & Patch (RTEMS-1)
-*Demonstrates: Autonomous root-cause reasoning, isolated test generation, and verified patch application with the reference fix withheld.*
+## 5. "If X Goes Wrong" (Troubleshooting & Emergency Fallbacks)
 
-- **Target Ticket:** `RTEMS-1` (`Mutex reports EBUSY / crashes after a failed pthread_mutex_init with an invalid priority ceiling`).
-- **Codebase:** `vishal7pandey/rtems` on branch `tc1/5776-base`.
-- **Target Architecture:** SPARC / ERC32 (`sparc/erc32`) via SIS simulator.
-- **Estimated Duration:** ~5–7 minutes.
+Quick triage checklist for live evaluation glitches:
 
-#### Minute-by-Minute Timeline
-| Elapsed | Action / Agent State | Evaluator Talk Track |
+| Problem | Symptoms | Fast Fix (Under 30 Seconds) |
 |---|---|---|
-| **0:00 - 0:30** | Add label `anvil` to Jira issue `RTEMS-1`. Anvil intake poller discovers ticket and creates run. | *"We trigger Anvil simply by labelling the Jira ticket `anvil`. The autonomous intake poller launches an isolated Docker sandbox with RTEMS 7 tools."* |
-| **0:30 - 2:00** | Agent checks out `tc1/5776-base`, reviews the defect description, locates `score/src/threadqops.c` and POSIX mutex init, and compiles a targeted reproduction test. | *"Notice that the upstream solution from late 2026 is withheld. The agent inspects the RTEMS source tree, notes that `_POSIX_Mutex_Initialize` sets flags before validating ceilings, and reproduces the failure under the SIS simulator."* |
-| **2:00 - 4:00** | Agent edits `cpukit/posix/src/mutexinit.c`, applies the ordering fix, builds `sparc/erc32`, and executes `psx05.exe` and `psxtests` on SIS. | *"The agent applies the fix and immediately verifies that `psx05.exe` passes, then runs the full POSIX test subset on SIS (87/87 pass) to ensure zero regressions."* |
-| **4:00 - 5:30** | Agent pushes branch `anvil/rtems-1-mutex-fix`, opens a GitHub Pull Request, and waits for CI check completion. | *"The agent pushes a clean Git commit formatted to project standards and opens a PR on GitHub. Notice the live SSE event stream streaming progress directly to our dashboard."* |
-| **5:30 - 6:30** | **Human Gate: PR Review & Approval.** Human reviewer approves PR. Agent detects merge or approval, posts run metrics, and marks `RTEMS-1` **Done**. | *"Anvil never merges to production without human consent. As the lead engineer, I review the diff in GitHub, approve the PR, and Anvil closes the Jira loop."* |
+| **Gateway Down** | API reports connection refused to `127.0.0.1:4000` | Run `docker restart anvil-gateway`. Check health at `http://127.0.0.1:4000/health/liveliness`. Verify provider API key in Credential Manager target `forge`. |
+| **No Embeddings / KB Fails** | `kb_search` returns empty or errors | Check vectors sidecar hash: `(Get-FileHash data\kb\kb-snapshot.jsonl.gz).Hash.ToLower()`. Re-run: `uv run --directory backend python -m anvil.kb import-snapshot --from ..\data\kb`. |
+| **Sandbox Won't Start** | Container startup timeout; `anvil-sbx-*` fails to boot | Prune stale containers: `docker ps -aq --filter 'name=^anvil-sbx-' \| ForEach-Object { docker rm -f $_ }`. Check Docker Desktop resource limits (min 7 GB RAM allocated). |
+| **Run Stuck > 5 Minutes** | Agent repeats loop or hangs without emitting events | **Do not force-kill.** Anvil's stuck-detector automatically triggers graceful handoff: persists WIP state, tags ticket with `anvil-needs-human`, and writes diagnostic notes. |
+| **Catastrophic Host Failure** | Laptop OS crash or critical toolchain failure | **Emergency Fallback: Recorded Rehearsal.** Open pre-recorded high-resolution walkthrough in `artifacts/rehearsals/tc1-defect-fix-nominal.mp4` or run analysis CLI on previous successful run ID. |
 
 ---
 
-### Scenario 2: TC2 Open-Source Component Upgrade (RTEMS-2)
-*Demonstrates: Autonomous dependency management, C port layer adaptation, cross-compilation, and compliance artifact generation (SBOM, OSV CVE analysis & follow-ups, API impact).*
+## 6. Quick Reset for Next Run
 
-- **Target Ticket:** `RTEMS-2` (`Upgrade vendored lwIP to 2.2.1 in rtems-lwip`).
-- **Codebase:** `vishal7pandey/rtems-lwip` on branch `tc2/upgrade-base-leon3` (constructed baseline: backports SPARC/LEON3 GRETH support to lwIP 2.1.3 so the demo builds under the SPARC sandbox while keeping the vendored lwIP tree untouched).
-- **Target Architecture:** SPARC / LEON3 (`sparc/leon3`) via SIS simulator.
-- **Estimated Duration:** ~6–8 minutes.
+To reset the offline environment for a consecutive demonstration:
+```powershell
+# 1. Prune ephemeral containers
+$sbx = docker ps -aq --filter 'name=^anvil-sbx-'
+if ($sbx) { docker rm -f $sbx }
 
-#### Minute-by-Minute Timeline
-| Elapsed | Action / Agent State | Evaluator Talk Track |
-|---|---|---|
-| **0:00 - 1:00** | Label `anvil` added to `RTEMS-2`. Agent checks baseline (`lwIP 2.1.3`), fetches upstream tag `STABLE-2_2_1_RELEASE`, and drafts upgrade plan. | *"In TC2, Anvil acts as a dependency maintenance engineer. It compares vendored sources against the upstream lwIP release tag to identify added files and changed signatures."* |
-| **1:00 - 3:00** | Agent advances submodule, updates in-tree `lwip/` tree according to `file-import.json`, imports newly mandatory Address Conflict Detection (`acd.c`), and adjusts `lwipopts.h`. | *"Notice how the agent updates the Waf build files and handles API shifts like Address Conflict Detection without human guidance."* |
-| **3:00 - 5:30** | Agent configures Waf (`--prefix=/opt/rtems/7 --rtems-tools=/opt/rtems/7 --rtems-bsps=sparc/leon3`) and compiles `networking01.exe` in ~2 minutes. Runs SIS simulation (0.28s). | *"The stack is cross-compiled for SPARC/LEON3 using RTEMS Waf. The agent executes `networking01.exe` on SIS—zero host network tap or root permissions required."* |
-| **5:30 - 7:00** | Agent generates Syft SBOM delta (SPDX), OSV-Scanner CVE analysis report, API impact summary, and publishes release documentation to Confluence space `RTKB`. | *"Beyond code, Anvil generates complete compliance artifacts: before/after SBOMs, API impact notes, and OSV vulnerability analysis. Notice that OSV records lwIP 2.1.3 (commit 6ca936f) with 0 known vulns and 2.2.1 (commit 77dcd25) with 3 (CVE-2026-112062, CVE-2026-119053, CVE-2026-8836). Rather than falsely claiming CVEs were remediated, Anvil flags the 3 newly surfaced CVEs in the target version and drafts follow-up tickets."* |
-| **7:00 - 8:00** | **Human Gate: Upgrade Approval.** Reviewer inspects SBOM, CVE flags, and PR. Ticket transitioned to **Done**. | *"We inspect the SBOM diff and the CVE report flagging the 3 new target-version CVEs for follow-up, verify simulator test passage, and approve the upgrade PR."* |
+# 2. Reset ticket back to todo/
+Move-Item "C:\work\tickets\done\RTEMS-1.json" "C:\work\tickets\todo\RTEMS-1.json" -Force
 
-#### TC2 Fallback Track: Partial Upgrade & Graceful Handoff
-If the live upgrade encounters complex driver porting obstacles, toolchain regressions, or approaches runtime token/time bounds:
-- **WIP Branch Persistence:** The agent commits all synchronized code (submodule advancement, updated `file-import.json`, imported in-tree `lwip/` sources, and partial build adjustments) to `origin/anvil/rtems-2-wip`.
-- **Structured Diagnostic Handoff:** The agent tags `RTEMS-2` with label `anvil-needs-human` and posts an actionable engineering handoff brief:
-  - Submodule and release tag baseline (`STABLE-2_2_1_RELEASE`).
-  - Completed milestones (Waf configure flags, compiled object count).
-  - Unresolved compilation/linking hurdles with root-cause hypotheses for human maintainers.
-- **Draft PR & Compliance Artifacts:** Because OSV requires network access and the sandbox environment is strictly offline, the agent opens a draft pull request from `anvil/rtems-2-wip` against `tc2/upgrade-base-leon3`. This triggers `rtems-lwip` hosted CI, where the `sbom` job computes the before/after Syft SBOM delta (SPDX/CycloneDX) and queries the OSV API (flagging target CVE-2026-112062, CVE-2026-119053, and CVE-2026-8836 for follow-up tracking). Alternatively, if demonstrating in an offline venue, the presenter pre-generates these reports on the host using `sandbox/rtems/sbom.sh`.
-- **Presenter Speaking Points:** *"Notice how Anvil fails safely. When an embedded upgrade requires deep domain intervention, the agent doesn't guess or emit broken code. It persists a clean WIP branch, produces complete compliance SBOM and OSV artifacts, and hands off a precise diagnostic brief to human maintainers."*
-
----
-
-### Scenario 3: TC3 Cyber Resilience Act (CRA) Compliance Audit (RTEMS-3)
-*Demonstrates: Regulatory compliance assessment, machine-readable checklist validation, gap analysis, STRIDE threat modeling, and human-in-the-loop SME feedback.*
-
-- **Target Ticket:** `RTEMS-3` (`[TC3] CRA Annex I compliance review of reference RTEMS networked device`).
-- **Target Device:** RefDev (RTEMS 7 + lwIP networking + shell on LEON3).
-- **Estimated Duration:** ~4–5 minutes.
-
-#### Minute-by-Minute Timeline
-| Elapsed | Action / Agent State | Evaluator Talk Track |
-|---|---|---|
-| **0:00 - 1:00** | Label `anvil` added. Agent loads authoritative `annex1.yaml` checklist (EU 2024/2847 Annex I) and queries codebase, SBOMs, and scan reports. | *"With the EU Cyber Resilience Act in effect, embedded systems require systematic verification. Anvil executes a compliance audit based on an authoritative Annex I checklist."* |
-| **1:00 - 2:30** | Agent evaluates security requirements: access control, telemetry encryption, memory protection, vulnerability handling. Identifies 2 actionable gaps. | *"The agent identifies specific gaps—such as unauthenticated debug shell interfaces—and automatically files Jira remediation stories with full traceability."* |
-| **2:30 - 3:30** | Agent constructs a STRIDE threat model from the device architecture, builds CycloneDX SBOM, and publishes compliance audit page in Confluence `RTKB`. | *"Here is the generated STRIDE threat model and the audit report published directly into the engineering knowledge base."* |
-| **3:30 - 4:30** | **Human Gate: Security Engineer Review.** Security engineer reviews findings. Evaluator rejects 1 proposed gap; rejection reasons are recorded into `/memories/cra/lessons.md`. | *"Watch the feedback loop: When our security engineer rejects a finding as an acceptable operational risk, Anvil records the decision into persistent memory so it doesn't repeat the recommendation."* |
-
----
-
-### Scenario 4: TC4 Knowledge Base Incident Triage & Self-Learning (RTEMS-5 & RTEMS-6)
-*Demonstrates: Multimodal knowledge retrieval from Confluence, look-alike incident discrimination, root-cause diagnosis, simulator reproduction, and self-learning retrieval.*
-
-- **Target Tickets:**
-  - **Run 1:** `RTEMS-5` (`Incident: Telemetry packet drops and TM_GUIDANCE deadline overrun under burst traffic`).
-  - **Run 2 (Self-Learning):** `RTEMS-6` (`Secondary payload instrument reports intermittent telemetry packet drops during burst mode`).
-- **Knowledge Store:** PostgreSQL `anvil` (pgvector chunks of Confluence `RTKB` + seeded runbooks).
-- **Estimated Duration:** ~8–10 minutes total (Run 1: ~5m, Run 2: ~3m).
-
-#### Minute-by-Minute Timeline
-| Elapsed | Action / Agent State | Evaluator Talk Track |
-|---|---|---|
-| **0:00 - 2:00** | **Run 1 Start:** Label `anvil` on `RTEMS-5`. Agent queries KB using hybrid dense-sparse search via `kb_search`. | *"During sensor bursts, high-priority telemetry is dropped. Anvil queries our engineering wiki space `RTKB` to investigate past operational runbooks."* |
-| **2:00 - 3:30** | **Look-alike Discrimination:** Agent inspects 3 candidate incidents (2024 PDU Relay Chatter vs 2026 X-band Transponder vs 2025 Payload Guidance Overrun). Accurately discards false leads and pinpoints telemetry queue buffer exhaustion (`RTEMS_TOO_MANY`). | *"Notice how Anvil discriminates between look-alike incidents: it rules out power transients and RF anomalies, correctly identifying telemetry message queue depth constraints."* |
-| **3:30 - 5:00** | Agent publishes Incident Post-Mortem page to Confluence `RTKB` with verified sizing remediation, reproduces queue saturation on SIS, and requests SME confirmation. | *"Anvil documents the incident post-mortem into `RTKB` and indexes it into the vector store. This institutional knowledge is now active."* |
-| **5:00 - 5:30** | **Transition to Run 2 (Self-Learning):** Presenter resets environment with `.\scripts\reset-demo.ps1 -Confluence -KeepTc4Run1`, preserving Run 1's incident analysis page. | *"Now we demonstrate self-learning. We preserve the newly created post-mortem and simulate a secondary instrument team encountering a similar symptom."* |
-| **5:30 - 7:30** | **Run 2 Start:** Label `anvil` on `RTEMS-6`. Agent investigates secondary instrument packet drop. | *"When investigating RTEMS-6, watch what Anvil retrieves first: it retrieves the exact post-mortem written in Run 1 just minutes ago, citing previous findings and recommending immediate resolution."* |
-
----
-
-### Scenario 5: Forced-Stuck & Graceful Human Handoff (RTEMS-4)
-*Demonstrates: Safety bounds, dead-end detection, and graceful human handoff without infinite loops or hallucinated fixes.*
-
-- **Target Ticket:** `RTEMS-4` (`[TC-forced-stuck] Tune GRETH RX/TX descriptor ring timing on real LEON3 hardware`).
-- **Nature of Defect:** Hardware-only race condition that cannot be modeled in SIS simulation.
-- **Estimated Duration:** ~3–4 minutes.
-
-#### Minute-by-Minute Timeline
-| Elapsed | Action / Agent State | Evaluator Talk Track |
-|---|---|---|
-| **0:00 - 1:30** | Label `anvil` added to `RTEMS-4`. Agent inspects driver code and attempts simulator reproduction. | *"In mission-critical engineering, knowing when to stop is as important as knowing how to patch. RTEMS-4 requires physical logic analyzer traces on LEON3 hardware that cannot be observed in SIS."* |
-| **1:30 - 3:00** | Agent recognizes that the required DMA descriptor timing cannot be verified on the simulator after repeated bounded attempts. It triggers `handoff`. | *"Anvil's stuck-detection algorithm prevents infinite retry loops or hallucinated solutions. Recognizing the hardware barrier, the agent executes `handoff`."* |
-| **3:00 - 4:00** | Agent commits current progress to WIP branch `anvil/rtems-4-wip`, posts structured handoff note with hypotheses and next steps, and adds Jira label `anvil-needs-human`. | *"The agent cleanly escalates to a human engineer: it saves its WIP branch, leaves a diagnostic summary explaining what was tried and what hardware tools are needed next, and flags the ticket `anvil-needs-human`."* |
-
----
-
-## 3. Human Gate Cheat Sheet (What to Say & Do)
-
-| Gate | Scenario | Agent Prompt / State | Operator Action | Speaking Points |
-|---|---|---|---|---|
-| **Gate 1: Code Diff Review** | TC1 | Agent opens PR #X, requests review | Open GitHub PR link in browser, inspect `mutexinit.c` diff, click **Approve** and **Squash and Merge**. | *"We verify that the mutex initialization flags are written only after parameter validation. Clean diff, zero warnings, tests green. Merging."* |
-| **Gate 2: Upgrade Acceptance** | TC2 | Agent posts SBOM & CVE delta to PR | Review Syft SBOM comparison, verify target-version CVE flags and follow-ups, approve PR. | *"Notice the automated vulnerability assessment: OSV identifies 3 known CVEs in the target 2.2.1 release (CVE-2026-112062, -119053, -8836). Anvil flags them and creates follow-up tracking issues. Clean simulation on LEON3. Approved."* |
-| **Gate 3: CRA Compliance Gate** | TC3 | Agent presents Annex I gap list | In UI / Jira, mark 1 gap as **Accepted** and 1 gap as **Rejected (Acceptable operational risk)**. | *"Human governance is built into the workflow. We approve the remote shell gap, but reject the telemetry gap because RefDev uses an isolated optical bus."* |
-| **Gate 4: Hypothesis Validation** | TC4 | Agent requests SME confirmation of root cause | Click **Confirm Hypothesis** in Anvil UI. | *"Anvil presents the top hypothesis with supporting citations from past mission post-mortems before touching design specifications."* |
-| **Gate 5: Stuck Handoff** | Forced-Stuck | Agent posts handoff note & label | Inspect `RTEMS-4` Jira comment, view WIP branch. | *"The agent gracefully stopped and provided an actionable brief for our laboratory hardware testbed."* |
-
----
-
-## 4. Emergency & Offline Fallback Procedures
-
-If network interruptions or unexpected rate limits occur during a live evaluation, transition smoothly to the verified fallback procedures:
-
-1. **Local Model Gateway Offline Cache:**
-   - The LiteLLM model gateway running on port 4000 can serve cached completions from disk if outbound API routes experience latency.
-2. **Pre-Recorded Rehearsal Screencasts:**
-   - Verified high-resolution asciinema and video captures of nominal runs are located in:
-     - `artifacts/rehearsals/tc1-defect-fix-nominal.mp4`
-     - `artifacts/rehearsals/tc2-component-upgrade-nominal.mp4`
-     - `artifacts/rehearsals/tc3-cra-review-nominal.mp4`
-     - `artifacts/rehearsals/tc4-kb-self-learning-nominal.mp4`
-     - `artifacts/rehearsals/tc-forced-stuck-handoff-nominal.mp4`
-3. **Emergency Reset Command:**
-   If a scenario needs to be restarted immediately:
-   ```powershell
-   .\scripts\reset-demo.ps1 -Containers -Jira -Mirrors
-   ```
-4. **TC2 Partial Upgrade Demonstration:**
-   - If live upgrade compilation exceeds demo time constraints or encounters complex porting hurdles, seamlessly pivot to the fallback track: navigate to WIP branch `origin/anvil/rtems-2-wip` (or its draft PR), display the diagnostic handoff comment on `RTEMS-2`, and inspect the generated Syft SBOM and OSV delta artifacts produced by CI (or pre-generated with `sbom.sh` on the host).
+# 3. Clean working copy branch in local RTEMS
+git -C C:\work\rtems checkout -B tc1/5776-base origin/tc1/5776-base
+```

@@ -1,0 +1,42 @@
+# Second bug-replay case (ANVIL-42): proves cases/*.toml are generic. Same defect-fix shape as
+# rtems-5776; the agent gets the pre-fix code and the symptoms, the upstream fix is withheld.
+id = "rtems-5806"
+kind = "defect-fix"
+repo = "vishal7pandey/rtems"
+as_of = "2026-10-08"               # 97cf8529 committed; later knowledge is "from the future"
+
+[upstream]
+url = "https://gitlab.rtems.org"
+project = "rtems/rtos/rtems"
+issues = ["5806"]
+mrs = ["1526"]
+fix_commits = ["97cf8529"]
+
+[withheld]
+# The rest of the TC1 candidate shortlist (docs/03-demo-scenarios.md). Withheld here until each
+# becomes its own case file, so the KB never learns a candidate's answer.
+issues = ["5776", "5723", "5750", "5749", "5760"]
+mrs = ["1493", "1448", "1468", "1484", "1479"]
+commits = ["a62e60b5", "f2ad71ee", "af256031", "338bab40", "80b1ba90"]
+
+[base]
+branch = "tc1/5806-base"
+# no sha: the base does not exist yet; claude builds it with `build-base --push` after review.
+
+[base.overlay]
+# Factory infrastructure added on top of the pre-fix tree: CI, pre-commit, scanners. The shared
+# infra/anvil-ci ref triggers on tc1/** and case/** and builds sptests too (the tc1/5776-base
+# snapshot only triggers on main + tc1/5776-base and builds psxtests only).
+ref = "infra/anvil-ci"
+paths = [".github", ".pre-commit-config.yaml", "sonar-project.properties"]
+
+[ticket]
+project = "RTEMS"
+labels = ["anvil", "classic-api", "tc1"]
+summary = "Counter conversions return wrong values above a few seconds"
+body_file = "rtems-5806.ticket.md"
+
+[scoring]
+target_files = ["cpukit/sapi/src/cpucounterconverter.c"]
+test_files = ["testsuites/sptests/spcpucounter01/init.c"]
+tolerance = 3

@@ -95,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.command == "export-snapshot":
-            print(json.dumps(export_snapshot(store, args.out), indent=2))
+            print(json.dumps(export_snapshot(store, args.out, with_vectors=args.with_vectors), indent=2))
             return 0
 
         if args.command == "import-snapshot":
@@ -170,6 +170,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
     exp = sub.add_parser("export-snapshot", help="write documents + chunks (no vectors) to files")
     exp.add_argument("--out", type=Path, default=DEFAULT_SNAPSHOT_DIR)
+    exp.add_argument("--with-vectors", action="store_true",
+                     help="also write the pgvector text per chunk (ANVIL-58; large file, shared out-of-band)")
     imp = sub.add_parser("import-snapshot", help="load a snapshot and re-embed it with the configured model")
     imp.add_argument("--from", dest="src", type=Path, default=DEFAULT_SNAPSHOT_DIR)
 

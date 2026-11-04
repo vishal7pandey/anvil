@@ -940,6 +940,22 @@ async def _jira_intake_loop(app: FastAPI) -> None:
         await asyncio.sleep(delay)
 
 
+async def _sandbox_reaper_loop(app: FastAPI) -> None:
+    from anvil.runtime.reaper import reap_stale_sandboxes
+
+    while True:
+        try:
+            await run_in_threadpool(
+                reap_stale_sandboxes,
+                session_factory=app.state.session_factory,
+                owner_id=app.state.settings.owner_id,
+                max_age_hours=app.state.settings.sandbox_max_age_hours,
+            )
+        except Exception as exc:
+            logger.error("Sandbox reaper sweep failed (%s)", type(exc).__name__)
+        await asyncio.sleep(app.state.settings.sandbox_reaper_interval_seconds)
+
+
 def _events_after(
     session_factory: SessionFactory,
     run_id: UUID,
@@ -967,6 +983,7 @@ def create_app(
     tickets_dir: str | None = None,
     spend_log_provider: SpendLogProvider | None = None,
     start_intake_loop: bool = True,
+    start_reaper_loop: bool = True,
 ) -> FastAPI:
     configured_settings = settings or get_settings()
     from anvil.logs import configure_logging
@@ -990,6 +1007,14 @@ def create_app(
                 )
             else:
                 logger.info("intake disabled: no tickets dir and no Jira credentials")
+        if (
+            app.state.start_reaper_loop
+            and app.state.settings.sandbox_reaper_enabled
+        ):
+            app.state.reaper_task = asyncio.create_task(
+                _sandbox_reaper_loop(app),
+                name="anvil-sandbox-reaper",
+            )
         try:
             yield
         finally:
@@ -997,6 +1022,9 @@ def create_app(
             if app.state.intake_task is not None:
                 app.state.intake_task.cancel()
                 tasks.append(app.state.intake_task)
+            if app.state.reaper_task is not None:
+                app.state.reaper_task.cancel()
+                tasks.append(app.state.reaper_task)
             for task in tasks:
                 task.cancel()
             if tasks:
@@ -1029,8 +1057,10 @@ def create_app(
 
     app.state.tickets_dir = tickets_dir or _os.environ.get("ANVIL_TICKETS_DIR")
     app.state.start_intake_loop = start_intake_loop
+    app.state.start_reaper_loop = start_reaper_loop
     app.state.run_tasks = {}
     app.state.intake_task = None
+    app.state.reaper_task = None
 
     @app.post(
         "/api/sessions",

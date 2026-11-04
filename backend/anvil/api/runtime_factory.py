@@ -133,10 +133,15 @@ def create_executor_from_environment() -> RunExecutor | None:
         jira_comment(jira_key, markdown)
         jira_set_labels(jira_key, add=["anvil-needs-human"])
 
-    return DeepAgentExecutor(
-        db_url=_runtime_database_url(get_settings().database_dsn),
-        tools_factory=tools_factory,
-        push_hook=push_hook,
-        report_hook=report_hook,
-        verify_hook=verify_outcome,
-    )
+    settings = get_settings()
+    import inspect
+    executor_kwargs: dict[str, Any] = {
+        "db_url": _runtime_database_url(settings.database_dsn),
+        "tools_factory": tools_factory,
+        "push_hook": push_hook,
+        "report_hook": report_hook,
+        "verify_hook": verify_outcome,
+    }
+    if "owner_id" in inspect.signature(DeepAgentExecutor.__init__).parameters:
+        executor_kwargs["owner_id"] = settings.owner_id
+    return DeepAgentExecutor(**executor_kwargs)

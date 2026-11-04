@@ -107,6 +107,17 @@ def repo_path(repo: str) -> str:
     return f"/workspace/{validate_repo(repo).split('/')[1]}"
 
 
+def graph_config(run: dict[str, Any]) -> dict[str, Any]:
+    """The graph's checkpoint thread is the run, not the session (ANVIL-72).
+
+    Keyed by session, a second run in the same session resumed the first run's checkpoint: its
+    messages, todos and any pending approval interrupt. A run's own approval resume uses the same
+    run id, so it still finds its interrupt. Context a follow-up run should have goes in its prompt
+    or /memories/, never through a shared checkpoint.
+    """
+    return {"configurable": {"thread_id": str(run["run_id"])}, "recursion_limit": RECURSION_LIMIT}
+
+
 def work_branch(run: dict[str, Any]) -> str:
     if run.get("branch"):
         return validate_ref(run["branch"], "branch")
@@ -287,8 +298,7 @@ class DeepAgentExecutor:
         recent: list[dict[str, Any]] = []
         stuck: str | None = None
         try:
-            async for item in agent.astream(graph_input, config={"configurable": {"thread_id": str(run["session_id"])},
-                                                                  "recursion_limit": RECURSION_LIMIT},
+            async for item in agent.astream(graph_input, config=graph_config(run),
                                             stream_mode=["messages", "updates"], subgraphs=True):
                 if cancel.is_set():
                     yield mapper.event("run.status", {"status": "cancelled"})

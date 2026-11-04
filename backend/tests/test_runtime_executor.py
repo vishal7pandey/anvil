@@ -4,7 +4,8 @@ import uuid
 import pytest
 from langchain_core.messages import AIMessage
 
-from anvil.runtime.executor import DeepAgentExecutor, sandbox_name, skill_files, skills_hash, work_branch
+from anvil.runtime.executor import (DeepAgentExecutor, graph_config, sandbox_name, skill_files, skills_hash,
+                                    work_branch)
 
 RUN = {"run_id": "r-123456789", "session_id": "s-1", "repo": "vishal7pandey/rtems-examples",
        "base_ref": "main", "mode": "autonomous", "merge_policy": "human", "jira_key": "RTEMS-1"}
@@ -292,3 +293,26 @@ def test_url_rewrites_parse_and_reject_non_https():
     assert url_rewrites("https://a.example/x/=https://b.example/y/; ") == [("https://a.example/x/", "https://b.example/y/")]
     with pytest.raises(ValueError, match="not 'https://orig=https://mirror'"):
         url_rewrites("git@a:x=https://b/")
+
+
+async def test_each_run_has_its_own_graph_thread_and_resume_reuses_it():
+    """ANVIL-72: two runs in one session must not share a checkpoint thread."""
+    seen = []
+
+    class Recording(FakeAgent):
+        async def astream(self, graph_input, config=None, **kwargs):
+            seen.append(config["configurable"]["thread_id"])
+            async for item in super().astream(graph_input, config=config, **kwargs):
+                yield item
+
+    def factory(config, sandbox, *, tools, on_handoff, checkpointer, store, skills):
+        return Recording([((), "updates", {"model": {"messages": [AIMessage(content="ok")]}})])
+
+    first, second = {**RUN, "run_id": "r-first"}, {**RUN, "run_id": "r-second"}
+    ex = OfflineExecutor(agent_factory=factory)
+    await collect(ex.start(first, "x"))
+    await collect(ex.start(second, "y"))
+    await collect(ex.resume(first, [{"type": "approve"}]))
+    assert first["session_id"] == second["session_id"]
+    assert seen == ["r-first", "r-second", "r-first"]
+    assert graph_config(first)["recursion_limit"] > 0

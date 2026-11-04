@@ -113,6 +113,7 @@ class RunResponse(BaseModel):
     model_calls: int | None = None
     cost_usd: float | None = None
     cost_status: CostStatus = "pending"
+    cost_estimated: bool = False
     ci_rounds: int = 0
     outcome: str | None = None
     artifacts: list[dict[str, Any]]
@@ -134,7 +135,8 @@ class MetricsResponse(BaseModel):
     output_tokens: int
     usd: float | None
     cost_usd: float | None = None
-    cost_status: Literal["available", "partial", "missing"] = "available"
+    cost_status: Literal["available", "partial", "missing", "pending"] = "available"
+    cost_estimated: bool = False
     runs_missing_cost: int = 0
     human_touches: int
     ci_rounds: int

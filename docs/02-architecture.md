@@ -138,11 +138,12 @@ matches `run_record.scenario` exactly. Cost and model-call counts come from Lite
 tagged with `metadata.spend_logs_metadata.run_id`. Chat Completions requests send that custom
 tag under `metadata`; the Responses API uses `litellm_metadata`. Token counts and human/CI
 activity come from the API event log. If token usage exists before its spend row is available,
-the metrics endpoints return `503` with `Retry-After` while spend data is pending (up to five
-minutes after the latest usage event). After that grace period, they return `cost_usd: null`
-and `cost_status: "missing"` rather than reporting false zero cost. `GET /api/metrics` sums cost
-over the runs that have spend rows and reports the rest as `runs_missing_cost`; its `cost_status`
-is `available`, `partial`, or `missing` (no run in the range priced).
+the run and metrics endpoints return 200 with `cost_status: "pending"` and an estimate from token
+counts, flagged with `cost_estimated: true` (ANVIL-79). After that grace period (five minutes after
+the latest usage event), they return `cost_usd: null` and `cost_status: "missing"` rather than
+reporting false zero cost. `GET /api/metrics` sums cost over the runs that have spend rows (or pending
+estimates) and reports the rest as `runs_missing_cost`; its `cost_status` is `available`, `partial`,
+`pending`, or `missing` (no run in the range priced).
 
 ### Run record (reproducibility)
 

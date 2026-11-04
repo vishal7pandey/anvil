@@ -1,8 +1,20 @@
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import JSON, Column, MetaData, Numeric, Table, create_engine, func, select
+from sqlalchemy import (
+    JSON,
+    Column,
+    MetaData,
+    Numeric,
+    Select,
+    Table,
+    create_engine,
+    func,
+    select,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine, make_url
 
@@ -22,19 +34,62 @@ class SpendTotals:
     usd: Decimal
 
 
+def ensure_spend_log_index(engine: Engine) -> None:
+    """Ensure the expression index on LiteLLM_SpendLogs(run_id) exists."""
+    dialect = engine.url.get_backend_name()
+    try:
+        with engine.begin() as conn:
+            if dialect == "postgresql":
+                conn.execute(
+                    text(
+                        'CREATE INDEX IF NOT EXISTS ix_litellm_spend_logs_run_id '
+                        'ON "LiteLLM_SpendLogs" (((metadata -> \'spend_logs_metadata\') ->> \'run_id\'));'
+                    )
+                )
+            elif dialect == "sqlite":
+                conn.execute(
+                    text(
+                        'CREATE INDEX IF NOT EXISTS ix_litellm_spend_logs_run_id '
+                        'ON "LiteLLM_SpendLogs" (CAST(JSON_EXTRACT(JSON_QUOTE(JSON_EXTRACT(metadata, \'$.\"spend_logs_metadata\"\')), \'$.\"run_id\"\') AS VARCHAR));'
+                    )
+                )
+    except Exception:
+        # Table might not exist yet if LiteLLM has not initialized
+        pass
+
+
+def estimate_cost(
+    input_tokens: int,
+    output_tokens: int,
+    events: list[Any] | None = None,
+) -> float:
+    """Estimate USD cost from token counts or usage events when spend rows lag."""
+    if events:
+        event_usd = sum(
+            float(e.data.get("usd", 0) or 0)
+            for e in events
+            if getattr(e, "type", None) == "usage" and isinstance(getattr(e, "data", None), dict)
+        )
+        if event_usd > 0:
+            return round(event_usd, 6)
+
+    # Standard model blended rate: $3.00/1M input, $15.00/1M output
+    est = (input_tokens * 3.0 + output_tokens * 15.0) / 1_000_000.0
+    return round(est, 6)
+
+
 def create_litellm_engine(database_url: str) -> Engine | None:
     url = make_url(normalize_database_url(database_url))
     if url.get_backend_name() != "postgresql":
         return None
-    return create_engine(url.set(database="litellm"), pool_pre_ping=True)
+    engine = create_engine(url.set(database="litellm"), pool_pre_ping=True)
+    ensure_spend_log_index(engine)
+    return engine
 
 
-def load_litellm_spend_totals(engine: Engine, run_ids: list[UUID]) -> dict[str, SpendTotals]:
-    if not run_ids:
-        return {}
-
+def build_spend_totals_statement(run_ids: list[UUID]) -> Select:
     run_id_field = _SPEND_LOGS.c.metadata["spend_logs_metadata"]["run_id"].as_string()
-    statement = (
+    return (
         select(
             run_id_field.label("run_id"),
             func.count().label("model_calls"),
@@ -44,6 +99,12 @@ def load_litellm_spend_totals(engine: Engine, run_ids: list[UUID]) -> dict[str, 
         .group_by(run_id_field)
     )
 
+
+def load_litellm_spend_totals(engine: Engine, run_ids: list[UUID]) -> dict[str, SpendTotals]:
+    if not run_ids:
+        return {}
+
+    statement = build_spend_totals_statement(run_ids)
     with engine.connect() as connection:
         rows = connection.execute(statement).mappings()
         return {

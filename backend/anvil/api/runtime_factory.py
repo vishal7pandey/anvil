@@ -49,13 +49,14 @@ def create_executor_from_environment() -> RunExecutor | None:
     from anvil.tools.errors import returning_errors
     from anvil.tools.evidence import handoff_note, publish_evidence
     from anvil.tools.git_push import make_git_push
-    from anvil.tools.github import GITHUB_TOOLS, github_open_pr
+    from anvil.tools.github import agent_github_tools, github_open_pr
     from anvil.tools.jira import JIRA_TOOLS, jira_comment, jira_set_labels
 
     def tools_factory(sandbox: Any, run: dict[str, Any]) -> list[Any]:
         tools = [
             *JIRA_TOOLS,
-            *GITHUB_TOOLS,
+            # The PR base is the run's base branch, never the agent's choice (ANVIL-32, rehearsal 6d9317d3).
+            *agent_github_tools(run.get("base_ref") or "main"),
             *CONFLUENCE_TOOLS,
             publish_evidence,
             make_git_push(sandbox),

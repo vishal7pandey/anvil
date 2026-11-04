@@ -260,10 +260,22 @@ def _append_event(
         seq=locked_run.last_event_seq,
         type=event_type,
         agent=agent,
-        data=data,
+        data=_strip_nul(data),
     )
     db.add(event)
     return event
+
+
+def _strip_nul(value: Any) -> Any:
+    """Postgres JSONB rejects U+0000. A grep over binary files put one in a tool result and the insert
+    killed rehearsal eed58f6c (ANVIL-32), so drop it from every string before storing an event."""
+    if isinstance(value, str):
+        return value.replace("\x00", "") if "\x00" in value else value
+    if isinstance(value, dict):
+        return {_strip_nul(k): _strip_nul(v) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [_strip_nul(v) for v in value]
+    return value
 
 
 def _load_run(db: DBSession, run_id: UUID, user_id: str) -> Run:

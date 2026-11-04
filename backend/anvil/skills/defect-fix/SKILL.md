@@ -67,6 +67,7 @@ A ticket describes wrong behaviour (crash, wrong return value, leak, hang) in an
     not the checkout path), then `github_open_pr` with the PR body below (it fails until the branch
     is pushed). Then
     `github_checks`; if CI fails, read the log, fix, commit, push (max 3 rounds), else `handoff`.
+    State `none` means no CI ran: that is not a pass. Say so in the evidence; never report CI as green.
 12. **Evidence.** `jira_comment` on the ticket with root cause, fix, tests, PR link and CI
     status; label the ticket `anvil-in-review`.
 

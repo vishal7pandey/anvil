@@ -887,3 +887,10 @@ def test_get_running_run_computes_wall_time_with_sqlite_naive_timestamps(
     client.post(f"/api/runs/{run_id}/cancel", headers=AUTH)
     client.get(f"/api/runs/{run_id}/events", headers=AUTH)
 
+
+
+def test_events_drop_nul_bytes_postgres_jsonb_rejects():
+    from anvil.api.app import _strip_nul
+
+    data = {"name": "grep", "output": "match\x00in binary", "list": ["a\x00b", 1, None], "n\x00k": True}
+    assert _strip_nul(data) == {"name": "grep", "output": "matchin binary", "list": ["ab", 1, None], "nk": True}

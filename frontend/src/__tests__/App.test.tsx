@@ -130,4 +130,69 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'Approvals inbox' })).toBeInTheDocument();
     expect(screen.getByText('No pending approvals.')).toBeInTheDocument();
   });
+
+  it('shows You message when selecting a session with a finished run', async () => {
+    const finishedSession = {
+      ...session,
+      id: '6f0c1a52-0000-4000-8000-000000000003',
+    };
+    const finishedRun = {
+      id: 'r1',
+      session_id: finishedSession.id,
+      status: 'succeeded',
+      mode: 'autonomous',
+      network: 'online',
+      created_at: '2026-11-03T08:00:00Z',
+      updated_at: '2026-11-03T08:05:00Z',
+    };
+    const timelineEvents = [
+      {
+        run_id: finishedSession.id,
+        seq: 1,
+        ts: '2026-11-03T08:00:01Z',
+        type: 'message.delta',
+        agent: 'main',
+        data: { role: 'assistant', text: 'received: hello' },
+      },
+      {
+        run_id: finishedSession.id,
+        seq: 2,
+        ts: '2026-11-03T08:00:02Z',
+        type: 'run.status',
+        agent: 'main',
+        data: { status: 'succeeded' },
+      },
+    ];
+    const approval = JSON.stringify({
+      run_id: 'r1', seq: 3, ts: '2026-11-03T08:00:00Z', type: 'approval.request', agent: 'main',
+      data: { approval_id: 'a-1', action: 'git_push', args: { branch: 'anvil/rtems-1' } },
+    });
+    const encoder = new TextEncoder();
+    let sent = false;
+    const fetchMock = vi.mocked(globalThis.fetch);
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, json: async () => [finishedSession] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [finishedRun] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => timelineEvents } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockImplementationOnce(async (_url, init) => ({
+        ok: true,
+        body: {
+          getReader: () => ({
+            read: async () => {
+              if (!sent) {
+                sent = true;
+                return { done: false, value: encoder.encode(`id: 2\nevent: run.status\ndata: {\"status\":\"succeeded\"}\n\n`) };
+              }
+              return new Promise((_resolve, reject) =>
+                init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+              );
+            },
+          }),
+        } as Response,
+      } as Response) as unknown as Response;
+    render(<App />);
+    await screen.findAllByText('RTEMS-1 mutex defect');
+    expect(await screen.findByText('You: hello')).toBeInTheDocument();
+  });
 });

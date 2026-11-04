@@ -107,6 +107,7 @@ export default function App() {
           const timeline = await getRunTimeline(latest.id);
           if (cancelled) return;
           setEvents(timeline);
+          const lastSeq = timeline.length > 0 ? timeline[timeline.length - 1].seq : undefined;
           const active =
             latest.status === 'running' ||
             latest.status === 'queued' ||
@@ -117,12 +118,10 @@ export default function App() {
               if (event.type === 'run.status') {
                 const status = (event.data as { status?: string }).status;
                 if (isRunStatus(status)) {
-                  setCurrentRun((prev) =>
-                    prev ? { ...prev, status } : prev
-                  );
+                  setCurrentRun((prev) => prev ? { ...prev, status } : prev);
                 }
               }
-            });
+            }, { afterSeq: lastSeq });
             if (!cancelled) eventSourceRef.current = unsubscribe;
           }
         }

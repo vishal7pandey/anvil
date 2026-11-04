@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 from datetime import datetime, timedelta
 from threading import Event
 from decimal import Decimal

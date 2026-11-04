@@ -147,11 +147,11 @@ export function parseSse(buffer: string): { messages: SseMessage[]; rest: string
 export function subscribeToEvents(
   runId: string,
   onEvent: (event: StreamEvent) => void,
-  options: { maxReconnects?: number; reconnectDelayMs?: number } = {},
+  options: { maxReconnects?: number; reconnectDelayMs?: number; afterSeq?: number } = {},
 ): () => void {
-  const { maxReconnects = 20, reconnectDelayMs = 1000 } = options;
+  const { maxReconnects = 20, reconnectDelayMs = 1000, afterSeq } = options;
   const controller = new AbortController();
-  let lastId: string | undefined;
+  let lastId: string | undefined = afterSeq !== undefined ? String(afterSeq) : undefined;
   let finished = false;
 
   const connect = async (attempt: number): Promise<void> => {

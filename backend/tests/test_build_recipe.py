@@ -16,7 +16,9 @@ def test_5776_declares_and_injects_the_recipe():
     assert "./waf configure" in task and "erc32-sis" in task
     case = get_case("rtems-5776")
     assert case.build["configure"].startswith("cat > config.ini")
-    assert case.build["test_one"].endswith("psx05.exe") and "psxtests/" in case.build["test_suite"]
+    # The recipe must not name the withheld fix's test: a <test>.exe placeholder is safe to inject.
+    assert "<test>.exe" in case.build["test_one"] and "psx05" not in case.build["test_one"]
+    assert "psxtests/" in case.build["test_suite"]
 
 
 def test_a_case_without_build_changes_nothing(tmp_path):
@@ -99,7 +101,8 @@ def test_the_declared_recipe_runs_in_the_image(tmp_path):
                          timeout=900)
         assert res.exit_code == 0, res.output[-2000:]
         for step in ("configure", "build", "test_one"):
-            out = sb.execute(f"cd /workspace/rtems && {case.build[step]}", timeout=1800)
+            cmd = case.build[step].replace("<test>", "psx05")  # host-side: fill the placeholder
+            out = sb.execute(f"cd /workspace/rtems && {cmd}", timeout=1800)
             assert out.exit_code == 0, f"{step} failed:\n{out.output[-2000:]}"
     finally:
         sb.stop()

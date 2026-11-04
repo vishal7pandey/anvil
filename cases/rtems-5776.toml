@@ -69,5 +69,5 @@ INI
 build = './waf -j"$(nproc)"'
 # One test exe after a change (review on #90); the whole directory is test_suite — run once, before
 # committing, not after every edit.
-test_one = 'rtems-test --rtems-bsp=erc32-sis build/sparc/erc32/testsuites/psxtests/psx05.exe'
+test_one = 'rtems-test --rtems-bsp=erc32-sis build/sparc/erc32/testsuites/psxtests/<test>.exe  # pick the test for the area you changed'
 test_suite = 'rtems-test --rtems-bsp=erc32-sis build/sparc/erc32/testsuites/psxtests/'

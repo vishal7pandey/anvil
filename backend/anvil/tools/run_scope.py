@@ -14,6 +14,7 @@ from typing import Any
 
 from anvil.tools import git_push as git_push_module
 from anvil.tools import github, jira
+from anvil.tools.errors import ToolError
 
 
 def _case_required_checks(run: dict[str, Any]) -> list[str] | None:
@@ -75,7 +76,52 @@ def run_tools(run: dict[str, Any], sandbox: Any) -> list[Any]:
     # host at the end of the run, so a local repo can never reach GitHub through the agent.
     github_tools: list[Any] = [] if is_local(repo) else [
         git_push, github_open_pr, github_checks, github_code_scanning_alerts, github_pr_state, github_merge]
-    tools: list[Any] = [*github_tools, jira.jira_get, jira.jira_search, jira.jira_create]
+
+    # A run whose ticket came from the local tracker (trigger "local:<key>") gets the same jira_*
+    # names bound to the JSON store (ANVIL-56): the skills call jira_* and the interrupt_on gate on
+    # jira_create is keyed by tool name, so a differently named create would bypass approval.
+    if run.get("trigger", "").startswith("local:"):
+        from anvil.tickets import LocalTracker
+
+        tracker = LocalTracker.from_env()
+        if tracker is None:
+            raise ToolError("local ticket run but ANVIL_TICKETS_DIR is not set")
+
+        def jira_get(key: str) -> dict[str, Any]:
+            """Read a Jira issue: summary, status, type, labels, description and comments as plain text."""
+            return tracker.get(key)
+
+        def jira_search(jql: str, max_results: int = 20) -> list[dict[str, Any]]:
+            """Find Jira issues with JQL. Returns key, summary, status, labels and description for each."""
+            return tracker.search(jql, max_results)
+
+        def jira_create(project: str, type: str, summary: str, description: str = "",
+                        labels: list[str] | None = None) -> dict[str, str]:
+            """Create a Jira issue (description in Markdown). Returns the new key and URL."""
+            return tracker.create(project, type, summary, description, labels)
+
+        jira_tools: list[Any] = [jira_get, jira_search, jira_create]
+        _comment, _transition, _set_labels = tracker.comment, tracker.transition, tracker.set_labels
+    else:
+        jira_tools = [jira.jira_get, jira.jira_search, jira.jira_create]
+        _comment, _transition, _set_labels = jira.jira_comment, jira.jira_transition, jira.jira_set_labels
+
+    tools: list[Any] = [*github_tools, *jira_tools]
+    if key:
+        def jira_comment(markdown: str) -> dict[str, str]:
+            """Comment on this run's Jira ticket (Markdown)."""
+            return _comment(key, markdown)
+
+        def jira_transition(to_status: str) -> dict[str, str]:
+            """Move this run's Jira ticket to another status (e.g. "In Progress", "Done")."""
+            return _transition(key, to_status)
+
+        def jira_set_labels(add: list[str] | None = None, remove: list[str] | None = None) -> dict[str, Any]:
+            """Add or remove labels on this run's Jira ticket (e.g. add ["anvil-in-review"])."""
+            return _set_labels(key, add=add, remove=remove)
+
+        tools += [jira_comment, jira_transition, jira_set_labels]
+    return tools
     if key:
         def jira_comment(markdown: str) -> dict[str, str]:
             """Comment on this run's Jira ticket (Markdown)."""

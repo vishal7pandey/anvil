@@ -735,6 +735,7 @@ def _get_or_create_intake_run(
     issue: dict[str, Any],
     user_id: str,
     user_email: str,
+    source: str = "jira",
 ) -> tuple[UUID, str, bool]:
     key = issue.get("key")
     summary = issue.get("summary")
@@ -759,17 +760,17 @@ def _get_or_create_intake_run(
         # putting the ticket back to To Do with the `anvil` label is asking for a retry.
         existing = db.scalar(
             select(Run)
-            .where(Run.trigger == f"jira:{key}", Run.status.not_in(TERMINAL_RUN_STATUSES))
+            .where(Run.trigger == f"{source}:{key}", Run.status.not_in(TERMINAL_RUN_STATUSES))
             .order_by(Run.created_at.desc())
         )
         if existing is not None:
             return existing.id, message, existing.status == "queued"
 
+        repo_value = issue.get("repo") or code_base_repo or "vishal7pandey/rtems"
         session = Session(
             user_id=user_id,
-            repo=normalize_repository(
-                issue.get("repo") or code_base_repo or "vishal7pandey/rtems"
-            ),
+            # normalize_repository validates both shapes since ANVIL-55 (paths must exist as git repos).
+            repo=normalize_repository(repo_value),
             environment="local",
             mode=_jira_mode(issue),
             merge_policy="human",
@@ -780,12 +781,12 @@ def _get_or_create_intake_run(
         db.flush()
         run = Run(
             session_id=session.id,
-            trigger=f"jira:{key}",
+            trigger=f"{source}:{key}",
             repo=session.repo,
             status="queued",
             mode=session.mode,
             input_text=message,
-            network=_jira_network(issue),
+            network="offline" if source == "local" else _jira_network(issue),
             base_ref=base_ref,
             jira_key=key,
         )
@@ -805,12 +806,21 @@ def _get_or_create_intake_run(
 # "Code base: branch `tc1/5776-base` of github.com/vishal7pandey/rtems." anywhere in the ticket
 # (backticks and the "of github.com/..." part optional). Answer-leak control: a TC ticket's base
 # branch is what keeps the withheld fix out of the sandbox, so never guess it.
+# "of" accepts github.com/<owner>/<repo> or an absolute local path (ANVIL-56 offline path); a path
+# with spaces is not supported, say so in the ticket docs.
 _CODE_BASE = re.compile(
     r"code base:\s*(?:branch\s+)?`?(?P<ref>[A-Za-z0-9._/-]+?)`?"
-    r"(?:\s+of\s+(?:https?://)?github\.com/(?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?)?"
+    r"(?:\s+of\s+(?:(?:https?://)?github\.com/(?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?"
+    r"|(?P<path>(?:[A-Za-z]:[\\/]|/)\S+)))?"
     r"(?=[\s.,;)]|$)",
     re.IGNORECASE,
 )
+
+_LOCAL_PATH = re.compile(r"^(?:[A-Za-z]:[\\/]|/)")
+
+
+def _is_local_path(value: str | None) -> bool:
+    return bool(value) and bool(_LOCAL_PATH.match(value))
 
 
 def _code_base(description: str) -> tuple[str | None, str]:
@@ -820,7 +830,7 @@ def _code_base(description: str) -> tuple[str | None, str]:
         raise ValueError(
             "Jira intake candidate has no 'Code base: branch <ref> of github.com/<owner>/<repo>' line"
         )
-    return match.group("repo"), match.group("ref")
+    return (match.group("repo") or (match.group("path") or "").rstrip(".,;")) or None, match.group("ref")
 
 
 def _jira_labels(issue: dict[str, Any]) -> list[str]:
@@ -840,33 +850,60 @@ def _jira_mode(issue: dict[str, Any]) -> str:
     return "interactive" if "anvil-interactive" in _jira_labels(issue) else "autonomous"
 
 
+def _atlassian_configured() -> bool:
+    import os
+
+    return all(os.environ.get(v) for v in ("ATLASSIAN_SITE", "ATLASSIAN_EMAIL", "ATLASSIAN_API_TOKEN"))
+
+
 async def poll_jira_intake(app: FastAPI) -> list[UUID]:
     if app.state.executor is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="RunExecutor is not configured",
         )
-    candidates_fn, transition_fn = _load_jira_helpers(app)
-    candidates = await run_in_threadpool(candidates_fn, max_results=20)
+    # Sources: the local ticket store whenever a tickets dir is set, and Jira only when credentials
+    # exist (an offline laptop must never reach Atlassian, ANVIL-56).
+    sources: list[tuple[JiraCandidates, JiraTransition, str]] = []
+    tickets_dir = getattr(app.state, "tickets_dir", None)
+    if tickets_dir:
+        from anvil.tickets import LocalTracker
+
+        tracker = LocalTracker(tickets_dir)
+        sources.append((tracker.candidates, tracker.transition, "local"))
+    if app.state.jira_candidates is not None or _atlassian_configured():
+        candidates_fn, transition_fn = _load_jira_helpers(app)
+        sources.append((candidates_fn, transition_fn, "jira"))
+
     started: list[UUID] = []
     user_id = app.state.settings.demo_user_id
-    for issue in candidates:
+    for candidates_fn, transition_fn, source in sources:
         try:
-            run_id, message, should_start = await run_in_threadpool(
-                _get_or_create_intake_run,
-                app.state.session_factory,
-                issue,
-                user_id,
-                app.state.settings.demo_user_email,
-            )
-        except ValueError as exc:
-            # One malformed ticket must not block the others, and must not start on a guessed base.
-            logger.warning("Skipping Jira intake candidate %s: %s", issue.get("key"), exc)
+            candidates = await run_in_threadpool(candidates_fn, max_results=20)
+        except _jira_expected_errors() as exc:
+            logger.error("%s intake poll failed (%s)", source, type(exc).__name__)
             continue
-        await run_in_threadpool(transition_fn, issue["key"], "In Progress")
-        if should_start:
-            _schedule_run(app, run_id, message)
-            started.append(run_id)
+        for issue in candidates:
+            try:
+                run_id, message, should_start = await run_in_threadpool(
+                    _get_or_create_intake_run,
+                    app.state.session_factory,
+                    issue,
+                    user_id,
+                    app.state.settings.demo_user_email,
+                    source,
+                )
+            except ValueError as exc:
+                # One malformed ticket must not block the others, and must not start on a guessed base.
+                logger.warning("Skipping %s intake candidate %s: %s", source, issue.get("key"), exc)
+                continue
+            try:
+                await run_in_threadpool(transition_fn, issue["key"], "In Progress")
+            except _jira_expected_errors() as exc:
+                logger.warning("%s transition for %s failed: %s", source, issue.get("key"), exc)
+            if should_start:
+                _schedule_run(app, run_id, message)
+                started.append(run_id)
     return started
 
 
@@ -903,6 +940,7 @@ def create_app(
     executor: RunExecutor | None = None,
     jira_candidates: JiraCandidates | None = None,
     jira_transition: JiraTransition | None = None,
+    tickets_dir: str | None = None,
     spend_log_provider: SpendLogProvider | None = None,
     start_intake_loop: bool = True,
 ) -> FastAPI:
@@ -956,6 +994,9 @@ def create_app(
     app.state.spend_log_provider = spend_log_provider
     app.state.jira_candidates = jira_candidates
     app.state.jira_transition = jira_transition
+    import os as _os
+
+    app.state.tickets_dir = tickets_dir or _os.environ.get("ANVIL_TICKETS_DIR")
     app.state.start_intake_loop = start_intake_loop
     app.state.run_tasks = {}
     app.state.intake_task = None

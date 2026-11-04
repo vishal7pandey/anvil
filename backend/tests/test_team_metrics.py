@@ -25,17 +25,26 @@ def test_comms_metrics_pairs_request_with_reply(tmp_path, monkeypatch):
             "action-required": "yes", "thread": "t1"})
     _msg(tmp_path / "claude" / "Inbox", "2026-01-01-devin-ans.md",
          **{"from": "devin", "to": "[claude]", "date": "2026-01-01 10:30", "thread": "t1"})
-    waits = tm.comms_metrics(tmp_path)
-    assert waits["devin"] == [30.0]
+    out = tm.comms_metrics(tmp_path)
+    assert out["waits"]["devin"] == [30.0]
+    assert out["rules"] == {"thread": 1, "fallback": 0, "unanswered": 0}
 
 
-def test_render_writes_both_tables(tmp_path):
-    rows = [{"pr": 1, "title": "x", "opened": "2026-01-01T10:00:00Z",
+def test_render_writes_all_sections(tmp_path):
+    rows = [{"pr": 1, "title": "x", "agent": "devin", "opened": "2026-01-01T10:00:00Z",
              "first_review": "2026-01-01T12:00:00Z", "approve": "2026-01-01T13:00:00Z",
-             "merged": "2026-01-01T14:00:00Z", "ci_rounds": 2, "commits": 3}]
-    md = tm.render(rows, {"devin": [30.0, 90.0]})
-    assert "Pull requests" in md and "Comms" in md
-    assert "2.0h" in md and "| devin | 2 |" in md
+             "merged": "2026-01-01T14:00:00Z", "ci_rounds": 2, "ci_minutes": 40.0, "commits": 3}]
+    md = tm.render(rows, {"waits": {"devin": [30.0, 90.0]},
+                          "rules": {"thread": 1, "fallback": 1, "unanswered": 0}})
+    for needle in ("Pull requests", "PRs merged per agent", "Where the team waits",
+                   "Comms", "2.0h", "| devin | 1 |", "Pairing rules"):
+        assert needle in md
+
+
+def test_pr_agent_from_body_and_branch():
+    assert tm._pr_agent("Agent: devin\nrest", "devin/x") == "devin"
+    assert tm._pr_agent("[antigravity] stuff", "fix/y") == "antigravity"
+    assert tm._pr_agent("plain body", "claude/z") == "claude"
 
 
 def test_front_reads_the_fields(tmp_path):

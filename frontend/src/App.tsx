@@ -192,9 +192,7 @@ export default function App() {
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       <header className="h-14 bg-white border-b border-slate-200 text-slate-900 px-6 flex items-center gap-3 shrink-0">
-        <div className="w-7 h-7 rounded bg-slate-900 flex items-center justify-center text-white text-sm font-bold">
-          A
-        </div>
+        <img src="/icon-192.png" alt="" aria-hidden="true" className="w-8 h-8 rounded-lg" />
         <h1 className="font-semibold text-lg">Anvil</h1>
         <nav className="ml-auto flex items-center gap-1" aria-label="Main navigation">
           {([

@@ -141,13 +141,19 @@ class DeepAgentExecutor:
                  tools_factory: ToolsFactory | None = None, agent_factory: AgentFactory = build_agent,
                  docker_client: docker.DockerClient | None = None, budgets: Budgets | None = None,
                  push_hook: PushHook | None = None, report_hook: ReportHook | None = None,
-                 verify_hook: VerifyHook | None = None) -> None:
+                 verify_hook: VerifyHook | None = None, owner_id: str | None = None) -> None:
         self.budgets = budgets
         self.verify_hook = verify_hook
         self.push_hook = push_hook
         self.report_hook = report_hook
         self.image = image or os.environ.get("ANVIL_SANDBOX_IMAGE", DEFAULT_IMAGE)
         self.db_url = db_url or os.environ.get("ANVIL_DATABASE_URL", "postgresql://anvil:anvil@localhost:5433/anvil")
+        self.owner_id = (
+            owner_id
+            or os.environ.get("ANVIL_INSTANCE_ID")
+            or os.environ.get("ANVIL_OWNER_ID")
+            or (self.db_url.rsplit("/", 1)[-1].split("?")[0] if "/" in self.db_url else "default")
+        )
         self.tools_factory = tools_factory or (lambda _sb, _run: [])
         self.agent_factory = agent_factory
         self._docker = docker_client
@@ -186,8 +192,18 @@ class DeepAgentExecutor:
         try:
             return DockerSandbox.attach(name, client=self.docker)
         except NotFound:
-            return DockerSandbox.start(SandboxSpec(image=self.image, name=name, labels={
-                "anvil.session_id": str(run["session_id"]), "anvil.repo": run["repo"]}), client=self.docker)
+            return DockerSandbox.start(
+                SandboxSpec(
+                    image=self.image,
+                    name=name,
+                    labels={
+                        "anvil.session_id": str(run["session_id"]),
+                        "anvil.repo": run["repo"],
+                        "anvil.owner": self.owner_id,
+                    },
+                ),
+                client=self.docker,
+            )
 
     def checkout(self, sandbox: DockerSandbox, run: dict[str, Any]) -> dict[str, Any]:
         """Clone only the base branch (answer-leak control: other refs may hold withheld fixes)."""

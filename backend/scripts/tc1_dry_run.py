@@ -32,6 +32,7 @@ async def main() -> int:
     ap.add_argument("--case", default="rtems-5776", help="case id from cases/*.toml")
     ap.add_argument("--image", default="anvil-sandbox-rtems:7.1")
     ap.add_argument("--db", default="postgresql://anvil:anvil@localhost:5433/anvil_claude")
+    ap.add_argument("--keep", action="store_true", help="Keep sandbox container at exit for inspection")
     args = ap.parse_args()
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -95,7 +96,11 @@ async def main() -> int:
     }
     (out / "score.json").write_text(json.dumps(score, indent=2), encoding="utf-8")
     print(json.dumps(score, indent=2))
-    print(f"sandbox kept for inspection: {sandbox.id}")
+    if args.keep:
+        print(f"sandbox kept for inspection: {sandbox.id}")
+    else:
+        sandbox.stop(remove=True)
+        print(f"sandbox removed: {sandbox.id}")
     return 0 if score["verified"] else 1
 
 

@@ -19,6 +19,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -32,6 +33,23 @@ BASELINE_TICKETS = {
     "RTEMS-5": {"status": "To Do", "labels": ["incident-investigation", "tc4"]},
     "RTEMS-6": {"status": "To Do", "labels": ["incident-investigation", "tc4-followup"]},
 }
+
+def get_baseline_tickets() -> dict[str, dict[str, Any]]:
+    """Return protected baseline tickets: RTEMS-1..6 plus any case tickets defined in cases/*.toml.
+
+    Fails closed: any error loading case files propagates to prevent accidental deletion
+    of unlisted case tickets.
+    """
+    tickets: dict[str, dict[str, Any]] = {
+        k: {"status": v["status"], "labels": list(v["labels"])} for k, v in BASELINE_TICKETS.items()
+    }
+    from anvil.cases import load_cases
+
+    for case in load_cases():
+        if case.ticket_key:
+            clean_labels = [l for l in case.ticket_labels if l != "anvil"]
+            tickets[case.ticket_key] = {"status": "To Do", "labels": clean_labels}
+    return tickets
 
 AGENT_SCENARIO_LABELS = {
     "cra",
@@ -63,15 +81,23 @@ def _is_agent_scenario_issue(labels: list[str]) -> bool:
 
 
 def reset_jira(dry_run: bool = False) -> bool:
-    """Reset Jira tickets RTEMS-1..6 to baseline status and labels, and delete RTEMS-7+ issues."""
+    """Reset Jira tickets (RTEMS-1..6 and case tickets) to baseline status and labels, and delete unmanaged agent issues."""
     from anvil.tools import jira
     from anvil.tools._atlassian import request
 
-    logger.info("--- Resetting Jira Tickets (RTEMS-1..6 and purging RTEMS-7+) ---")
+    try:
+        baseline_tickets = get_baseline_tickets()
+    except Exception as exc:
+        logger.error("Failed to load baseline and case tickets (refusing to mutate Jira): %s", exc)
+        return False
+
+    keys_sorted = sorted(baseline_tickets.keys(), key=lambda k: int(re.sub(r"\D", "", k) or 0))
+    logger.info("--- Resetting Jira Tickets (%s and purging unmanaged agent issues) ---", ", ".join(keys_sorted))
     success = True
 
-    # 1. Reset baseline tickets
-    for key, spec in BASELINE_TICKETS.items():
+    # 1. Reset baseline and case tickets
+    for key in keys_sorted:
+        spec = baseline_tickets[key]
         try:
             issue = jira.jira_get(key)
             current_status = issue.get("status")
@@ -103,7 +129,7 @@ def reset_jira(dry_run: bool = False) -> bool:
             logger.error("Failed to reset Jira ticket %s: %s", key, e)
             success = False
 
-    # 2. Delete agent-created Jira issues (RTEMS-7+ carrying agent-scenario labels)
+    # 2. Delete agent-created Jira issues (excluding baseline and case tickets)
     try:
         all_rtems: list[dict] = []
         next_token = None
@@ -127,8 +153,9 @@ def reset_jira(dry_run: bool = False) -> bool:
             match = re.match(r"^RTEMS-(\d+)$", ekey)
             if not match:
                 continue
-            num = int(match.group(1))
-            if num <= 6:
+
+            # Protected tickets (baseline + cases) are never deleted
+            if ekey in baseline_tickets:
                 continue
 
             labels = i.get("labels", [])
@@ -145,8 +172,8 @@ def reset_jira(dry_run: bool = False) -> bool:
                     logger.info("Deleted agent-created Jira issue %s (labels: %s)", ekey, labels)
             else:
                 logger.info(
-                    "Skipping RTEMS-%d without agent-scenario label (labels: %s, summary: '%s')",
-                    num,
+                    "Skipping %s without agent-scenario label (labels: %s, summary: '%s')",
+                    ekey,
                     labels,
                     i.get("summary"),
                 )
@@ -411,7 +438,7 @@ def reset_containers(dry_run: bool = False) -> bool:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Anvil Demo Environment Reset Tool")
     parser.add_argument("--all", action="store_true", help="Reset all components (default if no specific component flag is given)")
-    parser.add_argument("--jira", action="store_true", help="Reset Jira RTEMS-1..6 tickets and delete RTEMS-7+")
+    parser.add_argument("--jira", action="store_true", help="Reset Jira RTEMS-1..6 and case tickets, delete unmanaged agent issues")
     parser.add_argument("--mirrors", action="store_true", help="Reset GitHub mirrors (close PRs and delete anvil/* branches)")
     parser.add_argument("--confluence", action="store_true", help="Reset Confluence space RTKB (purge agent pages & vector chunks)")
     parser.add_argument("--memories", action="store_true", help="Reset LangGraph /memories/ lessons")

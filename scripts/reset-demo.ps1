@@ -1,5 +1,5 @@
 # Reset the Anvil demo environment:
-# 1. Reset Jira tickets (RTEMS-1..6) to initial status and clean baseline labels; delete RTEMS-7+.
+# 1. Reset Jira tickets (RTEMS-1..6 and case tickets) to initial status and clean baseline labels; delete unmanaged agent issues.
 # 2. Close open agent PRs and delete agent branches (anvil/*) on mirror repos.
 # 3. Purge agent-written Confluence pages in space RTKB and clear orphaned pgvector chunks.
 # 4. Clear LangGraph /memories/ lessons in database and disk.

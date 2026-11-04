@@ -19,7 +19,9 @@ export default function HandoffView({ run }: HandoffViewProps) {
           The agent run has entered a handoff state. Review the handoff details and WIP branch before taking over.
         </p>
         {handoff?.markdown && (
-          <pre className="whitespace-pre-wrap text-xs text-amber-950 mb-3">{handoff.markdown}</pre>
+          <div className="mb-3 max-h-96 overflow-auto whitespace-pre-wrap rounded border border-amber-200 bg-white p-3 text-sm leading-relaxed text-slate-800">
+            {handoff.markdown}
+          </div>
         )}
         {handoff?.url && (
           <a

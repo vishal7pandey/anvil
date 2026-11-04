@@ -65,10 +65,10 @@ export default function NewSessionDialog({
               >
                 <option value="local">Local sandbox</option>
                 <option value="cloud" disabled>
-                  Cloud (GitHub Actions) · M4
+                  Cloud (GitHub Actions)
                 </option>
               </select>
-              <p className="text-xs text-slate-400 mt-1">Disabled until M4</p>
+              <p className="text-xs text-slate-400 mt-1">Runs use the local sandbox.</p>
             </div>
             <div>
               <label className="label">Mode</label>

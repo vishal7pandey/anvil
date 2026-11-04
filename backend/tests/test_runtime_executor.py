@@ -142,6 +142,9 @@ def test_checkout_inits_submodules_before_going_offline():
     DeepAgentExecutor(image="unused").checkout(sb, RUN)
     script = next(c for kind, c in sb.calls if kind == "execute")
     assert "git submodule update --init" in script
+    # Submodules come from mirrors (gitlab.rtems.org failed TC3's first setup, ANVIL-50), set before init.
+    rewrite = "git config --global url.https://github.com/RTEMS/.insteadOf https://gitlab.rtems.org/rtems/tools/"
+    assert rewrite in script and script.index(rewrite) < script.index("git submodule update")
     # Online for the clone and submodules, offline afterwards.
     assert sb.calls[0] == ("network", "bridge") and sb.calls[-1] == ("network", None)
 
@@ -281,3 +284,11 @@ async def test_commands_run_in_the_run_repo_checkout():
 
     await collect(Workdir(agent_factory=factory_for([])).start(RUN, "x"))
     assert seen["workdir"] == "/workspace/rtems-examples"
+
+
+def test_url_rewrites_parse_and_reject_non_https():
+    from anvil.runtime.executor import url_rewrites
+
+    assert url_rewrites("https://a.example/x/=https://b.example/y/; ") == [("https://a.example/x/", "https://b.example/y/")]
+    with pytest.raises(ValueError, match="not 'https://orig=https://mirror'"):
+        url_rewrites("git@a:x=https://b/")

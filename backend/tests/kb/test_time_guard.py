@@ -183,7 +183,7 @@ def test_snapshot_import_sets_created_at(store, clean_tables, tmp_path):
     report = import_snapshot(store, tmp_path)
     assert report.documents_added == 2
     with store.engine.connect() as conn:
-        rows = conn.execute(text(
-            "SELECT external_id, created_at FROM kb_documents ORDER BY external_id")).all()
-    assert rows[0].created_at == datetime(2026, 10, 8, 22, 23, 52, tzinfo=timezone.utc)
-    assert rows[1].created_at is None
+        rows = {r.external_id: r.created_at for r in conn.execute(text(
+            "SELECT external_id, created_at FROM kb_documents"))}
+    assert rows["rtems/rtos/rtems#6002"] == datetime(2026, 10, 8, 22, 23, 52, tzinfo=timezone.utc)
+    assert rows["d.rst"] is None

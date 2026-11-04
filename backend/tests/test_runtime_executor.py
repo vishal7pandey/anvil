@@ -268,3 +268,16 @@ async def test_unverified_result_becomes_a_handoff_without_a_wip_branch():
 
     broken = OfflineExecutor(agent_factory=factory_for(items), verify_hook=lambda run, sb: 1 / 0)
     assert (await collect(broken.start(RUN, "fix it")))[-1]["data"]["status"] == "handoff"
+
+
+async def test_commands_run_in_the_run_repo_checkout():
+    seen = {}
+
+    class Workdir(OfflineExecutor):
+        def sandbox_for(self, run):
+            sb = super().sandbox_for(run)
+            sb.set_workdir = lambda path: seen.setdefault("workdir", path)
+            return sb
+
+    await collect(Workdir(agent_factory=factory_for([])).start(RUN, "x"))
+    assert seen["workdir"] == "/workspace/rtems-examples"

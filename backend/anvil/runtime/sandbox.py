@@ -142,6 +142,12 @@ class DockerSandbox(BaseSandbox):
         if network and network not in attached:
             client.networks.get(network).connect(self._container)
 
+    def set_workdir(self, path: str) -> None:
+        """Where `execute` runs commands. The executor points it at the run's repo checkout: agents and
+        their subagents kept running `./waf` from /workspace (exit 127), ~20 tool calls per TC1
+        rehearsal on 2026-11-04 (ANVIL-32)."""
+        self._workdir = path
+
     @property
     def id(self) -> str:
         return self._container.name

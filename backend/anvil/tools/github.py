@@ -3,6 +3,7 @@
 import subprocess
 import time
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -81,12 +82,26 @@ def _require_agent_branch(branch: str) -> None:
         raise ToolError(f"refused: agent branches must start with 'anvil/', got '{branch}'")
 
 
+def _require_pushed(name: str, branch: str) -> None:
+    """GitHub answers a PR for an unpushed branch with a bare 422 "Validation Failed", which the
+    agent could not act on (run 7e81c6a2, ANVIL-40). Say what to do instead."""
+    try:
+        _gh("GET", f"/repos/{name}/branches/{quote(branch, safe='')}")
+    except ToolError as exc:
+        if "HTTP 404" in str(exc):
+            raise ToolError(f"branch '{branch}' is not on GitHub yet: call git_push first, "
+                            "then github_open_pr") from None
+        raise
+
+
 def github_open_pr(repo: str, branch: str, title: str, body: str, base: str = "main", draft: bool = False) -> dict[str, Any]:
     """Open a pull request from an `anvil/...` branch (or return the open one). Title must start with the Jira key."""
     _require_agent_branch(branch)
     name = full_name(repo)
     owner = name.split("/")[0]
     existing = _gh("GET", f"/repos/{name}/pulls", params={"head": f"{owner}:{branch}", "state": "open"})
+    if not existing:
+        _require_pushed(name, branch)
     pr = existing[0] if existing else _gh("POST", f"/repos/{name}/pulls", json={"title": title, "body": body, "head": branch, "base": base, "draft": draft})
     return {"number": pr["number"], "url": pr["html_url"], "head_sha": pr["head"]["sha"], "created": not existing}
 

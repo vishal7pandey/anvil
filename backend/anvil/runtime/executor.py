@@ -24,6 +24,7 @@ from langgraph.types import Command
 from anvil.runtime import prompts
 from anvil.runtime.agent import RunConfig, build_agent
 from anvil.runtime.events import EventMapper
+from anvil.runtime import source
 from anvil.runtime.sandbox import DEFAULT_IMAGE, DockerSandbox, SandboxSpec
 from anvil.runtime.stuck import Budgets, StuckDetector
 
@@ -104,6 +105,9 @@ def validate_ref(ref: str, what: str) -> str:
 
 
 def repo_path(repo: str) -> str:
+    """/workspace/<name>: the GitHub repo name, or a local source's folder name (ANVIL-55)."""
+    if source.is_local(repo):
+        return f"/workspace/{source.local_name(source.validate_local(repo, check_exists=False))}"
     return f"/workspace/{validate_repo(repo).split('/')[1]}"
 
 
@@ -187,6 +191,8 @@ class DeepAgentExecutor:
 
     def checkout(self, sandbox: DockerSandbox, run: dict[str, Any]) -> dict[str, Any]:
         """Clone only the base branch (answer-leak control: other refs may hold withheld fixes)."""
+        if source.is_local(run["repo"]):
+            return self.checkout_local(sandbox, run)
         repo = validate_repo(run["repo"])
         base = validate_ref(run.get("base_ref") or "main", "base_ref")
         branch = work_branch(run)
@@ -226,6 +232,34 @@ class DeepAgentExecutor:
         return {"repo": repo, "path": path, "base_ref": base, "branch": branch, "network": network,
                 "skills": [p for p, _ in files if p.endswith("SKILL.md")], "skills_hash": skills_hash(files),
                 "base_sha": found.get("BASE_SHA"), "head_sha": found.get("HEAD_SHA")}
+
+    def checkout_local(self, sandbox: DockerSandbox, run: dict[str, Any]) -> dict[str, Any]:
+        """A local source (ANVIL-55): the host copies a shallow single-branch .git of the base branch in.
+
+        The sandbox never gets network for a local source, not even for the checkout: nothing in it
+        has to be fetched, and nothing in it may be pushed.
+        """
+        repo = source.validate_local(run["repo"])
+        base = validate_ref(run.get("base_ref") or "main", "base_ref")
+        branch = work_branch(run)
+        path = repo_path(repo)
+        sandbox.set_network(None)
+        sandbox.upload_tar("/workspace", source.local_copy_tar(repo, base))
+        res = sandbox.execute(source.local_checkout_script(path, base, branch), timeout=900)
+        if res.exit_code != 0:
+            raise RuntimeError(f"local checkout failed (exit {res.exit_code}): "
+                               f"{res.output[-1500:].strip() or 'no output'}")
+        found = dict(re.findall(r"^(BASE_SHA|HEAD_SHA)=(\w+)$", res.output, re.M))
+        files = skill_files()
+        failed = [r.path for r in sandbox.upload_files(files) if r.error]
+        if failed:
+            raise RuntimeError(f"could not upload skills: {failed}")
+        return {"repo": repo, "path": path, "base_ref": base, "branch": branch, "network": "offline",
+                "source": "local", "skills": [p for p, _ in files if p.endswith("SKILL.md")],
+                "skills_hash": skills_hash(files), "base_sha": found.get("BASE_SHA"), "head_sha": found.get("HEAD_SHA")}
+
+    def export_local(self, sandbox: DockerSandbox, run: dict[str, Any], path: str, branch: str) -> dict[str, Any]:
+        return source.export_result(sandbox, run, path, branch)
 
     def run_record(self, run: dict[str, Any], checkout: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -330,6 +364,9 @@ class DeepAgentExecutor:
         elif not waiting:
             problems = await self._verify(run, sandbox)
             if not problems:
+                if source.is_local(run["repo"]):
+                    async for ev in self._export_local(run, sandbox, mapper, path, work_branch(run)):
+                        yield ev
                 yield mapper.event("run.status", {"status": "succeeded"})
                 return
             # The agent finished, but its result does not check out: a human takes over, told exactly why.
@@ -343,6 +380,22 @@ class DeepAgentExecutor:
                                           "the result could not be verified: " + "; ".join(problems),
                                           push_wip=False):
                 yield ev
+
+    async def _export_local(self, run: dict[str, Any], sandbox: DockerSandbox, mapper: EventMapper, path: str,
+                            branch: str) -> AsyncIterator[dict[str, Any]]:
+        """Write a local source's result to the host and say where (an artifact the UI and ticket can link)."""
+        try:
+            out = await asyncio.to_thread(self.export_local, sandbox, run, path, branch)
+        except Exception as exc:  # noqa: BLE001 - the run's outcome stands; say the export failed
+            yield mapper.event("message", {"role": "system", "text": f"Exporting the result failed: {exc}"})
+            return
+        if not out.get("patch"):
+            yield mapper.event("message", {"role": "system", "text": f"No commits on `{branch}`: nothing to export."})
+            return
+        yield mapper.event("artifact", {"kind": "patch", "url": out["patch"],
+                                        "title": f"{out['commits']} commit(s) on {branch} as a patch",
+                                        "note": {"patch": out["patch"], "bundle": out["bundle"],
+                                                 "apply": "git am < the .patch file, or git fetch the .bundle"}})
 
     async def _verify(self, run: dict[str, Any], sandbox: DockerSandbox) -> list[str]:
         if not self.verify_hook:
@@ -395,12 +448,25 @@ class DeepAgentExecutor:
             commit = await asyncio.to_thread(sandbox.execute, (
                 f"cd {shlex.quote(path)} && git add -A && git commit -q --no-verify --allow-empty -m {shlex.quote(message)} "
                 f"&& git branch -f {shlex.quote(wip)} HEAD && git rev-parse HEAD"), timeout=120)
-            if commit.exit_code == 0 and self.push_hook:
+            if commit.exit_code == 0 and source.is_local(run["repo"]):
+                # No GitHub for a local source: the WIP goes to private/runs/<run_id>/ (ANVIL-55).
+                async for ev in self._export_local(run, sandbox, mapper, path, wip):
+                    if ev["type"] == "artifact":
+                        url = ev["data"].get("url")
+                    yield ev
+            elif commit.exit_code == 0 and self.push_hook:
                 try:
                     url = await asyncio.to_thread(self.push_hook, sandbox, run, wip)
                 except Exception as exc:  # noqa: BLE001 - handoff must still complete
                     yield mapper.event("message", {"role": "system", "text": f"WIP push failed: {exc}"})
             branch_line = f"WIP branch: `{wip}`" + (f" ({url})" if url else " (not pushed)")
+        elif source.is_local(run["repo"]):
+            # Unverified local result: still hand the person the agent's commits (ANVIL-55).
+            async for ev in self._export_local(run, sandbox, mapper, path, wip):
+                if ev["type"] == "artifact":
+                    url = ev["data"].get("url")
+                yield ev
+            branch_line = f"The agent's branch `{wip}`" + (f" exported to {url}" if url else " (nothing exported)")
         else:
             branch_line = "The agent's own branch and PR are as it pushed them."
         markdown = "\n\n".join([

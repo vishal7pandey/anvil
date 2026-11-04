@@ -69,8 +69,13 @@ def run_tools(run: dict[str, Any], sandbox: Any) -> list[Any]:
         """Merge your PR (only when the run's merge policy allows it; always needs approval)."""
         return github.github_merge(repo, pr, method=method)
 
-    tools: list[Any] = [git_push, github_open_pr, github_checks, github_code_scanning_alerts,
-                        github_pr_state, github_merge, jira.jira_get, jira.jira_search, jira.jira_create]
+    from anvil.runtime.source import is_local
+
+    # A local source (ANVIL-55) has no GitHub: no push, PR or CI tools. Its result is exported by the
+    # host at the end of the run, so a local repo can never reach GitHub through the agent.
+    github_tools: list[Any] = [] if is_local(repo) else [
+        git_push, github_open_pr, github_checks, github_code_scanning_alerts, github_pr_state, github_merge]
+    tools: list[Any] = [*github_tools, jira.jira_get, jira.jira_search, jira.jira_create]
     if key:
         def jira_comment(markdown: str) -> dict[str, str]:
             """Comment on this run's Jira ticket (Markdown)."""
@@ -104,8 +109,12 @@ def verify_outcome(run: dict[str, Any], sandbox: Any) -> list[str]:
 
     from anvil.runtime.executor import repo_path
 
+    from anvil.runtime.source import is_local
+
     base = run.get("base_ref") or "main"
     path = shlex.quote(repo_path(run["repo"]))
+    if is_local(run["repo"]):
+        return _local_problems(sandbox, path) + case_problems(run, sandbox)
     branch = sandbox.execute(f"git -C {path} rev-parse --abbrev-ref HEAD", timeout=60).output.strip()
     changed = sandbox.execute(
         # committed + tracked edits; untracked build leftovers (config.ini, build/) don't count
@@ -124,6 +133,13 @@ def verify_outcome(run: dict[str, Any], sandbox: Any) -> list[str]:
     else:
         problems += _pr_problems(run, prs[0], base)
     return problems + case_problems(run, sandbox)
+
+
+def _local_problems(sandbox: Any, qpath: str) -> list[str]:
+    """A local source has no PR or CI: what can be checked is that the work is committed (the export
+    takes commits only) and, for a case replay, the case's acceptance checks (ANVIL-55)."""
+    dirty = sandbox.execute(f"cd {qpath} && git status --porcelain --untracked-files=no", timeout=60).output.strip()
+    return ["the agent left uncommitted changes to tracked files (only commits are exported)"] if dirty else []
 
 
 def case_problems(run: dict[str, Any], sandbox: Any) -> list[str]:

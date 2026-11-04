@@ -236,3 +236,49 @@ def test_branch_protection_wins_over_the_case_list():
     respx.get(f"{API}/actions/jobs/2/logs").respond(text="lint failed")
     out = github.github_checks("rtems", 7, wait_seconds=0, default_required=["build-test"])
     assert out["state"] == "failure" and out["failing"] == ["lint"]
+
+
+# -- ANVIL-76: waiting tools respect cancel and the run's time budget ---------------------------
+
+@respx.mock
+def test_checks_stop_on_cancel_within_one_slice():
+    mock_checks([run("build", status="in_progress", conclusion=None)])
+    calls = {"n": 0}
+
+    def stop():
+        calls["n"] += 1
+        return "cancelled" if calls["n"] >= 2 else None
+
+    out = github.github_checks("rtems", 7, wait_seconds=900, poll_seconds=20, should_stop=stop)
+    assert out["state"] == "cancelled" and "cancelled" in out["note"]
+    assert calls["n"] == 2  # stopped at the second one-second slice, not after 20 s or 900 s
+
+
+@respx.mock
+def test_checks_stop_at_budget_returns_last_state_with_note():
+    mock_checks([run("build", status="in_progress", conclusion=None)])
+    out = github.github_checks("rtems", 7, wait_seconds=900, should_stop=lambda: "budget")
+    assert out["state"] == "pending" and "time budget ended" in out["note"]
+
+
+def test_run_bound_wait_is_clamped_to_the_budget_and_sees_cancel(monkeypatch):
+    import threading
+    import time as _time
+    from types import SimpleNamespace
+
+    from anvil.tools.run_scope import run_tools
+
+    seen = {}
+    monkeypatch.setattr(github, "github_checks",
+                        lambda repo, pr, wait_seconds, poll_seconds, default_required, should_stop:
+                        seen.update(wait=wait_seconds, stop=should_stop) or {"state": "pending"})
+    sandbox = SimpleNamespace(deadline=_time.monotonic() + 120, stop_requested=threading.Event())
+    tools = {t.__name__: t for t in run_tools({"run_id": "r", "repo": "vishal7pandey/rtems", "base_ref": "main"}, sandbox)}
+    tools["github_checks"](7)
+    assert 110 <= seen["wait"] <= 120  # 900 asked, 2 minutes of budget left
+    assert seen["stop"]() is None
+    sandbox.stop_requested.set()
+    assert seen["stop"]() == "cancelled"
+    sandbox.stop_requested.clear()
+    sandbox.deadline = _time.monotonic() - 1
+    assert seen["stop"]() == "budget"

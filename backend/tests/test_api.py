@@ -908,3 +908,17 @@ def test_anvil_interactive_label_starts_an_interactive_run(api_factory, client_f
     run_id = client.post("/api/intake/jira/poll", headers=AUTH).json()["run_ids"][0]
     run = client.get(f"/api/runs/{run_id}", headers=AUTH).json()
     assert run["mode"] == "interactive" and run["network"] == "offline"
+
+
+def test_concurrent_first_requests_on_a_clean_db_do_not_race(api_factory, client_factory):
+    # ANVIL-78: _authenticated_user used to get-then-insert the demo user per request; on a clean
+    # database two first requests raced and one got users_pkey -> 500. The lifespan now seeds it
+    # once (INSERT ... ON CONFLICT DO NOTHING) and the dependency only reads.
+    import concurrent.futures
+
+    app = api_factory()
+    client = client_factory(app)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as pool:
+        statuses = list(pool.map(
+            lambda _: client.get("/api/sessions", headers=AUTH).status_code, range(20)))
+    assert statuses == [200] * 20

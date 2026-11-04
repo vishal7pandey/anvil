@@ -24,6 +24,7 @@ from fastapi import (
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sse_starlette.sse import EventSourceResponse, ServerSentEvent
 from sqlalchemy import select
+from sqlalchemy.dialects import postgresql, sqlite as sqlite_dialect
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session as DBSession
 from starlette.concurrency import run_in_threadpool
@@ -203,6 +204,22 @@ def _run_metrics(
     return metrics
 
 
+def _seed_demo_user(engine: Any, settings: Settings) -> None:
+    """Insert the demo user once at app start, or do nothing when it exists.
+
+    Seeding here keeps the per-request dependency a pure read: two first requests on a clean
+    database used to race db.get -> db.add and one got users_pkey (ANVIL-78).
+    """
+    insert = sqlite_dialect.insert if engine.dialect.name == "sqlite" else postgresql.insert
+    stmt = (
+        insert(User)
+        .values(id=settings.demo_user_id, email=settings.demo_user_email)
+        .on_conflict_do_nothing(index_elements=["id"])
+    )
+    with engine.begin() as conn:
+        conn.execute(stmt)
+
+
 def _authenticated_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
@@ -228,10 +245,11 @@ def _authenticated_user(
     with request.app.state.session_factory() as db:
         user = db.get(User, settings.demo_user_id)
         if user is None:
-            user = User(id=settings.demo_user_id, email=settings.demo_user_email)
-            db.add(user)
-            db.commit()
-            db.refresh(user)
+            # The lifespan seeds it; unreachable unless the database was reset under a running app.
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Demo user is not seeded",
+            )
         return user
 
 
@@ -897,6 +915,7 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        _seed_demo_user(app.state.engine, app.state.settings)
         if app.state.executor is not None and app.state.start_intake_loop:
             app.state.intake_task = asyncio.create_task(
                 _jira_intake_loop(app),

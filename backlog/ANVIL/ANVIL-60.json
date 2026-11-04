@@ -1,0 +1,22 @@
+{
+  "key": "ANVIL-60",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Local knowledge folder as a KB source and write-back target (no Atlassian)",
+  "labels": [
+    "demo",
+    "kb",
+    "offline",
+    "team-sync"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:36:45.423+0530",
+  "updated": "2026-11-04T18:36:45.577+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Source: KB review 2026-11-04 (P4). This pairs with the local ticket tracker for the no-Jira / no-Confluence setup.\n\n**Want:**\n\n* `python -m anvil.kb ingest-local --dir kb/local/` reads markdown pages (and local JSON tickets) as KB documents with `source=\"local\"`, dated from front matter or file mtime.\n* Seed it from `docs/confluence/RTKB/*.md`.\n* When Confluence isn't configured, `confluence_write` / `publish_evidence` write their pages to this folder, and the page is indexed at once (the write-back story).\n\n**Acceptance:**\n\n* with Atlassian unset, a run's evidence page lands in `kb/local/` and is found by `kb_search`;\n* the leak guard applies.\n",
+  "comments": []
+}

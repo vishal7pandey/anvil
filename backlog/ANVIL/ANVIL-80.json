@@ -1,0 +1,26 @@
+{
+  "key": "ANVIL-80",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Jira intake loop retries every 60 s forever when Jira is unset or failing",
+  "labels": [
+    "api",
+    "dfmea",
+    "offline"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:39:38.322+0530",
+  "updated": "2026-11-04T22:01:26.903+0530",
+  "resolved": "2026-11-04T22:01:26.888+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Source: DFMEA 2026-11-04 (F15). Confirmed: `_jira_intake_loop` sleeps a fixed `POLL_INTERVAL_SECONDS = 60` and logs each failure.\n\nThis matters more now: with the local tracker (ANVIL-56) Jira is usually not configured at all, and the log fills with failures that hide real errors.\n\n**Fix:**\n\n* Don't start the Jira loop when the tracker is local or Jira isn't configured, and say so once at startup.\n* When Jira is configured but failing, back off exponentially (to 15 min), log state changes once, and recover on success.\n\n**Acceptance:** tests for unconfigured (no loop, one log line) and failing then recovering (backoff, then normal interval).\n",
+  "comments": [
+    {
+      "created": "2026-11-04T21:00:43.476+0530",
+      "body": "[devin] PR #84 up: https://github.com/vishal7pandey/anvil/pull/84 — lifespan starts the loop only when a source exists (tickets dir / Jira creds / injected), one 'intake disabled' line otherwise; poll failure backs off 60s→2× capped at 15min, logs first failure + recovery only. 3 tests green.\n"
+    }
+  ]
+}

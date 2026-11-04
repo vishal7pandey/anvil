@@ -6,12 +6,14 @@
   "summary": "KB: mailing-list archive loader (pipermail devel/users/bugs, one document per thread)",
   "labels": [
     "M4",
-    "agent-cline"
+    "agent-cline",
+    "kb",
+    "post-demo"
   ],
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-03T23:57:59.596+0530",
-  "updated": "2026-11-03T23:57:59.676+0530",
+  "updated": "2026-11-04T22:21:17.384+0530",
   "resolved": null,
   "links": [],
   "subtasks": [],

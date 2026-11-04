@@ -1,7 +1,7 @@
 {
   "key": "ANVIL-20",
   "type": "Story",
-  "status": "In Progress",
+  "status": "Done",
   "priority": "Medium",
   "summary": "Stuck detection, handoff and budgets",
   "labels": [
@@ -11,8 +11,8 @@
   "epic": "ANVIL-2",
   "epic_summary": "WS-B Agent runtime (Deep Agents, Docker sandbox backend, subagents, skills, stuck detection)",
   "created": "2026-11-02T21:26:10.361+0530",
-  "updated": "2026-11-04T04:32:28.541+0530",
-  "resolved": null,
+  "updated": "2026-11-04T19:45:21.864+0530",
+  "resolved": "2026-11-04T19:45:21.846+0530",
   "links": [],
   "subtasks": [],
   "description": "Due 2026-11-07. Rules in docs/02-architecture.md \"Stuck detection and handoff\".\n\n## Do\n\n* Runtime-side detector: step budget, USD budget (gateway spend by run_id), wall time, same failing command signature x3, no diff change in N tool calls, CI red after 3 rounds.\n* On trigger (or the model's `handoff` call): commit WIP, push `anvil/<key>-wip`, Jira comment with the handoff note, label `anvil-needs-human`, run status `handoff`, sandbox kept 24 h.\n* A forced-stuck demo task (e.g. a ticket whose fix needs hardware) that triggers it deterministically.\n\n## Acceptance\n\nForced-stuck run ends in handoff with WIP branch, Jira note and label, recorded.\n",
@@ -40,6 +40,10 @@
     {
       "created": "2026-11-04T04:32:28.541+0530",
       "body": "[devin] RTEMS-4 re-run evidence: run 7772117c on rtems-lwip/tc2-upgrade-base-leon3 via Jira intake (fixed dedupe #50) ended in handoff at 45-min budget, ~2.9M tokens. Draft PR opened by push_hook: https://github.com/vishal7pandey/rtems-lwip/pull/3 - CI/SBOM runs on the WIP branch, sandbox kept for inspection. Root cause found (32-BD RX ring exhaustion + split ctrl writes), fix committed on anvil/rtems-4. This is the full stuck->handoff->draft PR loop working end to end.\n"
+    },
+    {
+      "created": "2026-11-04T19:44:52.042+0530",
+      "body": "Closing: stuck detection, handoff with a WIP branch and the time and tool-call budgets are built (#51, #57, #61). The remaining DFMEA findings are separate tickets: ANVIL-75 (stuck-detector loopholes) and ANVIL-77 (handoff doesn't stop the run).\n"
     }
   ]
 }

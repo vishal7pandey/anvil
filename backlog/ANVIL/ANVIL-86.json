@@ -1,0 +1,20 @@
+{
+  "key": "ANVIL-86",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Observability 4: team flow metrics: PR lead time, review wait, and comms response time for the build agents",
+  "labels": [
+    "agent-cline",
+    "observability"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T19:37:20.341+0530",
+  "updated": "2026-11-04T19:37:20.395+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "Owner ask 2026-11-04: \"the agents are too slow\". That can mean Anvil's runs (Observability 1-3) or our own build team (claude, devin, antigravity, cline). This ticket measures the team, from data we already have.\n\n**Want:** `scripts/team_metrics.py`, read-only:\n\n* from GitHub (`gh api`), per PR: time from open to first review, review to approve, approve to merge, and the number of CI rounds and commits;\n* from `C:\\Dev\\comms`, per agent: the time from a message with `action-required: yes` to the reply in its thread;\n* per agent per day: PRs merged, and median and p90 for each wait.\n* Output a markdown table to `private/metrics/<date>.md`. Run it at the end of each day.\n\n**Acceptance:** one report for 2026-11-04 that shows where the team waits (review queue, CI, rework, idle).\n",
+  "comments": []
+}

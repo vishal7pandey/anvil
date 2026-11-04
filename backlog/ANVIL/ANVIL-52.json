@@ -1,0 +1,20 @@
+{
+  "key": "ANVIL-52",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Chat stream shows a run, not its event log: render model + layout fixes for the demo",
+  "labels": [
+    "demo",
+    "frontend"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:17:02.675+0530",
+  "updated": "2026-11-04T19:45:35.247+0530",
+  "resolved": "2026-11-04T19:45:35.227+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "From antigravity's UI audit (comms 2026-11-04 18:05). I checked the defects in the code on main af2010f.\n\n**Problem:**\n\n* `ChatStream` renders every raw `StreamEvent` as its own `EventBubble`:\n\n  * each `message.delta` token is a bubble;\n  * `usage` gets a bubble;\n  * one shell command produces three bubbles (`tool.call`, `tool.result`, `sandbox.exec`);\n  * event bodies are JSON truncated to 200 characters.\n* The chat can't scroll: the flex containers in `App.tsx` lack `min-h-0`.\n* Diffs are clipped at 128px (`DiffViewer`, `max-h-32 overflow-hidden`).\n* On a real run the screen is a JSON firehose, and that's what the demo audience would watch.\n\n**Design (not patching EventBubble):** one pure, unit-tested reducer `events -> ChatItem[]`, which `ChatStream` renders.\n\n* Consecutive `message.delta` for the same agent fold into one assistant message. The final `message` replaces them.\n* `tool.call` plus its `tool.result` (paired by `call_id`) plus the matching `sandbox.exec` become one action item: tool name, a one-line summary (command / file / query), ok/failed, exit code, and output behind an expand.\n* Consecutive actions group into one collapsible \"N actions\" item.\n* `usage`, heartbeats and `run.record` don't render in the stream; `usage` feeds `CostMeter` as today.\n* Approvals, handoffs, errors and the user's messages stay top-level and visually distinct.\n* Raw JSON is available only behind a per-item \"raw\" disclosure.\n\n**Also in scope (small):**\n\n* `min-h-0` on the chat flex chain.\n* `DiffViewer` scrolls, with +/- line tint.\n* The chat input is a textarea (Enter sends, Shift+Enter adds a newline).\n* `HandoffView` keeps line breaks and is readable.\n* Remove the \"Disabled until M4\" text.\n* Emoji and per-type colours give way to a neutral surface plus semantic colour (blue user, amber needs action, green ok, red failed), with no new dependencies.\n\n**Out of scope (ANVIL-53, after the demo):** the 4-pillar layout, live terminal, plan editing, Monaco, a Fluent component library, approval modals.\n\n**Acceptance:**\n\n* Reducer unit tests cover delta folding, call/result/exec pairing, grouping, and hidden types.\n* Replaying a real run timeline (e.g. TC3 run f9181d40, 80 events) gives fewer than 15 top-level items.\n* The chat scrolls in a long run.\n* Existing frontend tests pass.\n",
+  "comments": []
+}

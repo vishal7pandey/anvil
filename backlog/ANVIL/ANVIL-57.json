@@ -1,0 +1,23 @@
+{
+  "key": "ANVIL-57",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Highest",
+  "summary": "Sandbox image without GitHub: ship the RTEMS 7.1 image as a file (docker save/load)",
+  "labels": [
+    "agent-antigravity",
+    "demo",
+    "friday",
+    "offline",
+    "team-sync"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:36:40.668+0530",
+  "updated": "2026-11-04T21:14:16.022+0530",
+  "resolved": "2026-11-04T21:14:16.001+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Source: team sync 2026-11-04. Building the sandbox image needs GitHub (toolchain and sources), and some laptops can't reach it. ANVIL-48 covers a GHCR push, which still needs GitHub.\n\n**Want:**\n\n* `scripts/export-sandbox-image.ps1`: `docker save` of the pinned image digest into a `.tar.zst` with a sha256 file, for a shared drive.\n* `scripts/import-sandbox-image.ps1`: verify the sha256, `docker load`, check the digest matches what `ANVIL_SANDBOX_IMAGE` expects.\n* Document it in the setup guide.\n\n**Acceptance:** on a machine with no GitHub access, import the file and run `preflight.ps1` green.\n",
+  "comments": []
+}

@@ -1,0 +1,25 @@
+{
+  "key": "ANVIL-81",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "git_push: the shared host bare clone is locked only on first clone, not on fetch/push",
+  "labels": [
+    "concurrency",
+    "dfmea"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T18:39:39.974+0530",
+  "updated": "2026-11-04T21:16:05.506+0530",
+  "resolved": "2026-11-04T21:16:05.498+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Source: DFMEA 2026-11-04 (F09). Confirmed: `tools/git_push.py` takes `network-heavy` only for the first `clone --bare`. The later `fetch`, bundle import, `update-ref` and `push` on `%LOCALAPPDATA%/anvil/repos/<repo>` run unlocked, so two runs pushing the same repo can hit `*.lock` errors or interleave refs.\n\nToday the build lock usually serialises runs, so this is rare, but the API itself allows parallel runs.\n\n**Fix:** hold a per-repo lock (`acquire_lock(f\"git-push-{repo}\")`) across the whole fetch → import → check → push sequence.\n\n**Acceptance:** a test where two concurrent `git_push` calls on one repo both succeed.\n",
+  "comments": [
+    {
+      "created": "2026-11-04T21:10:05.645+0530",
+      "body": "[devin] PR #87 up: https://github.com/vishal7pandey/anvil/pull/87 — acquire_lock(git-push-<repo>) wraps the whole fetch->import->check->push sequence on the shared host clone (was locked only for first clone --bare). Test: two concurrent pushes on one repo both land. 11 passed.\n"
+    }
+  ]
+}

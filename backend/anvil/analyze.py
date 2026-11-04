@@ -147,6 +147,7 @@ def analyze(events: Iterable[dict[str, Any]]) -> dict[str, Any]:
         "long_steps": long_steps,
         "tokens": dict(tokens),
         "model_latency_recorded_s": round(model_ms / 1000, 1),
+        "compactions": sum(1 for e in evs if e["type"] == "context.compacted"),   # ANVIL-93
     }
 
 
@@ -172,6 +173,8 @@ def to_markdown(run_id: str, r: dict[str, Any]) -> str:
     if r["tokens"]:
         lines += ["", "Tokens: " + "; ".join(f"{m}: {t['calls']} calls, {t['input']} in / {t['output']} out"
                                              for m, t in r["tokens"].items())]
+    if r.get("compactions"):
+        lines += ["", f"Context compactions: {r['compactions']} (older messages were summarized to stay in the window)."]
     lines += ["", "`~` = estimated from event times (no exact timing recorded for that command)."]
     return "\n".join(lines)
 

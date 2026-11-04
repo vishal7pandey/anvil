@@ -366,6 +366,7 @@ class DeepAgentExecutor:
         cancel = self._cancel.setdefault(run["run_id"], asyncio.Event())
         self._live[run["run_id"]] = sandbox
         handoffs: list[dict[str, str]] = []
+        compactions: list[dict[str, Any]] = []   # reported by the summarization middleware (ANVIL-93)
         # Commands run in the run's repo checkout, for the agent and its subagents alike.
         if hasattr(sandbox, "set_workdir"):
             sandbox.set_workdir(repo_path(run["repo"]))
@@ -373,7 +374,8 @@ class DeepAgentExecutor:
         config = RunConfig(run_id=run["run_id"], repo=run["repo"], mode=run.get("mode", "interactive"),
                            merge_policy=run.get("merge_policy", "human"))
         agent = self.agent_factory(config, sandbox, tools=self.tools_factory(sandbox, run),
-                                   on_handoff=handoffs.append, checkpointer=checkpointer, store=store,
+                                   on_handoff=handoffs.append, on_compact=compactions.append,
+                                   checkpointer=checkpointer, store=store,
                                    skills=[SANDBOX_SKILLS])
         waiting = False
         budgets = self.budgets
@@ -392,6 +394,8 @@ class DeepAgentExecutor:
                 if cancel.is_set():
                     yield mapper.event("run.status", {"status": "cancelled"})
                     return
+                while compactions:
+                    yield mapper.event("context.compacted", compactions.pop(0))
                 for ev in mapper.map(item):
                     waiting = waiting or ev["type"] == "approval.request"
                     if ev["type"] == "sandbox.exec" and hasattr(sandbox, "take_timing"):

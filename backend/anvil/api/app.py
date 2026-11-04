@@ -877,11 +877,13 @@ async def poll_jira_intake(app: FastAPI) -> list[UUID]:
 
     started: list[UUID] = []
     user_id = app.state.settings.demo_user_id
+    first_exc: Exception | None = None
     for candidates_fn, transition_fn, source in sources:
         try:
             candidates = await run_in_threadpool(candidates_fn, max_results=20)
         except _jira_expected_errors() as exc:
             logger.error("%s intake poll failed (%s)", source, type(exc).__name__)
+            first_exc = first_exc or exc
             continue
         for issue in candidates:
             try:
@@ -904,16 +906,32 @@ async def poll_jira_intake(app: FastAPI) -> list[UUID]:
             if should_start:
                 _schedule_run(app, run_id, message)
                 started.append(run_id)
+    # A failed source still lets the others run, but the loop must see the failure so its backoff
+    # fires (ANVIL-80) — swallowing it here meant the backoff never engaged.
+    if first_exc is not None:
+        raise first_exc
     return started
 
 
 async def _jira_intake_loop(app: FastAPI) -> None:
+    """Poll forever; back off exponentially (to 15 min) while failing, log only state changes
+    (ANVIL-80: a misconfigured Jira must not fill the log with 60 s retries forever)."""
+    delay = POLL_INTERVAL_SECONDS
+    failures = 0
     while True:
         try:
             await poll_jira_intake(app)
         except _jira_expected_errors() as exc:
-            logger.error("Jira intake poll failed (%s)", type(exc).__name__)
-        await asyncio.sleep(POLL_INTERVAL_SECONDS)
+            failures += 1
+            if failures == 1:
+                logger.error("Intake poll failing (%s); backing off up to 15 min", type(exc).__name__)
+            delay = min(POLL_INTERVAL_SECONDS * (2 ** failures), 900)
+        else:
+            if failures:
+                logger.info("Intake poll recovered after %s consecutive failures", failures)
+            failures = 0
+            delay = POLL_INTERVAL_SECONDS
+        await asyncio.sleep(delay)
 
 
 def _events_after(
@@ -955,10 +973,14 @@ def create_app(
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         _seed_demo_user(app.state.engine, app.state.settings)
         if app.state.executor is not None and app.state.start_intake_loop:
-            app.state.intake_task = asyncio.create_task(
-                _jira_intake_loop(app),
-                name="anvil-jira-intake",
-            )
+            # No ticket source configured -> no loop at all, and say so once (ANVIL-80).
+            if app.state.jira_candidates or _atlassian_configured() or getattr(app.state, "tickets_dir", None):
+                app.state.intake_task = asyncio.create_task(
+                    _jira_intake_loop(app),
+                    name="anvil-jira-intake",
+                )
+            else:
+                logger.info("intake disabled: no tickets dir and no Jira credentials")
         try:
             yield
         finally:

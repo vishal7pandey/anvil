@@ -12,6 +12,7 @@ import posixpath
 import re
 import shlex
 import tarfile
+import threading
 import time
 from dataclasses import dataclass, field
 
@@ -97,6 +98,9 @@ class DockerSandbox(BaseSandbox):
         # Optional host hook: called with (command, FULL decoded output, exit_code) before the
         # output is truncated for the agent (ANVIL-84 writes commands/NNNN.log through it).
         self.on_exec: Any = None
+        # Set by the executor when the run is cancelled; host tools that wait (CI polling) check it
+        # so a cancel does not wait out their sleep (ANVIL-76).
+        self.stop_requested = threading.Event()
 
     # -- lifecycle -------------------------------------------------------------------------
 

@@ -50,7 +50,9 @@ base:` line points at a local path runs fully offline.
 `docs/SETUP.md` §"100% offline" is the full walkthrough. In short:
 
 - Ticket = a JSON file in `$ANVIL_TICKETS_DIR/todo/` labelled `anvil`, ending with
-  `Code base: branch <base> of <absolute path>` (no spaces in the path; it must be a git working copy).
+  `Code base: branch <base> of <absolute path>`. The path may be a git working copy (any branch;
+  leave the branch out to use the one checked out), a plain folder, or a .zip/.tar.gz of either.
+  Put a path with spaces in double quotes. See SETUP.md §5b.
 - The intake moves it to `in-progress/`, the sandbox gets a shallow copy of the base branch only
   (your other branches — including one holding a withheld fix — never leave the host), and the
   agent's commits come back as `private/runs/<run_id>/<run_id>.patch` + `.bundle` — apply with
@@ -63,8 +65,10 @@ base:` line points at a local path runs fully offline.
 
 ## Known limits
 
-- Local paths must be absolute, contain no spaces, and be git working copies — a plain folder is
-  not yet supported (tracked as ANVIL-91).
+- Local projects: any absolute path (spaces fine) to a git working copy, a plain folder or an
+  archive (ANVIL-91). Uncommitted changes in a working copy are reported but not copied. Git
+  submodules inside a local project are not copied. The sandbox has RTEMS 7 / SPARC, Python 3 and
+  common build tools; other toolchains are not installed.
 - `git push`/PR/CI tools only exist for `owner/repo` sources; local runs produce patch + bundle only.
 - The ticket key selects the case (`RTEMS-1` binds the TC1 case: KB time-guard + acceptance checks).
 - Query-side KB embeddings need the gateway (document vectors are imported, queries are not).

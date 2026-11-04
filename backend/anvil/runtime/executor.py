@@ -259,7 +259,10 @@ class DeepAgentExecutor:
         has to be fetched, and nothing in it may be pushed.
         """
         repo = source.validate_local(run["repo"])
-        base = validate_ref(run.get("base_ref") or "main", "base_ref")
+        # No branch given: a working copy's current branch, or 'main' for a folder/archive snapshot (ANVIL-91).
+        base = validate_ref(run.get("base_ref") or source.default_base(repo), "base_ref")
+        run["base_ref"] = base  # the export diffs against the same base
+        kind, uncommitted = source.local_kind(repo), source.uncommitted_changes(repo)
         branch = work_branch(run)
         path = repo_path(repo)
         sandbox.set_network(None)
@@ -274,7 +277,8 @@ class DeepAgentExecutor:
         if failed:
             raise RuntimeError(f"could not upload skills: {failed}")
         return {"repo": repo, "path": path, "base_ref": base, "branch": branch, "network": "offline",
-                "source": "local", "skills": [p for p, _ in files if p.endswith("SKILL.md")],
+                "source": "local", "source_kind": kind, "uncommitted_changes": uncommitted,
+                "skills": [p for p, _ in files if p.endswith("SKILL.md")],
                 "skills_hash": skills_hash(files), "base_sha": found.get("BASE_SHA"), "head_sha": found.get("HEAD_SHA")}
 
     def export_local(self, sandbox: DockerSandbox, run: dict[str, Any], path: str, branch: str) -> dict[str, Any]:
@@ -319,6 +323,12 @@ class DeepAgentExecutor:
                 f"on branch {checkout['branch']} (base {checkout['base_ref']} @ {checkout['base_sha']}).")
         if run.get("jira_key"):
             task += f" Jira ticket: {run['jira_key']}."
+        if checkout.get("source_kind") in ("folder", "archive"):
+            task += (" The code base is a snapshot of a project folder without its own git history: "
+                     "commit your work on this branch as usual; it is exported as a patch.")
+        if checkout.get("uncommitted_changes"):
+            task += (f" Note: the original working copy has {checkout['uncommitted_changes']} uncommitted "
+                     f"change(s) that are not part of this checkout.")
         async for ev in self._stream(run, sandbox, mapper, {"messages": [{"role": "user", "content": task}]}):
             yield ev
 

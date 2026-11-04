@@ -233,10 +233,9 @@ def _ingest_gitlab(args: argparse.Namespace, settings: KBSettings, store: KBStor
 
 
 def _backfill_created_at(store: KBStore) -> dict[str, object]:
-    """Set ``created_at`` from ``doc_metadata`` for GitLab issues/MRs (ANVIL-43).
+    """Set ``created_at`` from ``doc_metadata`` across all sources (ANVIL-43, ANVIL-68).
 
-    Idempotent: only touches rows where ``created_at IS NULL``. Docs/Confluence have no upstream
-    creation date and stay NULL = always visible.
+    Idempotent: only touches rows where ``created_at IS NULL`` and metadata contains a date.
     """
     from sqlalchemy import text
 
@@ -244,11 +243,15 @@ def _backfill_created_at(store: KBStore) -> dict[str, object]:
         result = conn.execute(
             text(
                 "UPDATE kb_documents "
-                "SET created_at = (doc_metadata->>'created_at')::timestamptz "
+                "SET created_at = COALESCE("
+                "    (doc_metadata->>'created_at')::timestamptz, "
+                "    (doc_metadata->>'createdAt')::timestamptz"
+                ") "
                 "WHERE created_at IS NULL "
-                "AND source IN ('gitlab-issue', 'gitlab-mr') "
-                "AND doc_metadata ? 'created_at' "
-                "AND doc_metadata->>'created_at' IS NOT NULL"
+                "AND ("
+                "    (doc_metadata ? 'created_at' AND doc_metadata->>'created_at' IS NOT NULL) "
+                "    OR (doc_metadata ? 'createdAt' AND doc_metadata->>'createdAt' IS NOT NULL)"
+                ")"
             )
         )
         updated = result.rowcount

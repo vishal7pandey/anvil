@@ -149,3 +149,48 @@ def test_confluence_pages_guard_exclusion():
     assert len(docs) == 1
     assert docs[0].external_id == "28868609"
 
+
+def test_confluence_pages_populates_created_at():
+    mock_search_results = [
+        {"id": "28868609", "title": "Payload Telemetry Flow", "url": "/wiki/spaces/RTKB/pages/28868609"},
+    ]
+
+    def mock_get(page_id: str):
+        return {
+            "id": "28868609",
+            "title": "Payload Telemetry Flow",
+            "version": 1,
+            "body": "<p>Content</p>",
+            "url": "https://example.atlassian.net/wiki/spaces/RTKB/pages/28868609",
+            "createdAt": "2026-08-15T10:00:00.000Z",
+        }
+
+    docs = fetch_confluence_pages(
+        space_key="RTKB",
+        search_fn=lambda cql, limit: mock_search_results,
+        get_fn=mock_get,
+    )
+    assert len(docs) == 1
+    assert docs[0].metadata.get("created_at") == "2026-08-15T10:00:00.000Z"
+
+
+def test_docs_dir_populates_created_at_from_git(tmp_path):
+    import subprocess
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=repo, check=True)
+
+    doc_file = repo / "manual.rst"
+    doc_file.write_text("# Manual\n\nContent here.", encoding="utf-8")
+    subprocess.run(["git", "add", "manual.rst"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "add manual"], cwd=repo, check=True)
+
+    docs = list(documents_from_docs_dir(repo))
+    assert len(docs) == 1
+    assert "created_at" in docs[0].metadata
+    from datetime import datetime
+    dt = datetime.fromisoformat(docs[0].metadata["created_at"])
+    assert dt is not None
+

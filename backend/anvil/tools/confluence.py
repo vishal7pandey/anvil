@@ -34,6 +34,8 @@ def confluence_get(page_id: str) -> dict[str, Any]:
         "version": p["version"]["number"],
         "body": p["body"]["storage"]["value"],
         "url": _page_url(p.get("_links", {})),
+        "createdAt": p.get("createdAt"),
+        "versionCreatedAt": (p.get("version") or {}).get("createdAt"),
     }
 
 

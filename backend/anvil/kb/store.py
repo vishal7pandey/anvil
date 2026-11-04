@@ -63,8 +63,9 @@ class SearchHit:
 
 
 def _created_at_from_metadata(metadata: dict | None) -> datetime | None:
-    """The upstream creation time recorded by the crawler (ANVIL-43), or None."""
-    value = (metadata or {}).get("created_at")
+    """The upstream creation time recorded by the crawler (ANVIL-43, ANVIL-68), or None."""
+    meta = metadata or {}
+    value = meta.get("created_at") or meta.get("createdAt")
     if not value:
         return None
     if isinstance(value, datetime):
@@ -238,8 +239,10 @@ class KBStore:
         """Hybrid vector + full-text search.
 
         ``as_of`` (ISO date/datetime) is the case's leak boundary: documents created after it are
-        "from the future" and hidden (ANVIL-43). NULL ``created_at`` is always visible. When
-        ``as_of`` is None the filter is inert and results are unchanged (normal TC4 path).
+        "from the future" and hidden (ANVIL-43). When ``as_of`` is set, undated documents (NULL
+        ``created_at``) are excluded by default to ensure answer leaks cannot occur through undated
+        pages (ANVIL-68). When ``as_of`` is None the filter is inert and all documents are visible
+        (normal TC4 path).
         """
         query = query.strip()
         if not query:
@@ -310,8 +313,7 @@ WITH excluded AS (
 visible_docs AS (
     SELECT id FROM kb_documents
     WHERE CAST(:as_of AS timestamptz) IS NULL
-       OR created_at IS NULL
-       OR created_at <= CAST(:as_of AS timestamptz)
+       OR (created_at IS NOT NULL AND created_at <= CAST(:as_of AS timestamptz))
 ),
 vec AS (
     SELECT c.id, row_number() OVER (ORDER BY c.embedding <=> CAST(:qvec AS vector)) AS rn

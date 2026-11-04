@@ -17,7 +17,9 @@ def _msg(folder: Path, name: str, **fm):
     (folder / name).write_text(text)
 
 
-def test_comms_metrics_pairs_request_with_reply(tmp_path):
+def test_comms_metrics_pairs_request_with_reply(tmp_path, monkeypatch):
+    # birthtime is real wall-clock creation — control it so the test measures the date: line
+    monkeypatch.setattr(tm, "msg_time", lambda path, date: tm._dt_parse(date))
     _msg(tmp_path / "devin" / "Inbox", "2026-01-01-claude-ask.md",
          **{"from": "claude", "to": "[devin]", "date": "2026-01-01 10:00",
             "action-required": "yes", "thread": "t1"})

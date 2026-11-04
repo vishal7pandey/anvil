@@ -103,8 +103,8 @@ Complete these steps on the laptop while setting up the presenter display:
 ## 3. Human Governance & The Approval Moment
 
 > [!NOTE]
-> **UNVERIFIED until the 15:00 dry run.**
-> Gating mechanics are implemented in code (`backend/anvil/runtime/agent.py` and `backend/anvil/api/app.py`). Live reject/critique behavior will be exercised during the dry run rehearsal; fold live observations into this section.
+> **Observed live in local verification (ANVIL-24 / ANVIL-32).**
+> Re-confirm exact timing during the 15:00 clean-laptop dry run rehearsal.
 
 ### 3.1 How Gating Operates in Code
 - **Activation:** A run is only gated if the ticket includes the label `"anvil-interactive"`. Without it, `approval_policy("autonomous", ...)` gates nothing and execution proceeds autonomously.
@@ -113,20 +113,29 @@ Complete these steps on the laptop while setting up the presenter display:
   - `jira_set_labels` (updating ticket tags)
   - `jira_transition` (moving ticket to In Progress or Done)
   - `publish_evidence` (writing local knowledge pages)
-- **Approval Card UI:** When the agent invokes an outward tool, execution pauses. The UI displays an approval card showing the **exact arguments of that tool call** (e.g. comment body, new labels, or evidence markdown).
+- **Approval Card UI:** When the agent invokes an outward tool, execution pauses in state `waiting_approval`.
+  - In the right-hand Approvals panel and global "Approvals inbox" page (badge count on nav button), the card displays:
+    - Approval ID and tag (`agent`)
+    - Tool name and arguments: `Tool execution requires approval / Tool: jira_comment / Args: {'markdown': '...'}`
+    - Session line: `RTEMS-1: ... · C:\work\rtems · waiting_approval`
+    - "Comment (optional)" input box
+    - **Approve** and **Reject** buttons.
 - **Deliverables Generation:** Deliverables (`.patch` and `.bundle`) are exported automatically via `export_local` upon successful verification, *not* as a side-effect of clicking approve.
 
 ### 3.2 Decision Paths at the Gate
 * **Path A: Approve (Nominal Flow)**
-  1. Review the tool arguments in the UI card.
+  1. Review the proposed tool arguments (e.g. comment body or labels) in the UI card.
   2. Click **Approve**.
-  3. Execution resumes: tool executes against the local ticket store, metrics append to the ticket JSON, and it moves from `in-progress/` to `done/`.
+  3. Execution resumes immediately: the outward tool executes against the local ticket store (the `jira_comment` appends to `comments[]` in `in-progress/RTEMS-1.json`), run status transitions `waiting_approval -> running -> succeeded`, and deliverables (`.patch`, `.bundle`, command logs) persist under `private/runs/<id>/`.
   4. *Talk track:* *"Human governance is built into the workflow. In interactive mode, outward operations pause for engineering confirmation before mutating state."*
 * **Path B: Reject with Feedback (Critique Loop)**
-  1. Enter feedback in the critique field.
+  1. Enter feedback in the comment box (e.g., `"not yet — verify priority ceiling bounds before documenting"`).
   2. Click **Reject**.
-  3. The agent receives the feedback event and resumes its planning loop.
-  *(Exact agent adjustment behavior will be confirmed during the 15:00 dry run).*
+  3. The agent receives tool rejection output: `{ok: False, output: "User rejected the tool call for `jira_comment` with reason: <feedback>"}`.
+  4. The agent reads the reason, reflects in its planning loop, re-inspects code or diffs, adjusts its actions, and re-invokes the outward tool.
+  5. A second approval card appears showing the updated arguments (e.g. reflecting the adjusted fix commit).
+  > [!TIP]
+  > Prior to PR #108 (ANVIL-96), the Approvals panel only fetched on mount/session change (requiring a page reload to see the second card after a reject). With ANVIL-96's background polling active, the retry card updates automatically within 3 seconds.
 
 ---
 

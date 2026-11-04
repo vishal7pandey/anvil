@@ -35,18 +35,20 @@ BASELINE_TICKETS = {
 }
 
 def get_baseline_tickets() -> dict[str, dict[str, Any]]:
-    """Return protected baseline tickets: RTEMS-1..6 plus any case tickets defined in cases/*.toml."""
+    """Return protected baseline tickets: RTEMS-1..6 plus any case tickets defined in cases/*.toml.
+
+    Fails closed: any error loading case files propagates to prevent accidental deletion
+    of unlisted case tickets.
+    """
     tickets: dict[str, dict[str, Any]] = {
         k: {"status": v["status"], "labels": list(v["labels"])} for k, v in BASELINE_TICKETS.items()
     }
-    try:
-        from anvil.cases import load_cases
-        for case in load_cases():
-            if case.ticket_key:
-                clean_labels = [l for l in case.ticket_labels if l != "anvil"]
-                tickets[case.ticket_key] = {"status": "To Do", "labels": clean_labels}
-    except Exception as exc:
-        logger.warning("Could not load case tickets for baseline: %s", exc)
+    from anvil.cases import load_cases
+
+    for case in load_cases():
+        if case.ticket_key:
+            clean_labels = [l for l in case.ticket_labels if l != "anvil"]
+            tickets[case.ticket_key] = {"status": "To Do", "labels": clean_labels}
     return tickets
 
 AGENT_SCENARIO_LABELS = {
@@ -83,7 +85,12 @@ def reset_jira(dry_run: bool = False) -> bool:
     from anvil.tools import jira
     from anvil.tools._atlassian import request
 
-    baseline_tickets = get_baseline_tickets()
+    try:
+        baseline_tickets = get_baseline_tickets()
+    except Exception as exc:
+        logger.error("Failed to load baseline and case tickets (refusing to mutate Jira): %s", exc)
+        return False
+
     keys_sorted = sorted(baseline_tickets.keys(), key=lambda k: int(re.sub(r"\D", "", k) or 0))
     logger.info("--- Resetting Jira Tickets (%s and purging unmanaged agent issues) ---", ", ".join(keys_sorted))
     success = True

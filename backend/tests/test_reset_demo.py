@@ -14,6 +14,7 @@ from scripts.reset_demo import (
 
 
 def test_get_baseline_tickets_includes_cases():
+    # Reads the real cases/ directory on disk to verify integration with active case definitions.
     tickets = get_baseline_tickets()
     # Baseline 1..6 must be present
     for i in range(1, 7):
@@ -65,28 +66,16 @@ def test_reset_jira_transitions_labels_and_deletes_extra():
         mock_trans.assert_called_once_with("RTEMS-1", "To Do")
 
         # RTEMS-1 should have its labels reset to baseline
-        assert any(
-            call("PUT", "/rest/api/3/issue/RTEMS-1", json={"fields": {"labels": ["posix", "tc1"], "assignee": None}}) in mock_req.mock_calls
-            for _ in [1]
-        )
+        assert call("PUT", "/rest/api/3/issue/RTEMS-1", json={"fields": {"labels": ["posix", "tc1"], "assignee": None}}) in mock_req.mock_calls
 
         # RTEMS-8 should be deleted (has cra/tc3 label, unmanaged)
-        assert any(
-            call("DELETE", "/rest/api/3/issue/RTEMS-8") in mock_req.mock_calls
-            for _ in [1]
-        )
+        assert call("DELETE", "/rest/api/3/issue/RTEMS-8") in mock_req.mock_calls
 
         # RTEMS-7 must NOT be deleted (protected case ticket)
-        assert not any(
-            call("DELETE", "/rest/api/3/issue/RTEMS-7") in mock_req.mock_calls
-            for _ in [1]
-        )
+        assert call("DELETE", "/rest/api/3/issue/RTEMS-7") not in mock_req.mock_calls
 
         # RTEMS-9 should NOT be deleted (no agent label)
-        assert not any(
-            call("DELETE", "/rest/api/3/issue/RTEMS-9") in mock_req.mock_calls
-            for _ in [1]
-        )
+        assert call("DELETE", "/rest/api/3/issue/RTEMS-9") not in mock_req.mock_calls
 
 
 def test_reset_jira_case_ticket_above_six_is_reset_not_deleted():
@@ -122,16 +111,24 @@ def test_reset_jira_case_ticket_above_six_is_reset_not_deleted():
         mock_trans.assert_called_once_with("RTEMS-7", "To Do")
 
         # RTEMS-7 labels must be reset to clean baseline (minus anvil)
-        assert any(
-            call("PUT", "/rest/api/3/issue/RTEMS-7", json={"fields": {"labels": ["classic-api", "tc1"], "assignee": None}}) in mock_req.mock_calls
-            for _ in [1]
-        )
+        assert call("PUT", "/rest/api/3/issue/RTEMS-7", json={"fields": {"labels": ["classic-api", "tc1"], "assignee": None}}) in mock_req.mock_calls
 
         # RTEMS-7 must never be deleted
-        assert not any(
-            call("DELETE", "/rest/api/3/issue/RTEMS-7") in mock_req.mock_calls
-            for _ in [1]
-        )
+        assert call("DELETE", "/rest/api/3/issue/RTEMS-7") not in mock_req.mock_calls
+
+
+def test_reset_jira_fails_closed_when_load_cases_raises():
+    with patch("anvil.cases.load_cases", side_effect=ValueError("corrupt case TOML")), \
+         patch("anvil.tools.jira.jira_transition") as mock_trans, \
+         patch("anvil.tools._atlassian.request") as mock_req:
+
+        success = reset_jira(dry_run=False)
+        assert success is False
+
+        # Fail closed: no mutations and no deletions must be issued
+        mock_trans.assert_not_called()
+        assert not any(c[0] == "DELETE" for c in mock_req.call_args_list if len(c) > 0 and len(c[0]) > 0)
+        assert not any(c[0] == "PUT" for c in mock_req.call_args_list if len(c) > 0 and len(c[0]) > 0)
 
 
 def test_reset_jira_dry_run_does_not_mutate():

@@ -80,6 +80,11 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(_ingest_gitlab(args, settings, store)))
             return 0
 
+        if args.command == "backfill-created-at":
+            store.ensure_schema()
+            print(json.dumps(_backfill_created_at(store)))
+            return 0
+
         if args.command in {"ingest-confluence", "ingest-all"}:
             store.ensure_schema()
             space = getattr(args, "space", "RTKB")
@@ -152,6 +157,11 @@ def _build_parser() -> argparse.ArgumentParser:
     gitlab.add_argument("--max-pages", type=int, default=None)
     gitlab.add_argument("--no-notes", action="store_true", help="skip comments (fast, 1 request per 100 items)")
 
+    sub.add_parser(
+        "backfill-created-at",
+        help="fill kb_documents.created_at from doc_metadata for gitlab sources (idempotent, ANVIL-43)",
+    )
+
     confluence = sub.add_parser("ingest-confluence", help="ingest pages from Confluence space")
     confluence.add_argument("--space", default="RTKB", help="Confluence space key (default: RTKB)")
     confluence.add_argument("--limit", type=int, default=100, help="maximum pages to fetch")
@@ -218,6 +228,30 @@ def _ingest_gitlab(args: argparse.Namespace, settings: KBSettings, store: KBStor
     finally:
         gl.close()
     return {"ok": True, "kind": "gitlab", "results": results}
+
+
+def _backfill_created_at(store: KBStore) -> dict[str, object]:
+    """Set ``created_at`` from ``doc_metadata`` for GitLab issues/MRs (ANVIL-43).
+
+    Idempotent: only touches rows where ``created_at IS NULL``. Docs/Confluence have no upstream
+    creation date and stay NULL = always visible.
+    """
+    from sqlalchemy import text
+
+    with store.engine.begin() as conn:
+        result = conn.execute(
+            text(
+                "UPDATE kb_documents "
+                "SET created_at = (doc_metadata->>'created_at')::timestamptz "
+                "WHERE created_at IS NULL "
+                "AND source IN ('gitlab-issue', 'gitlab-mr') "
+                "AND doc_metadata ? 'created_at' "
+                "AND doc_metadata->>'created_at' IS NOT NULL"
+            )
+        )
+        updated = result.rowcount
+    log.info("backfill-created-at: %s documents", updated)
+    return {"ok": True, "documents_updated": updated}
 
 
 def _report_dict(kind: str, report: object) -> dict[str, object]:

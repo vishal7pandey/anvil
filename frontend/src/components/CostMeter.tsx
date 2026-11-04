@@ -1,15 +1,12 @@
-import { type StreamEvent } from '../types';
+import { type StreamEvent, type Run } from '../types';
 
 interface CostMeterProps {
+  run: Run | null;
   events: StreamEvent[];
 }
 
-export default function CostMeter({ events }: CostMeterProps) {
+export default function CostMeter({ run, events }: CostMeterProps) {
   const usageEvents = events.filter((e) => e.type === 'usage');
-  const totalUsd = usageEvents.reduce(
-    (sum, e) => sum + Number((e.data as { usd: number }).usd || 0),
-    0,
-  );
   const totalInputTokens = usageEvents.reduce(
     (sum, e) => sum + Number((e.data as { input_tokens: number }).input_tokens || 0),
     0,
@@ -19,7 +16,13 @@ export default function CostMeter({ events }: CostMeterProps) {
     0,
   );
 
-  if (usageEvents.length === 0) return null;
+  // Use the run's cost_usd/usd as the single source of truth.
+  const costStatus = run?.cost_status ?? 'pending';
+  const runCost = run?.cost_usd ?? run?.usd ?? null;
+  const isPending =
+    costStatus === 'pending' || runCost === null || runCost === undefined;
+
+  if (usageEvents.length === 0 && !run) return null;
 
   return (
     <section className="card space-y-3">
@@ -27,7 +30,9 @@ export default function CostMeter({ events }: CostMeterProps) {
       <div className="space-y-2 text-sm">
         <div className="flex justify-between">
           <span className="text-slate-600">Total USD</span>
-          <span className="font-mono text-slate-900">${totalUsd.toFixed(4)}</span>
+          <span className="font-mono text-slate-900">
+            {isPending ? 'pending' : `$${(runCost ?? 0).toFixed(4)}`}
+          </span>
         </div>
         <div className="flex justify-between">
           <span className="text-slate-600">Input tokens</span>

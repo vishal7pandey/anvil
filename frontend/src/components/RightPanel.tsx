@@ -79,7 +79,7 @@ export default function RightPanel({
           onApprove={onApprove}
           onReject={onReject}
         />
-        <CostMeter events={events} />
+        <CostMeter run={run} events={events} />
         <HandoffView run={run} />
       </div>
     </aside>

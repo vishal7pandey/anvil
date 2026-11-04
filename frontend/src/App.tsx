@@ -24,6 +24,7 @@ import RightPanel from './components/RightPanel';
 import ApprovalsInbox from './components/ApprovalsInbox';
 import RunRecordsPage from './components/RunRecordsPage';
 import MetricsPage from './components/MetricsPage';
+import { useApprovalsPolling } from './useApprovalsPolling';
 
 type AppView = 'chat' | 'approvals' | 'runs' | 'metrics';
 
@@ -67,6 +68,8 @@ export default function App() {
     setApprovals(await listApprovals());
     setApprovalError(null);
   }, []);
+
+  useApprovalsPolling(refreshApprovals);
 
   useEffect(() => {
     let cancelled = false;

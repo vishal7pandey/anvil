@@ -11,8 +11,11 @@ text, PR number). Reads that are not tied to the run (jira_get, jira_search, con
 from __future__ import annotations
 
 from anvil.runtime.sandbox import host_run
+import logging
 import time
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 from anvil.tools import git_push as git_push_module
 from anvil.tools import github, jira
@@ -174,7 +177,10 @@ def _knowledge_tools(run: dict[str, Any], tracker: Any = None) -> list[Any]:
             return False
 
     local_run = is_local(run["repo"]) or (run.get("trigger") or "").startswith("local:")
-    if local_run or not _atlassian_configured():
+    use_local = local_run or not _atlassian_configured()
+    log.info("run %s: knowledge tools -> %s", run.get("run_id", "?"),
+             "local-folder" if use_local else "confluence")
+    if use_local:
         knowledge = LocalKnowledge()
 
         def confluence_search(cql: str, limit: int = 10) -> list[dict[str, Any]]:

@@ -84,15 +84,29 @@ class LocalKnowledge:
 
     # -- Confluence-shaped API (same names/return shapes as tools/confluence.py) -----------------
 
+    _SPACE_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
     def write_page(self, space_key: str, title: str, markdown: str,
                    parent_id: str | None = None) -> dict[str, Any]:
         """Upsert <root>/<SPACE>/<slug>.md (same title -> same slug) and index it at once."""
         space = space_key.upper()
-        rel = f"{space}/{slugify(title)}.md"
-        path = self.root / rel
+        if not self._SPACE_RE.fullmatch(space):  # space_key is agent input: never a path
+            from anvil.tools.errors import ToolError
+
+            raise ToolError(f"refused: knowledge space '{space_key}' is not a folder-safe name")
+        slug = slugify(title)
+        path = self.root / f"{space}/{slug}.md"
+        if path.exists():
+            old = _meta(path.read_text(encoding="utf-8"))
+            if old.get("title") and old["title"] != title:  # different page, same slug
+                slug = f"{slug}-{abs(hash(title)) % 0xFFFF:04x}"
+                path = self.root / f"{space}/{slug}.md"
+                old = {}
+        else:
+            old = {}
+        rel = f"{space}/{slug}.md"
         path.parent.mkdir(parents=True, exist_ok=True)
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        old = _meta(path.read_text(encoding="utf-8")) if path.exists() else {}
         version = int(old.get("version") or 0) + 1
         created = old.get("created") or now
         body = _front_matter(title, space, created, now, version) + "\n" + markdown.strip() + "\n"
@@ -100,7 +114,9 @@ class LocalKnowledge:
         indexed = self._index(SourceDocument(
             source=LOCAL_SOURCE, external_id=rel, title=title, url=None,
             text=markdown.strip(),
-            metadata={"path": rel, "space": space, "updated": now},
+            # created_at feeds kb_documents.created_at: without it the page is undated and visible
+            # under a case's as_of guard — run 2 would read run 1's evidence (review on #95).
+            metadata={"path": rel, "space": space, "updated": now, "created_at": now},
         ))
         return {"id": rel, "title": title, "version": version, "url": str(path),
                 "kb_indexed": indexed}
@@ -131,7 +147,9 @@ class LocalKnowledge:
         """Local stand-in for confluence_get: read a page by its folder-relative id."""
         rel = page_id.strip().lstrip("/")
         path = (self.root / rel).resolve()
-        if not str(path).startswith(str(self.root.resolve())) or not path.exists():
+        # is_relative_to, not a string prefix: 'kb-local-private' shares 'kb-local' as text (review on #95).
+        if not path.is_relative_to(self.root.resolve()) or path.suffix.lower() != ".md" \
+                or not path.is_file():
             from anvil.tools.errors import ToolError
 
             raise ToolError(f"no local knowledge page '{page_id}'")
@@ -162,7 +180,7 @@ class LocalKnowledge:
                 title=meta.get("title") or path.stem, url=None,
                 text=_PAGE_RE.sub("", text, count=1).strip(),
                 metadata={"path": rel, "space": meta.get("space") or path.parent.name,
-                          "date": when},
+                          "date": when, "created_at": when},
             )
 
 

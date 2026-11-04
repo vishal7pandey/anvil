@@ -163,3 +163,45 @@ def test_a_written_page_is_found_by_kb_search_straight_after(tmp_path):
     finally:
         store.close()
         engine.dispose()
+
+
+# -- review on #95: path holes, slug collisions, created_at for the leak guard -------------------
+
+def test_write_page_refuses_a_space_that_is_a_path(tmp_path):
+    from anvil.tools.errors import ToolError
+
+    k = LocalKnowledge(tmp_path, store=object())
+    for bad in ("../escaped", "a/b", "x y", "semi;colon"):
+        with pytest.raises(ToolError):
+            k.write_page(bad, "t", "b")
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_get_cannot_leave_the_folder_or_read_non_md(tmp_path):
+    sib = tmp_path.parent / (tmp_path.name + "-private")
+    sib.mkdir()
+    (sib / "secret.txt").write_text("nope")
+    k = LocalKnowledge(tmp_path, store=object())
+    for bad in ("../kb-local-private/secret.txt", "..", "RTKB/no.md", "RTKB"):
+        with pytest.raises(Exception):
+            k.get(bad)
+
+
+def test_slug_collision_keeps_both_pages(tmp_path):
+    k = LocalKnowledge(tmp_path, store=object())
+    p1 = k.write_page("RTKB", "a/b", "first")
+    p2 = k.write_page("RTKB", "a b", "second")
+    assert p1["id"] != p2["id"] and (tmp_path / p1["id"]).exists() and (tmp_path / p2["id"]).exists()
+    # same title twice is an upsert, not a collision
+    p3 = k.write_page("RTKB", "a/b", "third")
+    assert p3["id"] == p1["id"] and p3["version"] == 2
+
+
+def test_written_page_carries_created_at_for_the_leak_guard(tmp_path):
+    rec = _RecStore()
+    k = LocalKnowledge(tmp_path, store=rec)
+    k.write_page("RTKB", "post-mortem", "body")
+    (doc,) = rec.docs
+    assert doc.metadata.get("created_at")          # feeds kb_documents.created_at
+    (d,) = list(k.documents())
+    assert d.metadata.get("created_at")

@@ -4,6 +4,7 @@ import hashlib
 import json
 import tarfile
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -12,8 +13,11 @@ from anvil.runtime.image_file import (
     EXPECTED_SANDBOX_TAG,
     ImageManifest,
     compute_sha256,
+    export_image,
     find_checksum_sidecar,
+    import_image,
     inspect_docker_tar,
+    main,
     read_manifest,
     verify_image_file,
     write_manifest,
@@ -70,7 +74,6 @@ def test_find_checksum_sidecar_manifest(tmp_path: Path):
     img_file.write_bytes(b"content")
     digest = hashlib.sha256(b"content").hexdigest()
 
-    # No .sha256 file, but manifest.json exists
     manifest_file = tmp_path / "sandbox.tar.manifest.json"
     manifest_file.write_text(json.dumps({"sha256": digest}))
 
@@ -90,7 +93,7 @@ def test_verify_image_file_success(tmp_path: Path):
     assert msg == digest
 
 
-def test_verify_image_file_mismatch(tmp_path: Path):
+def test_verify_image_file_mismatch_fails_closed(tmp_path: Path):
     img_file = tmp_path / "anvil-sandbox-rtems-7.1.tar"
     img_file.write_bytes(b"corrupted or tampered content")
 
@@ -102,10 +105,11 @@ def test_verify_image_file_mismatch(tmp_path: Path):
     assert "SHA-256 mismatch" in msg
 
 
-def test_verify_image_file_missing_sidecar(tmp_path: Path):
+def test_verify_image_file_missing_sidecar_fails_closed(tmp_path: Path):
     img_file = tmp_path / "sandbox.tar"
     img_file.write_bytes(b"data")
 
+    # Fails closed when no sidecar found
     ok, msg = verify_image_file(img_file)
     assert ok is False
     assert "No expected SHA-256 digest provided or found" in msg
@@ -128,8 +132,86 @@ def test_inspect_docker_tar(tmp_path: Path):
         ti = tarfile.TarInfo("manifest.json")
         ti.size = len(manifest_bytes)
         import io
+
         tar.addfile(ti, io.BytesIO(manifest_bytes))
 
     info = inspect_docker_tar(tar_path)
     assert info.get("RepoTags") == [EXPECTED_SANDBOX_TAG]
 
+
+@patch("subprocess.run")
+def test_export_image(mock_run, tmp_path: Path):
+    mock_run.side_effect = [
+        MagicMock(returncode=0, stdout="sha256:bc17ec29fakeid\n", stderr=""),
+        MagicMock(returncode=0, stdout="", stderr=""),
+    ]
+    out_file = tmp_path / "exported.tar"
+    out_file.write_bytes(b"tar-data")
+
+    manifest = export_image(EXPECTED_SANDBOX_TAG, out_file, force=True)
+    assert manifest.image_tag == EXPECTED_SANDBOX_TAG
+    assert manifest.image_id == "sha256:bc17ec29fakeid"
+    assert (tmp_path / "exported.tar.sha256").exists()
+    assert (tmp_path / "exported.tar.manifest.json").exists()
+
+
+@patch("subprocess.run")
+def test_import_image_success(mock_run, tmp_path: Path):
+    mock_run.side_effect = [
+        MagicMock(returncode=0, stdout="Loaded image: anvil-sandbox-rtems:7.1\n", stderr=""),
+        MagicMock(returncode=0, stdout="sha256:bc17ec29loaded\n", stderr=""),
+    ]
+    img_file = tmp_path / "anvil-sandbox-rtems-7.1.tar"
+    content = b"image-payload"
+    img_file.write_bytes(content)
+    digest = hashlib.sha256(content).hexdigest()
+    write_sha256_file(tmp_path / "anvil-sandbox-rtems-7.1.tar.sha256", digest, img_file.name)
+
+    tag, img_id = import_image(img_file)
+    assert tag == EXPECTED_SANDBOX_TAG
+    assert img_id == "sha256:bc17ec29loaded"
+
+
+def test_import_image_missing_checksum_fails_closed(tmp_path: Path):
+    img_file = tmp_path / "unverified.tar"
+    img_file.write_bytes(b"content")
+
+    with pytest.raises(ValueError, match="Integrity check failed"):
+        import_image(img_file)
+
+
+@patch("subprocess.run")
+def test_import_image_manifest_id_mismatch_fails_closed(mock_run, tmp_path: Path):
+    mock_run.side_effect = [
+        MagicMock(returncode=0, stdout="Loaded image: anvil-sandbox-rtems:7.1\n", stderr=""),
+        MagicMock(returncode=0, stdout="sha256:differentid\n", stderr=""),
+    ]
+    img_file = tmp_path / "image.tar"
+    content = b"content"
+    img_file.write_bytes(content)
+    digest = hashlib.sha256(content).hexdigest()
+    write_sha256_file(tmp_path / "image.tar.sha256", digest, img_file.name)
+    write_manifest(
+        tmp_path / "image.tar.manifest.json",
+        ImageManifest(
+            image_tag=EXPECTED_SANDBOX_TAG,
+            image_id="sha256:expectedid",
+            file_name=img_file.name,
+            file_size_bytes=len(content),
+            sha256=digest,
+            exported_at="2026-11-04T20:00:00Z",
+        ),
+    )
+
+    with pytest.raises(ValueError, match="Image ID mismatch against export manifest"):
+        import_image(img_file)
+
+
+def test_cli_verify_subcommand(tmp_path: Path):
+    img_file = tmp_path / "test.tar"
+    img_file.write_bytes(b"data")
+    digest = hashlib.sha256(b"data").hexdigest()
+    write_sha256_file(tmp_path / "test.tar.sha256", digest, img_file.name)
+
+    exit_code = main(["verify", "--archive", str(img_file)])
+    assert exit_code == 0

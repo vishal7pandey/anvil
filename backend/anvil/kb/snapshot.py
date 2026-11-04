@@ -33,6 +33,9 @@ log = logging.getLogger(__name__)
 
 SNAPSHOT_FILE = "kb-snapshot.jsonl.gz"
 VECTORS_FILE = "kb-snapshot-vectors.jsonl.gz"
+# The vectors' metadata lives in a sidecar next to the (gitignored) vectors file, not in the
+# committed manifest.json: a clone with only the text snapshot must never demand it (review on #73).
+VECTORS_MANIFEST = "kb-snapshot-vectors.manifest.json"
 MANIFEST_FILE = "manifest.json"
 
 
@@ -91,10 +94,11 @@ def export_snapshot(store: KBStore, out_dir: Path, with_vectors: bool = False) -
         "embedding": "not included: `python -m anvil.kb import-snapshot` re-embeds with the configured model",
     }
     if with_vectors:
-        manifest["embedding"] = {
+        (out_dir / VECTORS_MANIFEST).write_text(json.dumps({
             "model": store.settings.embed_model, "dim": EMBED_DIM,
             "file": VECTORS_FILE, "sha256": hashlib.sha256(vpath.read_bytes()).hexdigest(),
-        }
+            "snapshot_sha256": manifest["sha256"],
+        }, indent=2) + "\n", encoding="utf-8", newline="\n")
     (out_dir / MANIFEST_FILE).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n")
     return manifest
 
@@ -159,26 +163,31 @@ def _exists(store: KBStore, doc: dict) -> bool:
 
 
 def _load_vectors(in_dir: Path, store: KBStore) -> dict[str, str] | None:
-    """chunk content_sha256 -> pgvector text when the snapshot ships vectors and the model matches.
+    """chunk content_sha256 -> pgvector text when a vectors sidecar exists and everything matches.
 
-    A snapshot without vectors returns None (the caller re-embeds). A vectors file for another
-    model is refused, not silently ignored (ANVIL-58).
+    No sidecar -> None (the caller re-embeds, exactly like a text-only snapshot). A sidecar with a
+    different model or dim, an unpaired snapshot, or a corrupt/missing vectors file is refused
+    loudly, never silently re-embedded (ANVIL-58).
     """
-    manifest = json.loads((in_dir / MANIFEST_FILE).read_text(encoding="utf-8"))
-    info = manifest.get("embedding")
-    if not isinstance(info, dict):
+    sidecar = in_dir / VECTORS_MANIFEST
+    if not sidecar.exists():
         return None
-    if info.get("model") != store.settings.embed_model:
-        raise ValueError(
-            f"snapshot vectors were embedded with {info.get('model')!r}; this KB is configured "
-            f"for {store.settings.embed_model!r}: re-export without --with-vectors or match the model"
-        )
+    info = json.loads(sidecar.read_text(encoding="utf-8"))
+    manifest = json.loads((in_dir / MANIFEST_FILE).read_text(encoding="utf-8"))
+    for field, mine, theirs in (("model", store.settings.embed_model, info.get("model")),
+                                ("dim", EMBED_DIM, info.get("dim")),
+                                ("snapshot_sha256", manifest.get("sha256"), info.get("snapshot_sha256"))):
+        if mine != theirs:
+            raise ValueError(
+                f"vectors sidecar says {field}={theirs!r}, this KB/snapshot has {mine!r}: "
+                "re-export with a matching model/dim, or delete the vectors files and re-embed"
+            )
     path = in_dir / info.get("file", VECTORS_FILE)
     if not path.exists():
-        raise ValueError(f"manifest declares vectors but {path.name} is missing")
+        raise ValueError(f"{VECTORS_MANIFEST} declares vectors but {path.name} is missing")
     actual = hashlib.sha256(path.read_bytes()).hexdigest()
     if actual != info.get("sha256"):
-        raise ValueError(f"{path.name} does not match its manifest sha256")
+        raise ValueError(f"{path.name} does not match its sidecar sha256")
     out: dict[str, str] = {}
     with gzip.open(path, "rt", encoding="utf-8") as fh:
         for line in fh:

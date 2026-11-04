@@ -753,7 +753,7 @@ def _get_or_create_intake_run(
                 issue.get("repo") or code_base_repo or "vishal7pandey/rtems"
             ),
             environment="local",
-            mode="autonomous",
+            mode=_jira_mode(issue),
             merge_policy="human",
             model_profile="anvil-main",
             title=f"{key}: {summary}",
@@ -765,7 +765,7 @@ def _get_or_create_intake_run(
             trigger=f"jira:{key}",
             repo=session.repo,
             status="queued",
-            mode="autonomous",
+            mode=session.mode,
             input_text=message,
             network=_jira_network(issue),
             base_ref=base_ref,
@@ -805,11 +805,21 @@ def _code_base(description: str) -> tuple[str | None, str]:
     return match.group("repo"), match.group("ref")
 
 
-def _jira_network(issue: dict[str, Any]) -> str:
+def _jira_labels(issue: dict[str, Any]) -> list[str]:
     labels = issue.get("labels", [])
     if not isinstance(labels, list) or not all(isinstance(label, str) for label in labels):
         raise ValueError("Jira intake candidate labels must be a list of strings")
-    return "online" if "anvil-online" in labels else "offline"
+    return labels
+
+
+def _jira_network(issue: dict[str, Any]) -> str:
+    return "online" if "anvil-online" in _jira_labels(issue) else "offline"
+
+
+def _jira_mode(issue: dict[str, Any]) -> str:
+    """Run mode from the ticket: `anvil-interactive` makes every outward tool wait for a human, which
+    is how a review's per-finding accept/reject gate works (TC3, ANVIL-50). Default: autonomous."""
+    return "interactive" if "anvil-interactive" in _jira_labels(issue) else "autonomous"
 
 
 async def poll_jira_intake(app: FastAPI) -> list[UUID]:

@@ -165,6 +165,11 @@ def test_code_scanning_alerts_for_pr_ref():
         {"number": 3, "rule": "cpp/overflow", "severity": "high", "message": "possible overflow", "path": "cpukit/x.c", "line": 10, "url": "https://a"}
     ]
     assert route.calls[0].request.url.params["ref"] == "refs/pull/7/head"
+    # A review has no PR: alerts on the branch (TC3, ANVIL-50).
+    github.github_code_scanning_alerts("rtems", branch="tc2/upgrade-base-leon3")
+    assert route.calls[1].request.url.params["ref"] == "refs/heads/tc2/upgrade-base-leon3"
+    with pytest.raises(ToolError, match="exactly one"):
+        github.github_code_scanning_alerts("rtems")
 
 
 @respx.mock

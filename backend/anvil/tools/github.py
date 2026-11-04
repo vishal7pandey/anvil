@@ -188,9 +188,13 @@ def github_pr_state(repo: str, pr: int, wait_seconds: int = 0, poll_seconds: int
             "comments": comments, "reviews": reviews}
 
 
-def github_code_scanning_alerts(repo: str, pr: int) -> list[dict[str, Any]]:
-    """Open code-scanning (CodeQL) alerts on a PR: rule, severity, message, file and line."""
-    alerts = _gh("GET", f"/repos/{full_name(repo)}/code-scanning/alerts", params={"ref": f"refs/pull/{pr}/head", "state": "open", "per_page": 100})
+def github_code_scanning_alerts(repo: str, pr: int | None = None, branch: str | None = None) -> list[dict[str, Any]]:
+    """Open code-scanning (CodeQL) alerts on a PR, or on a branch when there is no PR (a review):
+    rule, severity, message, file and line."""
+    if (pr is None) == (branch is None):
+        raise ToolError("give exactly one of pr or branch")
+    ref = f"refs/pull/{pr}/head" if pr is not None else f"refs/heads/{branch}"
+    alerts = _gh("GET", f"/repos/{full_name(repo)}/code-scanning/alerts", params={"ref": ref, "state": "open", "per_page": 100})
     return [
         {
             "number": a["number"],

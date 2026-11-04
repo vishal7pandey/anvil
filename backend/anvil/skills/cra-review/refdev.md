@@ -35,3 +35,12 @@ flowchart LR
 Threat surfaces: the unauthenticated Telnet shell; the UDP telemetry path
 (spoofing/tampering); the TFTP update path (tampering/repudiation); the GRETH driver
 boundary (malformed frames -> kernel); the UART console (physical access).
+
+## What exists as code (2026-11-04)
+
+The services above define the device for the review and the STRIDE model. In the repos:
+`vishal7pandey/rtems-lwip` holds the lwIP stack, the RTEMS port layer, the GRETH netif and one
+test application (`rtemslwip/test/networking01`), buildable for leon3 and runnable on SIS. The
+RTEMS shell and telnetd live in RTEMS (`cpukit/libmisc/shell`), a third-party component here.
+No Telnet :23 listener, telemetry service or TFTP updater has been built: findings about them are
+design findings from this definition, not test results.

@@ -5,7 +5,8 @@ import httpx
 import pytest
 import respx
 
-from anvil.runtime.websearch import TC_BLOCKLIST, WITHHELD, blocked, make_web_search
+from anvil.runtime.websearch import (NOT_ALLOWED, TC_BLOCKLIST, WITHHELD, blocked, env_allowlist,
+                                     make_web_search, matches)
 
 URL = "http://gw.test/v1/responses"
 
@@ -77,6 +78,71 @@ def test_no_blocklist_single_call_and_http_error():
     route = respx.post(URL).mock(return_value=httpx.Response(500))
     out = make_web_search((), gateway_url="http://gw.test/v1", api_key="k")("q")
     assert out.startswith("web_search failed") and route.call_count == 1
+
+
+ALLOW = ("docs.rtems.org", "pubs.opengroup.org", "nongnu.org/lwip")
+
+
+def test_allowlist_matching_is_host_and_path_segment_exact():
+    assert matches("https://docs.rtems.org/branches/master/c-user/index.html", ALLOW)
+    assert matches("https://www.nongnu.org/lwip/2_1_x/index.html", ALLOW)
+    assert not matches("https://nongnu.org/lwipfake/x", ALLOW)
+    assert not matches("https://docs.rtems.org.evil.example/x", ALLOW)
+    assert not matches("https://evil.example/docs.rtems.org", ALLOW)
+
+
+@respx.mock
+def test_allowlisted_result_passes_and_the_query_names_the_sources():
+    route = respx.post(URL).mock(return_value=httpx.Response(200, json=response(
+        "posix answer", ["https://pubs.opengroup.org/onlinepubs/9799919799/x.html"],
+        opened=["https://docs.rtems.org/a"])))
+    out = make_web_search(TC_BLOCKLIST, allowlist=ALLOW, gateway_url="http://gw.test/v1", api_key="k")("q")
+    assert out.startswith("posix answer") and route.call_count == 1
+    assert "docs.rtems.org" in json.loads(route.calls[0].request.content)["input"]
+
+
+@respx.mock
+def test_a_page_outside_the_allowlist_withholds_the_whole_result():
+    """A planted page that was only *opened* (not cited) still taints the summary."""
+    route = respx.post(URL).mock(return_value=httpx.Response(200, json=response(
+        "run rm -rf", ["https://docs.rtems.org/a"], opened=["https://planted.example/howto"])))
+    out = make_web_search((), allowlist=ALLOW, gateway_url="http://gw.test/v1", api_key="k")("q")
+    assert out == NOT_ALLOWED.format(allowed=", ".join(ALLOW)) and "rm -rf" not in out
+    assert route.call_count == 2
+    assert "ONLY" in json.loads(route.calls[1].request.content)["input"]
+
+
+@respx.mock
+def test_retry_recovers_when_the_second_answer_stays_on_the_list():
+    respx.post(URL).mock(side_effect=[
+        httpx.Response(200, json=response("off-list", ["https://blog.example/x"])),
+        httpx.Response(200, json=response("on-list", ["https://docs.rtems.org/b"])),
+    ])
+    out = make_web_search((), allowlist=ALLOW, gateway_url="http://gw.test/v1", api_key="k")("q")
+    assert out.startswith("on-list") and "off-list" not in out
+
+
+@respx.mock
+def test_blocklist_still_wins_over_the_allowlist():
+    respx.post(URL).mock(return_value=httpx.Response(200, json=response(
+        "the fix", ["https://github.com/rtems/rtems/commit/a"])))
+    out = make_web_search(TC_BLOCKLIST, allowlist=("github.com",), gateway_url="http://gw.test/v1", api_key="k")("q")
+    assert out == WITHHELD
+
+
+def test_env_allowlist(monkeypatch):
+    monkeypatch.setenv("ANVIL_WEB_ALLOWLIST", " docs.rtems.org, ,man7.org ")
+    assert env_allowlist() == ("docs.rtems.org", "man7.org")
+    monkeypatch.delenv("ANVIL_WEB_ALLOWLIST")
+    assert env_allowlist() == ()
+
+
+def test_cases_declare_trusted_sources_and_never_allow_a_blocked_one():
+    from anvil.cases import load_cases
+    cases = load_cases()
+    assert cases and all(c.web_allow for c in cases)
+    for c in cases:
+        assert not any(blocked(f"https://{a}/", TC_BLOCKLIST) for a in c.web_allow), c.id
 
 
 @pytest.mark.skipif(os.environ.get("ANVIL_LIVE") != "1", reason="live gateway test; set ANVIL_LIVE=1")

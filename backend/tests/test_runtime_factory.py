@@ -105,10 +105,11 @@ def test_deepagent_executor_receives_host_tools_and_hooks(
     executor_module.DeepAgentExecutor = FakeExecutor
     websearch_module = types.ModuleType("anvil.runtime.websearch")
     websearch_module.TC_BLOCKLIST = ("blocked.example",)
-    websearch_calls: list[tuple[tuple[str, ...], str]] = []
+    websearch_module.env_allowlist = lambda: ()
+    websearch_calls: list[tuple[tuple[str, ...], tuple[str, ...], str]] = []
 
-    def make_web_search(*, blocklist: tuple[str, ...], run_id: str) -> str:
-        websearch_calls.append((blocklist, run_id))
+    def make_web_search(*, blocklist: tuple[str, ...], allowlist: tuple[str, ...], run_id: str) -> str:
+        websearch_calls.append((blocklist, allowlist, run_id))
         return "web_search_tool"
 
     websearch_module.make_web_search = make_web_search
@@ -157,8 +158,8 @@ def test_deepagent_executor_receives_host_tools_and_hooks(
     assert names == [
         "git_push", "github_open_pr", "github_checks", "github_code_scanning_alerts", "github_pr_state",
         "github_merge", "jira_get", "jira_search", "jira_create", "jira_comment", "jira_transition",
-        "jira_set_labels", "confluence_tool", "publish_evidence_tool", "web_search_tool", "kb_search",
-        "lint_changed",
+        "jira_set_labels", "confluence_search", "confluence_get", "confluence_write",
+        "publish_evidence", "web_search_tool", "kb_search", "lint_changed",
     ]
     ui_names = [getattr(t, "__name__", t) for t in ui_tools]
     assert "jira_comment" not in ui_names and ui_names[-3:] == ["web_search_tool", "kb_search", "lint_changed"]  # no ticket writes
@@ -169,9 +170,12 @@ def test_deepagent_executor_receives_host_tools_and_hooks(
     from anvil.tools.run_scope import verify_outcome
 
     assert created["verify_hook"] is verify_outcome
+    # RTEMS-1 binds the TC1 case, whose [web] allow list applies (ANVIL-64); a caseless run gets the env default.
+    from anvil.cases import get_case
+
     assert websearch_calls == [
-        (("blocked.example",), "jira-run"),
-        (("blocked.example",), "ui-run"),
+        (("blocked.example",), get_case("rtems-5776").web_allow, "jira-run"),
+        (("blocked.example",), (), "ui-run"),
     ]
     # The handoff opens a draft PR against the run's base so CI runs on the WIP, and links it.
     run = {"repo": "owner/repo", "jira_key": "RTEMS-2", "run_id": "r-9", "base_ref": "tc2/upgrade-base-leon3"}

@@ -21,7 +21,8 @@ Write-Host "=== Anvil Sandbox Image Importer (ANVIL-57) ===" -ForegroundColor Cy
 if (-not $ImagePath) {
     $candidates = @(
         (Join-Path $root "data\sandbox\anvil-sandbox-rtems-7.1.tar"),
-        (Join-Path $root "data\sandbox\anvil-sandbox-rtems-7.tar")
+        (Join-Path $root "data\sandbox\anvil-sandbox-rtems-7.tar"),
+        (Join-Path $root "private\handover\anvil-sandbox-rtems-7.1.tar")
     )
     foreach ($c in $candidates) {
         if (Test-Path $c) {

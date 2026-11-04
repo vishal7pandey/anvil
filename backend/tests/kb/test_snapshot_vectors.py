@@ -60,6 +60,27 @@ def test_declared_but_missing_file_fails(tmp_path):
         _load_vectors(tmp_path, store())
 
 
+def test_export_snapshot_skips_local_by_default(tmp_path):
+    from unittest.mock import MagicMock
+    from anvil.kb.snapshot import export_snapshot
+
+    mock_store = MagicMock()
+    mock_conn = MagicMock()
+    mock_store.engine.connect.return_value.__enter__.return_value = mock_conn
+    mock_conn.execute.return_value.mappings.return_value.all.return_value = []
+
+    export_snapshot(mock_store, tmp_path / "snap1")
+    executed_stmt = mock_conn.execute.call_args[0][0]
+    compiled_sql = str(executed_stmt)
+    assert "kb_documents.source !=" in compiled_sql or "kb_documents.source <>" in compiled_sql
+
+    export_snapshot(mock_store, tmp_path / "snap2", include_local=True)
+    executed_stmt2 = mock_conn.execute.call_args[0][0]
+    compiled_sql2 = str(executed_stmt2)
+    assert "kb_documents.source !=" not in compiled_sql2 and "kb_documents.source <>" not in compiled_sql2
+
+
+
 def test_corrupt_vectors_file_fails(tmp_path):
     write_snapshot(tmp_path)
     with gzip.open(tmp_path / VECTORS_FILE, "wt") as fh:

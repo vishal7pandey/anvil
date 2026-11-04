@@ -69,7 +69,10 @@ def test_run_tools_binds_jira_names_to_the_local_store(tmp_path, monkeypatch):
     tools = {getattr(t, "__name__", str(t)): t for t in run_tools(run, object())}
     # Exact names: the skills call jira_* and the jira_create approval gate keys by name.
     assert list(tools) == ["jira_get", "jira_search", "jira_create",
-                           "jira_comment", "jira_transition", "jira_set_labels"]
+                           "jira_comment", "jira_transition", "jira_set_labels",
+                           # ANVIL-60: the local knowledge folder, same tool names as the REST set
+                           "confluence_search", "confluence_get", "confluence_write",
+                           "publish_evidence"]
     # bound by run, not by argument: a comment lands in the ticket file
     tools["jira_comment"]("evidence")
     data = json.loads((tmp_path / "todo" / "RTEMS-1.json").read_text())

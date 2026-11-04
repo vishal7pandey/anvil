@@ -28,6 +28,7 @@ import RightPanel from './components/RightPanel';
 import ApprovalsInbox from './components/ApprovalsInbox';
 import RunRecordsPage from './components/RunRecordsPage';
 import MetricsPage from './components/MetricsPage';
+import { useApprovalsPolling } from './useApprovalsPolling';
 
 type AppView = 'chat' | 'approvals' | 'runs' | 'metrics';
 
@@ -72,6 +73,8 @@ export default function App() {
     setApprovals(await listApprovals());
     setApprovalError(null);
   }, []);
+
+  useApprovalsPolling(refreshApprovals);
 
   const resetSessionRun = useCallback(() => {
     eventSourceRef.current?.();
@@ -133,25 +136,37 @@ export default function App() {
   }, []);
 
   // Load a session's latest run: timeline into the chat, and if it is still active reattach the
-  // stream at the last seen seq so no event arrives twice (ANVIL-73).
+  // stream at the last seen seq so no event arrives twice (ANVIL-73). attachSeq guards the race:
+  // an in-flight attach for session A must not overwrite session B's chat or stream (review #79).
+  const attachSeq = useRef(0);
   const attachToRun = useCallback(async (session: Session) => {
+    const mine = ++attachSeq.current;
+    const stale = () => mine !== attachSeq.current;
     try {
       const runs = await listRunsForSession(session.id);
+      if (stale()) return;
       const latest = runs[0];   // the API lists newest first
       if (!latest) {
         setRunsLoadError(null);
         return;
       }
       const timeline = await getRunTimeline(latest.id);
+      if (stale()) return;
       setCurrentRun(latest);
       setEvents(timeline);
       setRunsLoadError(null);
       if (!TERMINAL_STATUSES.has(latest.status)) {
         const lastSeq = timeline.length ? timeline[timeline.length - 1].seq : undefined;
-        eventSourceRef.current = subscribeToEvents(latest.id, makeEventHandler(latest, session),
+        const unsub = subscribeToEvents(latest.id, makeEventHandler(latest, session),
           { afterSeq: lastSeq });
+        if (stale()) {          // another select landed while the stream connected
+          unsub();
+          return;
+        }
+        eventSourceRef.current = unsub;
       }
     } catch (err) {
+      if (stale()) return;
       setRunsLoadError(err instanceof Error ? err.message : String(err));
     }
   }, [makeEventHandler]);
@@ -160,6 +175,7 @@ export default function App() {
   // or the panels would show (and approve) another session's run.
   const handleSelectSession = useCallback((session: Session) => {
     if (selectedSession?.id === session.id) return;
+    attachSeq.current += 1;                       // cancel any in-flight attach for the old session
     if (eventSourceRef.current) {
       eventSourceRef.current();
       eventSourceRef.current = null;
@@ -189,6 +205,7 @@ export default function App() {
     });
     return () => {
       cancelled = true;
+      attachSeq.current += 1;   // unmount cancels an in-flight attach
       eventSourceRef.current?.();
       eventSourceRef.current = null;
     };

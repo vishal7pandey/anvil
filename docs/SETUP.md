@@ -45,6 +45,7 @@ anvil/
 ├── cases/                    # Evaluation cases (cases/rtems-5776.toml for TC1)
 ├── docs/                     # Architecture, specifications, and runbooks
 ├── scripts/                  # Automation scripts (preflight, up, import, reset)
+├── kb/local/                 # Local knowledge base Markdown pages per space (auto-indexed)
 ├── data/kb/                  # Committed Knowledge Base snapshot text & manifest
 │   ├── kb-snapshot.jsonl.gz
 │   └── manifest.json
@@ -60,8 +61,14 @@ Due to file size and offline requirements, these assets are distributed separate
 2. **Knowledge Base Vectors Sidecar (`data/kb/`)**:
    - `kb-snapshot-vectors.jsonl.gz`
    - `kb-snapshot-vectors.manifest.json`
+   - The vectors manifest's `snapshot_sha256` must equal `data/kb/manifest.json`'s `sha256`. Verify with:
+     ```powershell
+     (Get-FileHash data\kb\kb-snapshot.jsonl.gz).Hash.ToLower()
+     ```
 3. **Local Target Source Code**:
    - A local clone or archive of `vishal7pandey/rtems` placed at e.g. `C:\work\rtems` with branch `tc1/5776-base`.
+4. **Local Knowledge Base Seed (`docs/confluence/RTKB` or `kb/local/`)**:
+   - Confluence-shaped markdown documents that can be ingested offline via `anvil.kb ingest-local`.
 
 ---
 
@@ -86,6 +93,19 @@ POSTGRES_PASSWORD=anvil
 
 # Local Ticket Tracker (Offline Mode - ANVIL-56)
 ANVIL_TICKETS_DIR=C:\work\tickets
+
+# Local Knowledge Folder (auto-indexed Markdown pages per space; defaults to kb/local/)
+ANVIL_KNOWLEDGE_DIR=
+
+# Web Search Allowlist (comma-separated trusted domains for caseless runs; e.g. docs.rtems.org,pubs.opengroup.org)
+# Inside a case, its [web] allow list takes precedence.
+ANVIL_WEB_ALLOWLIST=
+
+# Context Window (tokens; optional)
+# Unset: summarizes older messages at 170,000 tokens (absolute), keeping the last 6 messages.
+# Set: summarizes older messages at 85% of the value, keeping the last 10%.
+# Emits context.compacted event and chat note.
+ANVIL_CONTEXT_WINDOW=
 
 # Optional Demo Auth Token (leave empty for unauthenticated local demo)
 ANVIL_DEMO_TOKEN=
@@ -134,15 +154,33 @@ Start PostgreSQL 16 (with `pgvector`) and the LiteLLM Gateway proxy:
 
 ### Step 4: Import Pre-Embedded Knowledge Base Snapshot
 
-Load the offline knowledge base snapshot:
+Load the offline knowledge base snapshot into PostgreSQL `pgvector`:
 
 ```powershell
 uv run --directory backend python -m anvil.kb import-snapshot --from ..\data\kb
 ```
 
-* When `kb-snapshot-vectors.manifest.json` and `kb-snapshot-vectors.jsonl.gz` are present in `data\kb\`, `import-snapshot` loads the precomputed vectors directly, skipping re-embedding.
-* If the vectors sidecar is omitted, `import-snapshot` calls the embedder via the LiteLLM gateway (`http://127.0.0.1:4000`) to compute embeddings.
-* At runtime, `kb_search` queries are embedded via the gateway while respecting the leak guard.
+**Vectors Sidecar Verification & Operation:**
+* When `kb-snapshot-vectors.manifest.json` and `kb-snapshot-vectors.jsonl.gz` reside in `data\kb\`, `import-snapshot` validates that:
+  - `model` matches the configured `ANVIL_EMBED_MODEL` (default: `anvil-embed`, LiteLLM's embedding gateway alias; a different model is refused with instructions to re-export or re-embed) and `dim` matches `1536`.
+  - `snapshot_sha256` in `kb-snapshot-vectors.manifest.json` strictly equals `sha256` in `manifest.json`. You can verify this equality manually:
+    ```powershell
+    (Get-FileHash data\kb\kb-snapshot.jsonl.gz).Hash.ToLower()
+    ```
+  - The SHA-256 hash of `kb-snapshot-vectors.jsonl.gz` matches its manifest entry.
+* If all match, it loads all chunk vectors directly into `kb_chunks`, requiring **0 gateway embedding calls** during bootstrap.
+* If the vectors sidecar is omitted, `import-snapshot` embeds each chunk on the fly via the LiteLLM gateway (`http://127.0.0.1:4000`).
+* If the vectors sidecar is present but mismatched or corrupt, `import-snapshot` refuses loudly (fails closed) to prevent corrupt embeddings.
+* At runtime, only user `kb_search` queries require runtime gateway embedding.
+
+**Loading Local Knowledge Folders (Optional):**
+To load a directory of local Confluence-shaped Markdown pages into the knowledge base:
+
+```powershell
+uv run --directory backend python -m anvil.kb ingest-local --dir ..\docs\confluence\RTKB
+```
+
+Imported local pages are tagged with `source = "local"` and are immediately searchable via `kb_search` on ordinary caseless runs. Under a benchmark case with an `as_of` boundary, they are hidden because their creation date (`now()`) is newer than `as_of`. Note that `export-snapshot` omits `source="local"` pages by default (use `--include-local` to include them).
 
 ---
 
@@ -207,7 +245,7 @@ Create the TC1 ticket file at `C:\work\tickets\todo\RTEMS-1.json`:
 
 > [!IMPORTANT]
 > 1. **Case Selection:** The ticket `key` must be `"RTEMS-1"`. The intake loop uses this key to enforce the KB historical time guard (blocking answer leaks) and to bind automated acceptance verification.
-> 2. **Local Codebase Path:** The description must contain `Code base: branch <base> of <absolute_path>` with **no spaces** in the path.
+> 2. **Local Codebase Path:** The description must contain `Code base: branch <base> of <absolute_path>` (or `"path with spaces"` enclosed in double quotes).
 
 ---
 
@@ -234,13 +272,17 @@ Open your browser to `http://localhost:5173`.
 1. **Intake Ingestion:** The background intake loop scans `C:\work\tickets\todo\`, detects `RTEMS-1.json`, moves it to `C:\work\tickets\in-progress\RTEMS-1.json`, and schedules the run with trigger `local:RTEMS-1`.
 2. **Session Stream:** In the UI, the session run stream begins displaying real-time events, tool executions, and step timing.
 3. **Investigation & Repair:**
-   * The container clones locally from `C:\work\rtems` on branch `tc1/5776-base`.
-   * The agent searches the KB via `kb_search` (with the time guard blocking future fix commits).
+   * The container clones locally from `C:\work\rtems` on branch `tc1/5776-base` (or extracts snapshot if pointing to a folder/archive).
+   * **KB Time Guard:** The agent queries the KB via `kb_search`. Under a case with an `as_of` timestamp (e.g. TC1), documents dated after `as_of` AND **undated** documents (`created_at IS NULL` - ANVIL-68) are hidden, ensuring no post-baseline or local evidence leaks into evaluation.
+   * **Web Allowlist:** Any `web_search` calls enforce trusted domain restrictions from the case's `[web] allow` list (or `ANVIL_WEB_ALLOWLIST` for caseless runs). Pages outside the allowlist are withheld.
+   * **Context Compaction:** When `ANVIL_CONTEXT_WINDOW` is set, older turns are summarized once usage reaches 85% of the window (keeping the last 10% of messages). When unset, summarization triggers at 170,000 tokens (absolute), keeping the last 6 messages. A `context.compacted` event is recorded and a note **"Context compacted"** is displayed in the chat view.
+   * **Local Knowledge Writeback:** Any evidence or documentation written by the agent is stored under `ANVIL_KNOWLEDGE_DIR` (default: `kb/local/<space>/<title>.md`) and indexed immediately into the KB for subsequent searches.
    * It reproduces the defect on the SPARC/ERC32 simulator (`sis`).
    * It applies code modifications, recompiles via `./waf`, and executes regression tests.
 4. **Outcome & Deliverables:**
    * Acceptance verification checks that the test suite passes on the simulator.
    * Host-side deliverables are saved to `private/runs/<run_id>/<run_id>.patch` and `<run_id>.bundle`.
+   * **Cost Meter (ANVIL-79):** The UI `CostMeter` displays **"pending"** while LiteLLM's asynchronous spend rows lag, avoiding 503 errors and avoiding fabricated/synthetic dollar amounts. Once spend rows are processed by PostgreSQL, the actual USD total is displayed.
    * Comments and execution logs are appended to `C:\work\tickets\in-progress\RTEMS-1.json` (the ticket moves to `done/` only when transitioned).
    * If budget is exhausted or the agent gets stuck, handoff records evidence and tags the ticket with `anvil-needs-human`.
    * The container sandbox remains accessible for inspection (`docker exec -it anvil-sbx-* bash`) and is automatically reaped by the ANVIL-47 reaper after the 2-hour grace period.
@@ -287,3 +329,15 @@ Code base: branch `tc1/5776-base` of C:\work\rtems
 
 ### Q: API fails immediately on startup?
 **A:** Check `api-8000.err.log`. Ensure PostgreSQL container is running (`docker ps`) and accepting connections on port `5433`. Run `.\scripts\up.ps1` to restore the container stack.
+
+### Q: Why does the Cost Meter show "pending"?
+**A:** LiteLLM logs spend rows asynchronously into PostgreSQL. While these rows are being synced, the API returns `cost_status: "pending"` with `usd: null` (ANVIL-79). The UI gracefully displays "pending" instead of throwing 503 errors or displaying synthetic dollar estimates. Once the spend row is inserted, the actual dollar total renders automatically.
+
+### Q: Why are local knowledge documents hidden during TC1?
+**A:** Evaluation cases enforce a strict historical time guard (`as_of`). Documents created after the cutoff—and documents with no recorded creation date (`created_at IS NULL` - ANVIL-68)—are hidden to prevent benchmark leaks. Newly ingested local documents without an explicit past timestamp are hidden under case runs.
+
+### Q: What triggers "Context compacted" in the chat timeline?
+**A:** If `ANVIL_CONTEXT_WINDOW` is set, compaction triggers when conversational tokens hit 85% of that window, summarizing earlier turns and preserving the last 10%. If unset, compaction triggers at 170,000 tokens (absolute), preserving the last 6 messages. In both cases, a `context.compacted` event is logged and "Context compacted" renders in the session chat.
+
+### Q: How does `import-snapshot` verify the vectors sidecar?
+**A:** It inspects `data\kb\kb-snapshot-vectors.manifest.json` and verifies that its `snapshot_sha256` matches `manifest.json`'s `sha256`, that `model` matches `ANVIL_EMBED_MODEL` (default: `anvil-embed`), `dim` is `1536`, and that the SHA-256 hash of `kb-snapshot-vectors.jsonl.gz` matches. If any check fails, it fails loudly without modifying the database.

@@ -39,12 +39,20 @@ VECTORS_MANIFEST = "kb-snapshot-vectors.manifest.json"
 MANIFEST_FILE = "manifest.json"
 
 
-def export_snapshot(store: KBStore, out_dir: Path, with_vectors: bool = False) -> dict:
+def export_snapshot(
+    store: KBStore,
+    out_dir: Path,
+    with_vectors: bool = False,
+    include_local: bool = False,
+) -> dict:
     """Write every document with its chunks to out_dir. Returns the manifest.
 
     ``with_vectors`` adds a second file carrying each chunk's pgvector text keyed by
     content_sha256 (ANVIL-58): a laptop without a gateway imports without re-embedding.
     The file is large, stays out of git, and is shared out-of-band.
+
+    ``include_local`` controls whether local fixture/evidence documents (source="local")
+    are included in the snapshot. Skipped by default to prevent test contamination (ANVIL-68).
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / SNAPSHOT_FILE
@@ -54,9 +62,10 @@ def export_snapshot(store: KBStore, out_dir: Path, with_vectors: bool = False) -
     vfh_ctx = gzip.open(vpath, "wt", encoding="utf-8", newline="\n", compresslevel=9) if with_vectors \
         else contextlib.nullcontext()
     with store.engine.connect() as conn, gzip.open(path, "wt", encoding="utf-8", newline="\n", compresslevel=9) as fh, vfh_ctx as vfh:
-        docs = conn.execute(
-            select(kb_documents).order_by(kb_documents.c.source, kb_documents.c.external_id)
-        ).mappings().all()
+        query = select(kb_documents).order_by(kb_documents.c.source, kb_documents.c.external_id)
+        if not include_local:
+            query = query.where(kb_documents.c.source != "local")
+        docs = conn.execute(query).mappings().all()
         for doc in docs:
             chunks = conn.execute(
                 select(kb_chunks.c.content)

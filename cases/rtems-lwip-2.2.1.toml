@@ -45,3 +45,8 @@ args = ["--manifest", "file-import.json", "--vendored", "lwip", "--upstream", "l
         "--tag", "STABLE-2_2_1_RELEASE", "--tag-sha", "77dcd25a72509eb83f72b033d219b1d40cd8eb95",
         "--marker", "__rtems__", "--base-commit", "{base_sha}",
         "--allow-dropped", "src/api/sockets.c", "src/api/api_msg.c"]
+
+# Trusted web_search sources (ANVIL-64): results drawing on anything else are withheld.
+# The leak blocklist (upstream tracker, lists, mirrors) applies on top.
+[web]
+allow = ["docs.rtems.org", "savannah.nongnu.org/projects/lwip", "www.nongnu.org/lwip", "lwip.fandom.com", "osv.dev", "nvd.nist.gov"]

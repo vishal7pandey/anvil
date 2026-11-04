@@ -11,8 +11,11 @@ text, PR number). Reads that are not tied to the run (jira_get, jira_search, con
 from __future__ import annotations
 
 from anvil.runtime.sandbox import host_run
+import logging
 import time
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 from anvil.tools import git_push as git_push_module
 from anvil.tools import github, jira
@@ -97,6 +100,7 @@ def run_tools(run: dict[str, Any], sandbox: Any) -> list[Any]:
     # A run whose ticket came from the local tracker (trigger "local:<key>") gets the same jira_*
     # names bound to the JSON store (ANVIL-56): the skills call jira_* and the interrupt_on gate on
     # jira_create is keyed by tool name, so a differently named create would bypass approval.
+    tracker = None
     if run.get("trigger", "").startswith("local:"):
         from anvil.tickets import LocalTracker
 
@@ -138,7 +142,102 @@ def run_tools(run: dict[str, Any], sandbox: Any) -> list[Any]:
             return _set_labels(key, add=add, remove=remove)
 
         tools += [jira_comment, jira_transition, jira_set_labels]
+
+    tools += _knowledge_tools(run, tracker)
     return tools
+
+
+def _knowledge_tools(run: dict[str, Any], tracker: Any = None) -> list[Any]:
+    """confluence_* + publish_evidence for this run (ANVIL-60/59).
+
+    Local runs (local: trigger or a local repo) and any run on a laptop without Atlassian get the
+    local knowledge folder: same tool names, pages as Markdown on disk, each indexed into the KB at
+    once. Online runs keep the REST tools, but confluence_write/publish_evidence also ingest the
+    page they just wrote so run 2's kb_search finds run 1's post-mortem without a reset.
+    """
+    from anvil.kb.local import LocalKnowledge
+    from anvil.runtime.source import is_local
+    from anvil.tools import confluence, evidence
+    from anvil.tools._atlassian import AtlassianSettings
+
+    def _atlassian_configured() -> bool:
+        s = AtlassianSettings()
+        return bool(s.atlassian_email and s.atlassian_api_token)
+
+    def _index(source: str, external_id: str, title: str, url: str | None, text: str) -> bool:
+        try:
+            from datetime import datetime, timezone
+
+            from anvil.kb.sources import SourceDocument
+            from anvil.kb.tool import get_store
+
+            report = get_store().ingest([
+                SourceDocument(source=source, external_id=external_id, title=title,
+                               url=url, text=text,
+                               metadata={"created_at": datetime.now(timezone.utc)
+                                         .strftime("%Y-%m-%dT%H:%M:%SZ")})])
+            return (report.documents_added + report.documents_updated) > 0
+        except Exception as exc:  # noqa: BLE001 - KB may be down; the page write already succeeded
+            log.warning("KB write-back for %s %s failed: %s", source, external_id, exc)
+            return False
+
+    local_run = is_local(run["repo"]) or (run.get("trigger") or "").startswith("local:")
+    use_local = local_run or not _atlassian_configured()
+    log.info("run %s: knowledge tools -> %s", run.get("run_id", "?"),
+             "local-folder" if use_local else "confluence")
+    if use_local:
+        knowledge = LocalKnowledge()
+
+        def confluence_search(cql: str, limit: int = 10) -> list[dict[str, Any]]:
+            """Search local knowledge pages (the laptop has no Confluence)."""
+            return knowledge.search(cql, limit)
+
+        def confluence_get(page_id: str) -> dict[str, Any]:
+            """Read a local knowledge page by id (its folder-relative path)."""
+            return knowledge.get(page_id)
+
+        def confluence_write(space_key: str, title: str, markdown_or_storage: str,
+                             parent_id: str | None = None) -> dict[str, Any]:
+            """Write a page to the local knowledge folder (no Atlassian); indexed for kb_search."""
+            return knowledge.write_page(space_key, title, markdown_or_storage, parent_id)
+
+        def publish_evidence(ev: dict[str, Any], space: str = "RTKB",
+                             parent_id: str | None = None) -> dict[str, Any]:
+            """Write the evidence package to the local knowledge folder + ticket (no Atlassian)."""
+            if space.upper() not in evidence.EVIDENCE_SPACES:
+                from anvil.tools.errors import ToolError
+
+                raise ToolError(f"evidence pages go to {sorted(evidence.EVIDENCE_SPACES)}, not '{space}'")
+            title, md = evidence.confluence_evidence(ev)
+            page = knowledge.write_page(space, title, md, parent_id)
+            result: dict[str, Any] = {"confluence_page": page, "jira_comment": None, "labels": None}
+            if tracker is not None:
+                ev2 = {**ev, "evidence_url": page["url"]}
+                result["jira_comment"] = tracker.comment(
+                    ev["key"], evidence.jira_evidence_comment(ev2))
+                result["labels"] = tracker.set_labels(ev["key"], add=["anvil-in-review"])
+            return result
+
+        return [confluence_search, confluence_get, confluence_write, publish_evidence]
+
+    def confluence_write(space_key: str, title: str, markdown_or_storage: str,
+                         parent_id: str | None = None) -> dict[str, Any]:
+        """Write a Confluence page (create or update by title) and index it for kb_search at once."""
+        page = confluence.confluence_write(space_key, title, markdown_or_storage, parent_id)
+        _index("confluence", str(page["id"]), page["title"], page["url"], markdown_or_storage)
+        return page
+
+    def publish_evidence(ev: dict[str, Any], space: str = "RTKB",
+                         parent_id: str | None = None) -> dict[str, Any]:
+        """Write the evidence package (RTKB page + Jira comment + label), indexed for kb_search."""
+        result = evidence.publish_evidence(ev, space, parent_id)
+        title, md = evidence.confluence_evidence(ev)
+        page = result.get("confluence_page") or {}
+        _index("confluence", str(page.get("id")), title, page.get("url"), md)
+        return result
+
+    return [confluence.confluence_search, confluence.confluence_get, confluence_write,
+            publish_evidence]
     if key:
         def jira_comment(markdown: str) -> dict[str, str]:
             """Comment on this run's Jira ticket (Markdown)."""

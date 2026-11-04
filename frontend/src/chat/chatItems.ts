@@ -36,6 +36,7 @@ export type ChatItem =
   | { kind: 'subagent'; key: string; name: string; phase: string; summary: string; events: StreamEvent[] }
   | { kind: 'artifact'; key: string; title: string; url: string | null; artifactKind: string; events: StreamEvent[] }
   | { kind: 'status'; key: string; status: string; events: StreamEvent[] }
+  | { kind: 'note'; key: string; text: string; events: StreamEvent[] }
   | { kind: 'error'; key: string; text: string; events: StreamEvent[] };
 
 /** Run states worth a line in the stream; queued/running are shown by the "working" indicator. */
@@ -199,6 +200,17 @@ export function toChatItems(events: StreamEvent[]): ChatItem[] {
           events: [event],
         });
         break;
+      case 'context.compacted': {
+        // ANVIL-93: the agent's older messages were summarized to stay inside its context window.
+        const n = typeof data.cutoff_index === 'number' ? data.cutoff_index : 0;
+        items.push({
+          kind: 'note',
+          key,
+          text: n > 0 ? `Context compacted: ${n} earlier messages summarized` : 'Context compacted',
+          events: [event],
+        });
+        break;
+      }
       case 'run.status': {
         const status = str(data.status);
         if (ENDED.has(status)) closeRunning(items);

@@ -356,7 +356,7 @@ def test_message_run_and_sse_resume(api_factory, client_factory):
     assert no_matching_scenario.json()["run_count"] == 0
 
 
-def test_run_metrics_fail_explicitly_when_spend_logs_are_missing(
+def test_run_metrics_return_pending_estimate_when_spend_logs_are_missing(
     api_factory, client_factory
 ):
     app = api_factory(
@@ -376,11 +376,20 @@ def test_run_metrics_fail_explicitly_when_spend_logs_are_missing(
 
     response = client.get(f"/api/runs/{run_id}", headers=AUTH)
 
-    assert response.status_code == 503
-    assert response.json()["detail"] == (
-        "LiteLLM spend logs are not yet available for runs with token usage"
-    )
-    assert response.headers["retry-after"] == "1"
+    assert response.status_code == 200
+    data = response.json()
+    assert data["cost_status"] == "pending"
+    assert data["cost_estimated"] is False
+    assert data["cost_usd"] is None
+    assert data["usd"] is None
+
+    metrics = client.get("/api/metrics", headers=AUTH)
+    assert metrics.status_code == 200
+    metrics_data = metrics.json()
+    assert metrics_data["cost_status"] == "pending"
+    assert metrics_data["cost_estimated"] is False
+    assert metrics_data["cost_usd"] is None
+    assert metrics_data["usd"] is None
 
 
 def test_stale_missing_spend_logs_return_unknown_cost(api_factory, client_factory):

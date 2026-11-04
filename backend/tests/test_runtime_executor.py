@@ -56,7 +56,7 @@ class OfflineExecutor(DeepAgentExecutor):
 
 
 def factory_for(items, **kw):
-    def factory(config, sandbox, *, tools, on_handoff, checkpointer, store, skills):
+    def factory(config, sandbox, *, tools, on_handoff, checkpointer, store, skills, **_):
         return FakeAgent(items, on_handoff=on_handoff if kw.get("handoff") else None,
                          fail=kw.get("fail", False), delay=kw.get("delay", 0.0))
     return factory
@@ -305,7 +305,7 @@ async def test_each_run_has_its_own_graph_thread_and_resume_reuses_it():
             async for item in super().astream(graph_input, config=config, **kwargs):
                 yield item
 
-    def factory(config, sandbox, *, tools, on_handoff, checkpointer, store, skills):
+    def factory(config, sandbox, *, tools, on_handoff, checkpointer, store, skills, **_):
         return Recording([((), "updates", {"model": {"messages": [AIMessage(content="ok")]}})])
 
     first, second = {**RUN, "run_id": "r-first"}, {**RUN, "run_id": "r-second"}
@@ -333,7 +333,7 @@ async def test_handoff_ends_the_stream_the_second_tool_never_runs():
             yield ((), "updates", {"model": {"messages": [AIMessage(content="handoff result")]}})
             yield ((), "updates", {"model": {"messages": [never]}})
 
-    def factory(config, sandbox, *, tools, on_handoff, checkpointer, store, skills):
+    def factory(config, sandbox, *, tools, on_handoff, checkpointer, store, skills, **_):
         return HandoffMidStream([], on_handoff=on_handoff)
 
     ex = OfflineExecutor(agent_factory=factory)
@@ -343,3 +343,27 @@ async def test_handoff_ends_the_stream_the_second_tool_never_runs():
     assert not any("must never stream" in t for t in texts)
     assert events[-1]["data"]["status"] == "handoff"
     assert events[-2]["data"]["kind"] == "handoff"
+
+
+async def test_compaction_is_reported_as_an_event_in_order():
+    """ANVIL-93: the summarization middleware's on_compact callback becomes a context.compacted event."""
+    class Compacting(FakeAgent):
+        def __init__(self, on_compact):
+            super().__init__([((), "updates", {"model": {"messages": [AIMessage(content="after")]}})])
+            self.on_compact = on_compact
+
+        async def astream(self, *a, **kw):
+            self.on_compact({"cutoff_index": 42, "summary_chars": 3100, "history_file": "/workspace/.anvil/h.md"})
+            async for item in super().astream(*a, **kw):
+                yield item
+
+    def factory(config, sandbox, *, tools, on_handoff, on_compact, checkpointer, store, skills):
+        return Compacting(on_compact)
+
+    events = await collect(OfflineExecutor(agent_factory=factory).start(RUN, "fix it"))
+    types = [e["type"] for e in events]
+    assert types.count("context.compacted") == 1
+    compacted = events[types.index("context.compacted")]
+    assert compacted["data"]["cutoff_index"] == 42 and compacted["agent"] == "main"
+    assert types.index("context.compacted") < types.index("message")   # it happened before the next reply
+    assert [e["seq"] for e in events] == list(range(1, len(events) + 1))

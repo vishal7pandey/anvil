@@ -551,6 +551,28 @@ def _mark_run_interrupted(session_factory: SessionFactory, run_id: UUID) -> None
             db.commit()
 
 
+def _comment_local_ticket_completion(app: FastAPI, run: dict[str, Any], run_status: str) -> None:
+    """A local-ticket run's result belongs on the ticket itself (ANVIL-104): the JSON store is the
+    whole record, and without a comment the ticket silently stays at whatever status it had."""
+    if run_status not in TERMINAL_RUN_STATUSES:
+        return
+    if not str(run.get("trigger") or "").startswith("local:"):
+        return
+    key = run.get("jira_key")
+    tickets_dir = getattr(app.state, "tickets_dir", None)
+    if not key or not tickets_dir:
+        return
+    try:
+        from anvil.tickets import LocalTracker
+
+        tracker = LocalTracker(tickets_dir)
+        tracker.comment(key, f"Run {run['run_id']} finished: {run_status}.")
+        if run_status == "succeeded":
+            tracker.transition(key, "Done")
+    except Exception as exc:  # noqa: BLE001 - a ticket comment must not fail the run
+        logger.warning("local ticket completion comment for %s failed: %s", key, exc)
+
+
 async def _execute_run(app: FastAPI, run_id: UUID, message: str) -> None:
     current_task = asyncio.current_task()
     executor: RunExecutor = app.state.executor
@@ -576,6 +598,10 @@ async def _execute_run(app: FastAPI, run_id: UUID, message: str) -> None:
                 session_factory,
                 run_id,
                 "RunExecutor ended without a terminal run.status event",
+            )
+        else:
+            await run_in_threadpool(
+                _comment_local_ticket_completion, app, run_payload, run_status
             )
     except asyncio.CancelledError:
         await asyncio.shield(
@@ -632,6 +658,10 @@ async def _execute_resume(
                 session_factory,
                 run_id,
                 "RunExecutor resume ended without a terminal or approval status event",
+            )
+        else:
+            await run_in_threadpool(
+                _comment_local_ticket_completion, app, run_payload, run_status
             )
     except asyncio.CancelledError:
         await asyncio.shield(

@@ -138,7 +138,7 @@ def test_jira_create_is_bound_to_the_runs_project(tmp_path, monkeypatch):
     monkeypatch.setenv("ANVIL_TICKETS_DIR", str(tmp_path))
     make_ticket(tmp_path / "todo", "RTEMS-1", ["anvil"])
     run = {"run_id": "r1", "trigger": "local:RTEMS-1", "jira_key": "RTEMS-1",
-           "repo": "C:\work\rtems", "base_ref": "tc1/5776-base"}
+           "repo": r"C:\work\rtems", "base_ref": "tc1/5776-base"}
     tools = {t.__name__: t for t in run_tools(run, object())}
     with pytest.raises(ToolError, match="bound to this run's project"):
         tools["jira_create"]("OTHER", "Task", "evil ticket")
@@ -150,7 +150,7 @@ def test_publish_evidence_is_bound_to_the_runs_ticket(tmp_path, monkeypatch):
     monkeypatch.setenv("ANVIL_TICKETS_DIR", str(tmp_path))
     make_ticket(tmp_path / "todo", "RTEMS-1", ["anvil"])
     run = {"run_id": "r1", "trigger": "local:RTEMS-1", "jira_key": "RTEMS-1",
-           "repo": "C:\work\rtems", "base_ref": "tc1/5776-base"}
+           "repo": r"C:\work\rtems", "base_ref": "tc1/5776-base"}
     tools = {t.__name__: t for t in run_tools(run, object())}
     with pytest.raises(ToolError, match="bound to this run's ticket"):
         tools["publish_evidence"]({"key": "ANVIL-9", "summary": "wrong ticket"})

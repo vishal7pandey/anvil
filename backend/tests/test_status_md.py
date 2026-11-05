@@ -27,9 +27,9 @@ def test_merged_column_resolves_pr_and_sha_from_comments(tmp_path):
         "ANVIL-79", [{"created": "2026-11-04", "body": "[claude] Done. Merged as c3b9182 (PR #99)."}])))
 
     assert write_status_md(tmp_path) == 2
-    rows = {l.split("|")[1].strip(): l.split("|")[5].strip()
-            for l in (tmp_path / "backlog" / "STATUS.md").read_text().splitlines()
-            if l.startswith("| ANVIL")}
+    rows = {line.split("|")[1].strip(): line.split("|")[5].strip()
+            for line in (tmp_path / "backlog" / "STATUS.md").read_text().splitlines()
+            if line.startswith("| ANVIL")}
     assert rows["ANVIL-91"] == "#94"
     assert rows["ANVIL-79"] == "#99"
 
@@ -42,6 +42,6 @@ def test_merged_column_takes_the_newest_comment(tmp_path):
         {"created": "2026-11-03", "body": "merged #12 final merge"}])))
 
     write_status_md(tmp_path)
-    row = [l for l in (tmp_path / "backlog" / "STATUS.md").read_text().splitlines()
-           if l.startswith("| ANVIL-1")][0]
+    row = [line for line in (tmp_path / "backlog" / "STATUS.md").read_text().splitlines()
+           if line.startswith("| ANVIL-1")][0]
     assert row.split("|")[5].strip() == "#12"   # newest comment wins

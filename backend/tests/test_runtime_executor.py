@@ -387,3 +387,20 @@ def test_checkout_restores_offline_network_even_when_the_clone_fails():
         DeepAgentExecutor(image="unused").checkout(sb, RUN)
     # bridge went on for the clone; offline was restored in the finally despite the raise
     assert sb.calls[0] == ("network", "bridge") and sb.calls[-1] == ("network", None)
+
+
+async def test_stream_closes_at_waiting_approval_not_after_the_rest():
+    """An interrupt pauses the run: the generator must close there, not keep streaming the items that
+    follow — a suspended generator's finally would run late (on GC) and clear the RESUMED run's
+    cancel + deadline (ANVIL-100)."""
+    class _Intr:      # the interrupt object shape _map_interrupts reads
+        id = "a1"
+        value = {"action_requests": [{"name": "jira_comment", "args": {}, "description": "post"}]}
+
+    interrupt_item = ((), "updates", {"__interrupt__": [_Intr()]})
+    more = [((), "updates", {"model": {"messages": [AIMessage(content=f"x{i}")]}}) for i in range(10)]
+    ex = OfflineExecutor(agent_factory=factory_for([interrupt_item] + more))
+    events = await collect(ex.start(RUN, "x"))
+    assert events[-1]["data"]["status"] == "waiting_approval"     # ended AT the pause
+    assert not any(e["type"] == "message" for e in events)        # the 10 later items never streamed
+    assert ex._cancel.get(RUN["run_id"]) is None                  # finally ran: own state popped

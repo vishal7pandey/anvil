@@ -242,7 +242,10 @@ class DeepAgentExecutor:
         url = f"{GITHUB_BASE}/{repo}.git"
         script = (
             f"set -e; if [ ! -d {qpath}/.git ]; then "
-            f"git clone --quiet --single-branch --branch {shlex.quote(base)} --depth 200 {shlex.quote(url)} {qpath}; fi; "
+            f"git clone --quiet --single-branch --branch {shlex.quote(base)} --depth 200 {shlex.quote(url)} {qpath}; "
+            # ANVIL-100 #12: a reused session checkout must refresh when the base moved — fetch the
+            # base ref or origin/{base} stays where the first run left it.
+            f"else cd {qpath} && git fetch --quiet --depth 200 origin {shlex.quote(base)}; fi; "
             f"cd {qpath}; git config user.name anvil-bot; git config user.email anvil-bot@users.noreply.github.com; "
             f"git remote set-url origin {shlex.quote(url)}; "
             # Submodules come in while the sandbox still has network: vendored-component upgrades
@@ -250,7 +253,13 @@ class DeepAgentExecutor:
             + "".join(f"git config --global url.{shlex.quote(m)}.insteadOf {shlex.quote(o)}; "
                       for o, m in url_rewrites())
             + f"if [ -f .gitmodules ]; then git submodule update --init --quiet; fi; "
-            f"git switch --quiet {shlex.quote(branch)} 2>/dev/null || git switch --quiet -c {shlex.quote(branch)}; "
+            # ANVIL-100 #12: keep an existing work branch when its base is still current; reset it to
+            # the fresh base only when origin/base moved (a follow-up run keeps prior commits).
+            f"if git rev-parse --verify --quiet {shlex.quote('refs/heads/' + branch)} >/dev/null; then "
+            f"if [ \"$(git merge-base {shlex.quote(branch)} origin/{shlex.quote(base)})\" = \"$(git rev-parse origin/{shlex.quote(base)})\" ]; "
+            f"then git switch --quiet {shlex.quote(branch)}; "
+            f"else git switch --quiet -C {shlex.quote(branch)} origin/{shlex.quote(base)}; fi; "
+            f"else git switch --quiet -c {shlex.quote(branch)} origin/{shlex.quote(base)}; fi; "
             f"echo BASE_SHA=$(git rev-parse origin/{shlex.quote(base)}); echo HEAD_SHA=$(git rev-parse HEAD)"
         )
         sandbox.set_network("bridge")  # needed for the first clone; dropped again below for offline runs

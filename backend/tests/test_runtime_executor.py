@@ -384,3 +384,28 @@ async def test_stream_closes_at_waiting_approval_not_after_the_rest():
     assert events[-1]["data"]["status"] == "waiting_approval"     # ended AT the pause
     assert not any(e["type"] == "message" for e in events)        # the 10 later items never streamed
     assert ex._cancel.get(RUN["run_id"]) is None                  # finally ran: own state popped
+
+
+def test_checkout_refreshes_a_reused_checkout_when_the_base_moved():
+    """#12: an existing session checkout fetches origin/base (it's stale after the first run) and
+    resets the work branch only when the base actually moved (ANVIL-100)."""
+    class RecordingSandbox:
+        def __init__(self):
+            self.calls = []
+        def set_network(self, network):
+            self.calls.append(("network", network))
+        def execute(self, command, *, timeout=None):
+            self.calls.append(("execute", command))
+            return type("R", (), {"exit_code": 0, "output": "BASE_SHA=" + "a" * 40 + "\nHEAD_SHA=" + "a" * 40})()
+        def upload_files(self, files):
+            return [type("U", (), {"path": p, "error": None})() for p, _ in files]
+
+    sb = RecordingSandbox()
+    DeepAgentExecutor(image="unused").checkout(sb, RUN)
+    script = next(c for kind, c in sb.calls if kind == "execute")
+    # clone only when .git is missing; otherwise fetch the base so origin/base is current
+    assert "if [ ! -d" in script and "git clone" in script
+    assert "git fetch --quiet --depth 200 origin" in script
+    # the work branch is kept while the base is unchanged; reset to the fresh base when it moved
+    assert "merge-base" in script and "rev-parse --verify" in script
+    assert "-c" in script or "switch" in script

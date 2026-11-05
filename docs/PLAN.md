@@ -1,6 +1,6 @@
 # Anvil: plan of record
 
-Snapshot of **2026-11-05, 11:50 IST** (main after #132, plus this file). Written so that work can resume on another
+Snapshot of **2026-11-05, 11:30 IST** (main after #132, plus this file). Written so that work can resume on another
 machine **without Jira and without the old laptop**. The full backlog is in [`backlog/`](../backlog/): one JSON
 file per ticket, with comments, plus [`backlog/STATUS.md`](../backlog/STATUS.md) (one table per epic). Refresh it with
 `uv run python scripts/export_trackers.py` (needs Jira) or `--status-md` (offline). Jira stays the live board when it's

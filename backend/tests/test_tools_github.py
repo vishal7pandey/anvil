@@ -282,3 +282,14 @@ def test_run_bound_wait_is_clamped_to_the_budget_and_sees_cancel(monkeypatch):
     sandbox.stop_requested.clear()
     sandbox.deadline = _time.monotonic() - 1
     assert seen["stop"]() == "budget"
+
+
+def test_checks_returns_at_once_when_the_pr_has_no_checks(monkeypatch):
+    """#17: a PR with no CI checks must return "none" immediately, not poll until the wait
+    deadline (ANVIL-100)."""
+    from anvil.tools import github
+    called = []
+    monkeypatch.setattr(github, "_check_state",
+                        lambda *a, **k: called.append(1) or {"state": "none", "checks": [], "head_sha": "x"})
+    out = github.github_checks("o/r", 7, wait_seconds=900, poll_seconds=20)
+    assert out["state"] == "none" and len(called) == 1   # one poll, no waiting for a missing CI

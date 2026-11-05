@@ -980,6 +980,12 @@ async def _jira_intake_loop(app: FastAPI) -> None:
             if failures == 1:
                 logger.error("Intake poll failing (%s); backing off up to 15 min", type(exc).__name__)
             delay = min(POLL_INTERVAL_SECONDS * (2 ** failures), 900)
+        except Exception as exc:  # noqa: BLE001  (ANVIL-100 #9: any exception must not kill the loop)
+            failures += 1
+            if failures == 1:
+                logger.exception("Intake poll crashed unexpectedly (%s); backing off, intake continues",
+                                 type(exc).__name__)
+            delay = min(POLL_INTERVAL_SECONDS * (2 ** failures), 900)
         else:
             if failures:
                 logger.info("Intake poll recovered after %s consecutive failures", failures)

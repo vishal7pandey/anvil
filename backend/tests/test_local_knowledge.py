@@ -130,18 +130,18 @@ def test_publish_evidence_writes_page_and_ticket_comment(monkeypatch, tmp_path):
     tickets = tmp_path / "tickets"
     (tickets / "todo").mkdir(parents=True)
     tracker = LocalTracker(tickets)
-    tracker.create("RTEMS", "bug", "psx05 fails", "desc", ["anvil"])
-    tracker.transition("RTEMS-1", "in-progress")
+    tracker.create("K", "bug", "psx05 fails", "desc", ["anvil"])
+    tracker.transition("K-1", "in-progress")
     monkeypatch.setenv("ANVIL_KNOWLEDGE_DIR", str(tmp_path / "kb"))
     monkeypatch.setenv("ANVIL_TICKETS_DIR", str(tickets))
     run = _run()
     tools = run_tools(run, sandbox=object())
     publish = next(t for t in tools if getattr(t, "__name__", "") == "publish_evidence")
-    out = publish({"key": "RTEMS-1", "summary": "psx05 fails", "repo": "x/y",
+    out = publish({"key": "K-1", "summary": "psx05 fails", "repo": "x/y",
                    "root_cause": "watchdog", "fix": "guard it", "run_id": "r1"})
     assert out["confluence_page"]["id"].startswith("RTKB/")
     assert (tmp_path / "kb" / out["confluence_page"]["id"]).exists()
-    ticket = tracker.get("RTEMS-1")
+    ticket = tracker.get("K-1")
     assert "watchdog" in str(ticket["comments"]) and "anvil-in-review" in ticket["labels"]
 
 

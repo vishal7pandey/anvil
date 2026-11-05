@@ -272,13 +272,25 @@ def github_code_scanning_alerts(repo: str, pr: int | None = None, branch: str | 
     ]
 
 
-def github_merge(repo: str, pr: int, method: str = "squash") -> dict[str, Any]:
+def github_merge(repo: str, pr: int, method: str = "squash",
+                 required: list[str] | None = None,
+                 work_branch: str | None = None, base: str | None = None) -> dict[str, Any]:
     """Merge a PR from an `anvil/...` branch. Refuses unless every check on the head commit is green.
 
+    `required` is the case's [ci] required_checks for this run (ANVIL-98): when branch protection
+    doesn't pin a set, only those checks gate the merge.
+    `work_branch`/`base` bind the merge to this run's PR (ANVIL-98): the PR's head and base refs
+    must match — an agent can't merge an arbitrary number.
     The run's merge policy (human / agent-after-approval / agent) is enforced by the runtime before this is offered.
     """
     name = full_name(repo)
-    head = _gh("GET", f"/repos/{name}/pulls/{pr}")["head"]["ref"]
+    pull = _gh("GET", f"/repos/{name}/pulls/{pr}")
+    head = pull["head"]["ref"]
+    if work_branch and head != work_branch and not head.startswith(work_branch + "-"):
+        # anvil/<key>-<slug> branches are this run's too; anvil/rtems-10 must not match rtems-1
+        raise ToolError(f"refused: PR #{pr} is {head}, not this run's {work_branch} (bound to the run's PR)")
+    if base and pull["base"]["ref"] != base:
+        raise ToolError(f"refused: PR #{pr} targets {pull['base']['ref']}, not this run's base {base}")
     _require_agent_branch(head)
     files, page = [], 1
     while batch := _gh("GET", f"/repos/{name}/pulls/{pr}/files", params={"per_page": 100, "page": page}):
@@ -286,7 +298,7 @@ def github_merge(repo: str, pr: int, method: str = "squash") -> dict[str, Any]:
         page += 1
     if blocked := sorted({p for p in files if is_protected(p)}):
         raise ToolError(f"refused: PR #{pr} changes protected paths ({', '.join(blocked[:10])}); agents may not change .github/")
-    state = _check_state(name, pr, with_logs=False)
+    state = _check_state(name, pr, with_logs=False, default_required=required)
     if state["state"] != "success":
         raise ToolError(f"refused: checks on PR #{pr} are '{state['state']}' (failing: {', '.join(state['failing']) or 'none'})")
     r = _gh("PUT", f"/repos/{name}/pulls/{pr}/merge", json={"merge_method": method, "sha": state["head_sha"]})

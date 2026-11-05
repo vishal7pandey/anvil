@@ -116,3 +116,41 @@ def test_intake_starts_a_local_run_and_moves_the_ticket(tmp_path, monkeypatch):
         run = db.scalars(select(Run).where(Run.trigger == "local:RTEMS-1")).one()
         assert run.repo == str(repo) and run.network == "offline"
     assert (tmp_path / "in-progress" / "RTEMS-1.json").exists()
+
+
+def test_create_rejects_a_project_key_that_escapes_the_tickets_dir(tmp_path):
+    """project="../x" must not write outside the tracker root (ANVIL-98)."""
+    from anvil.tickets import LocalTracker
+    from anvil.tools.errors import ToolError
+
+    tracker = LocalTracker(tmp_path)
+    with pytest.raises(ToolError, match="invalid project"):
+        tracker.create("../x", "Task", "evil")
+    assert not (tmp_path / "x-1.json").exists()
+    assert not (tmp_path.parent / "x-1.json").exists()
+    # a normal project still creates
+    out = tracker.create("GATE", "Task", "ok")
+    assert out["key"] == "GATE-1"
+
+
+def test_jira_create_is_bound_to_the_runs_project(tmp_path, monkeypatch):
+    """A run on RTEMS-1 can't create in another project (ANVIL-98)."""
+    monkeypatch.setenv("ANVIL_TICKETS_DIR", str(tmp_path))
+    make_ticket(tmp_path / "todo", "RTEMS-1", ["anvil"])
+    run = {"run_id": "r1", "trigger": "local:RTEMS-1", "jira_key": "RTEMS-1",
+           "repo": "C:\work\rtems", "base_ref": "tc1/5776-base"}
+    tools = {t.__name__: t for t in run_tools(run, object())}
+    with pytest.raises(ToolError, match="bound to this run's project"):
+        tools["jira_create"]("OTHER", "Task", "evil ticket")
+    assert tools["jira_create"]("RTEMS", "Task", "ok")["key"] == "RTEMS-2"
+
+
+def test_publish_evidence_is_bound_to_the_runs_ticket(tmp_path, monkeypatch):
+    """publish_evidence's key must be this run's ticket (ANVIL-98)."""
+    monkeypatch.setenv("ANVIL_TICKETS_DIR", str(tmp_path))
+    make_ticket(tmp_path / "todo", "RTEMS-1", ["anvil"])
+    run = {"run_id": "r1", "trigger": "local:RTEMS-1", "jira_key": "RTEMS-1",
+           "repo": "C:\work\rtems", "base_ref": "tc1/5776-base"}
+    tools = {t.__name__: t for t in run_tools(run, object())}
+    with pytest.raises(ToolError, match="bound to this run's ticket"):
+        tools["publish_evidence"]({"key": "ANVIL-9", "summary": "wrong ticket"})

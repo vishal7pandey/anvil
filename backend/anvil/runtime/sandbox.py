@@ -329,7 +329,12 @@ class DockerSandbox(BaseSandbox):
     def upload_files(self, files: list[tuple[str, bytes]]) -> list[FileUploadResponse]:
         responses: list[FileUploadResponse] = []
         for path, content in files:
-            if not path.startswith("/"):
+            # Confined to the run's workspace: a '..' segment or a path outside /workspace would
+            # write anywhere in the container (ANVIL-98). Trusted host files go via upload_trusted.
+            if (
+                not path.startswith("/workspace/")
+                or ".." in path.split("/")
+            ):
                 responses.append(FileUploadResponse(path=path, error="invalid_path"))
                 continue
             parent = posixpath.dirname(path)

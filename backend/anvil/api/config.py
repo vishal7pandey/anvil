@@ -50,11 +50,13 @@ class Settings(BaseSettings):
 
     @property
     def database_dsn(self) -> str:
+        # Normalised here so every consumer of the setting gets it, including Alembic (migrations/env.py):
+        # on Windows `localhost` resolves to IPv6 first and every new connection waited about 30 s (ANVIL-101).
         if self.database_url:
-            return self.database_url
+            return normalize_database_url(self.database_url)
 
         password = quote_plus(self.postgres_password.get_secret_value())
-        return f"postgresql+psycopg://anvil:{password}@localhost:5433/anvil"
+        return f"postgresql+psycopg://anvil:{password}@127.0.0.1:5433/anvil"
 
 
 @lru_cache

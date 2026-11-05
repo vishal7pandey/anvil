@@ -76,11 +76,12 @@ Due to file size and offline requirements, these assets are distributed separate
 
 ### Reference Setup Timings (Empirical Benchmark)
 
-From clean-laptop rehearsal measurements:
-* **Initial `uv sync`**: ~16 s (environment install).
-* **Sandbox image hash verification**: ~7 s (`import-sandbox-image.ps1`).
-* **First API boot & module imports**: ~40 s (`.\scripts\start-api.ps1 -Force`).
-* **Knowledge base snapshot import**: ~6 minutes (measured 367 s under load; 7,573 documents, 14,654 chunks, 0 gateway calls).
+From clean-laptop rehearsals on the Windows development laptop (your machine will differ; these tell you what is normal, not a promise):
+* **Initial `uv sync`**: 15 s with a warm download cache, up to about 1 minute while other things run.
+* **Sandbox image hash verification**: ~7 s (`import-sandbox-image.ps1`); loading the 1.6 GB image into Docker takes minutes.
+* **First API start** (`.\scripts\start-api.ps1 -Force`): 38 to 49 s (imports, migrations, readiness). It prints nothing for a while: that is normal, wait for `API READY`.
+* **Knowledge base snapshot import**: **6 to 9 minutes** (measured 367 s and 527 s; 7,573 documents, 14,654 chunks, 0 gateway calls). It inserts 14,654 vector rows one by one, so it is slow by itself; it is not a network problem. Speeding it up is ticket ANVIL-67.
+* **Use `127.0.0.1`, never `localhost`, in database and gateway URLs on Windows.** `localhost` is tried over IPv6 first and every new Postgres connection waited about 30 s (measured on the Postgres port: 30.0 s with the host `localhost`, 0.08 s with `127.0.0.1`; about 2 s per gateway call). Anvil rewrites a `localhost` database host for you now, but your own scripts and tools will not.
 
 ### Step 1: Configure Environment Variables
 
@@ -120,9 +121,9 @@ ANVIL_CONTEXT_WINDOW=
 ANVIL_DEMO_TOKEN=sk-anvil-local-change-me
 
 # Host Database & Gateway defaults
-ANVIL_DATABASE_URL=postgresql+psycopg://anvil:anvil@localhost:5433/anvil
-ANVIL_KB_DATABASE_URL=postgresql+psycopg://anvil:anvil@localhost:5433/anvil
-ANVIL_GATEWAY_URL=http://localhost:4000
+ANVIL_DATABASE_URL=postgresql+psycopg://anvil:anvil@127.0.0.1:5433/anvil
+ANVIL_KB_DATABASE_URL=postgresql+psycopg://anvil:anvil@127.0.0.1:5433/anvil
+ANVIL_GATEWAY_URL=http://127.0.0.1:4000
 
 # Outbound LLM Provider Key (for LiteLLM proxy; omit if stored in Credential Manager)
 OPENAI_API_KEY=
@@ -172,7 +173,7 @@ By default, `import-snapshot` loads the committed snapshot from `data/kb/` (or f
 uv run --directory backend python -m anvil.kb import-snapshot
 ```
 
-This ingests 7,573 documents and 14,654 chunks directly with pre-computed embeddings, taking ~6 minutes (367 s measured under load) and requiring **0 gateway embedding calls** without needing a live embedding provider.
+This ingests 7,573 documents and 14,654 chunks directly with pre-computed embeddings, taking 6 to 9 minutes (measured 367 s and 527 s) and requiring **0 gateway embedding calls** without needing a live embedding provider.
 
 **Vectors Sidecar Verification & Operation:**
 * When `kb-snapshot-vectors.manifest.json` and `kb-snapshot-vectors.jsonl.gz` reside in `data\kb\`, `import-snapshot` validates that:
@@ -279,7 +280,7 @@ What it does on a fresh machine (no Atlassian credentials, an empty database):
 1. reads `.env` and requires `ANVIL_DEMO_TOKEN`; with no `ATLASSIAN_*` set it starts in **offline mode** (local JSON tickets from `ANVIL_TICKETS_DIR`) and skips the Jira check;
 2. uses the database from `ANVIL_DATABASE_URL` in `.env` (default `anvil` on the compose Postgres); pass `-DatabaseUrl` to use another;
 3. **creates the API's tables** by running the migrations (`alembic upgrade head`; on an existing database it does nothing);
-4. starts the API and waits until it answers. The first start takes about 40 seconds (imports); if it prints `answers HTTP 503`, `ANVIL_DEMO_TOKEN` is missing from `.env` (the API reads `.env`, not your shell's variables).
+4. starts the API and waits until it answers. The first start takes 40 to 50 seconds (imports; a release archive without `.git` is fine, the script skips the git check); if it prints `answers HTTP 503`, `ANVIL_DEMO_TOKEN` is missing from `.env` (the API reads `.env`, not your shell's variables).
 
 To run the migrations by hand: `uv run --directory backend python -m alembic upgrade head`.
 

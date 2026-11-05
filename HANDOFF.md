@@ -123,7 +123,7 @@ uv run python -m anvil.kb search "spurious watchdog reset" --k 3     # check it 
 
 # 4. Run the agent on the first bug-replay case, without the API, Jira or GitHub:
 uv run python scripts/tc1_dry_run.py --out ../private/my-first-run --case rtems-5776 \
-    --db postgresql://anvil:anvil@localhost:5433/anvil
+    --db postgresql://anvil:anvil@127.0.0.1:5433/anvil
 ```
 
 The dry run clones the public RTEMS mirror (github.com/vishal7pandey/rtems), gives the agent the

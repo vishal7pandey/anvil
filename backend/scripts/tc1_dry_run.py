@@ -31,7 +31,7 @@ async def main() -> int:
     ap.add_argument("--out", required=True)
     ap.add_argument("--case", default="rtems-5776", help="case id from cases/*.toml")
     ap.add_argument("--image", default="anvil-sandbox-rtems:7.1")
-    ap.add_argument("--db", default="postgresql://anvil:anvil@localhost:5433/anvil_claude")
+    ap.add_argument("--db", default="postgresql://anvil:anvil@127.0.0.1:5433/anvil_claude")
     ap.add_argument("--keep", action="store_true", help="Keep sandbox container at exit for inspection")
     args = ap.parse_args()
     out = Path(args.out)

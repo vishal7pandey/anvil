@@ -56,25 +56,32 @@ Write-Host "Log file:        $logPath"
 
 # 1. Check Git origin/main alignment
 Write-Host "`n1. Checking Git alignment with origin/main..." -ForegroundColor Yellow
-try {
-    git -C $repoRoot fetch -q origin main 2>$null
-    $headSha = (git -C $repoRoot rev-parse HEAD).Trim()
-    $mainSha = (git -C $repoRoot rev-parse origin/main).Trim()
+if (-not (Test-Path (Join-Path $repoRoot ".git"))) {
+    # A release archive (git archive / zip) has no .git. Under $ErrorActionPreference = "Stop" the native
+    # `fatal: not a git repository` below used to be rethrown and the script died before starting anything
+    # (found by the junior rehearsal, ANVIL-101). `.git` may be a file in a worktree: Test-Path covers both.
+    Write-Host "  [INFO] Not a git checkout (a release archive): skipping the origin/main check." -ForegroundColor Cyan
+} else {
+    try {
+        git -C $repoRoot fetch -q origin main 2>$null
+        $headSha = (git -C $repoRoot rev-parse HEAD).Trim()
+        $mainSha = (git -C $repoRoot rev-parse origin/main).Trim()
 
-    if ($headSha -ne $mainSha) {
-        if ($Force) {
-            Write-Host "  [WARN] Worktree is at $headSha, but origin/main is at $mainSha. Continuing due to -Force." -ForegroundColor DarkYellow
+        if ($headSha -ne $mainSha) {
+            if ($Force) {
+                Write-Host "  [WARN] Worktree is at $headSha, but origin/main is at $mainSha. Continuing due to -Force." -ForegroundColor DarkYellow
+            } else {
+                Write-Error "Worktree HEAD ($headSha) differs from origin/main ($mainSha). Please sync with main or pass -Force."
+                exit 1
+            }
         } else {
-            Write-Error "Worktree HEAD ($headSha) differs from origin/main ($mainSha). Please sync with main or pass -Force."
-            exit 1
+            Write-Host "  [PASS] Worktree matches origin/main ($headSha)" -ForegroundColor Green
         }
-    } else {
-        Write-Host "  [PASS] Worktree matches origin/main ($headSha)" -ForegroundColor Green
+    } catch [System.Management.Automation.ActionPreferenceStopException] {
+        throw $_
+    } catch {
+        Write-Host "  [WARN] Could not verify origin/main git status ($_.Exception.Message). Continuing." -ForegroundColor DarkYellow
     }
-} catch [System.Management.Automation.ActionPreferenceStopException] {
-    throw $_
-} catch {
-    Write-Host "  [WARN] Could not verify origin/main git status ($_.Exception.Message). Continuing." -ForegroundColor DarkYellow
 }
 
 # 2. Load .env files (root and backend) without logging secrets
@@ -143,10 +150,10 @@ Write-Host "  [PASS] Demo token:      [configured]" -ForegroundColor Green
 
 # 4. Configure runtime environment. Database: the parameter, else .env, else the compose database "anvil".
 if (-not $DatabaseUrl) {
-    $DatabaseUrl = if ($env:ANVIL_DATABASE_URL) { $env:ANVIL_DATABASE_URL } else { "postgresql+psycopg://anvil:anvil@localhost:5433/anvil" }
+    $DatabaseUrl = if ($env:ANVIL_DATABASE_URL) { $env:ANVIL_DATABASE_URL } else { "postgresql+psycopg://anvil:anvil@127.0.0.1:5433/anvil" }
 }
 if (-not $KbDatabaseUrl) {
-    $KbDatabaseUrl = if ($env:ANVIL_KB_DATABASE_URL) { $env:ANVIL_KB_DATABASE_URL } else { "postgresql+psycopg://anvil:anvil@localhost:5433/anvil" }
+    $KbDatabaseUrl = if ($env:ANVIL_KB_DATABASE_URL) { $env:ANVIL_KB_DATABASE_URL } else { "postgresql+psycopg://anvil:anvil@127.0.0.1:5433/anvil" }
 }
 Write-Host "  Database URL:    $DatabaseUrl"
 Write-Host "  KB database URL: $KbDatabaseUrl"

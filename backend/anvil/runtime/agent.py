@@ -31,7 +31,7 @@ class RunConfig:
     repo: str
     mode: Mode = "interactive"
     merge_policy: MergePolicy = "human"
-    gateway_url: str = field(default_factory=lambda: os.environ.get("ANVIL_GATEWAY_URL", "http://localhost:4000/v1"))
+    gateway_url: str = field(default_factory=lambda: os.environ.get("ANVIL_GATEWAY_URL", "http://127.0.0.1:4000/v1"))
     gateway_key: str = field(default_factory=lambda: os.environ.get("LITELLM_MASTER_KEY", "sk-anvil-local"))
     main_model: str = "anvil-main"
     fast_model: str = "anvil-fast"

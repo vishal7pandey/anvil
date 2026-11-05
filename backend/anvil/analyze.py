@@ -185,7 +185,7 @@ def load_events(run_id: str, database_url: str | None = None) -> list[dict[str, 
 
     from anvil.api.models import RunEvent
 
-    url = database_url or os.environ.get("ANVIL_DATABASE_URL") or "postgresql+psycopg://anvil:anvil@localhost:5433/anvil"
+    url = database_url or os.environ.get("ANVIL_DATABASE_URL") or "postgresql+psycopg://anvil:anvil@127.0.0.1:5433/anvil"
     with Session(create_engine(url)) as db:
         rows = db.scalars(select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq)).all()
         return [{"seq": r.seq, "ts": r.ts, "type": r.type, "agent": r.agent, "data": r.data} for r in rows]

@@ -154,3 +154,30 @@ def test_publish_evidence_is_bound_to_the_runs_ticket(tmp_path, monkeypatch):
     tools = {t.__name__: t for t in run_tools(run, object())}
     with pytest.raises(ToolError, match="bound to this run's ticket"):
         tools["publish_evidence"]({"key": "ANVIL-9", "summary": "wrong ticket"})
+
+
+def test_local_ticket_gets_a_completion_comment_and_done_on_success(tmp_path, monkeypatch):
+    """ANVIL-104: a finished local-ticket run writes its outcome to the ticket JSON (Done on
+    success); a UI run does not touch the tickets dir."""
+    import json
+    from anvil.api.app import _comment_local_ticket_completion
+    from anvil.tickets import LocalTracker
+
+    monkeypatch.setenv("ANVIL_TICKETS_DIR", str(tmp_path))
+    app = type("A", (), {"state": type("S", (), {"tickets_dir": str(tmp_path)})()})()
+    run = {"run_id": "r1", "trigger": "local:RTEMS-1", "jira_key": "RTEMS-1"}
+
+    make_ticket(tmp_path / "in-progress", "RTEMS-1", ["anvil"])
+    _comment_local_ticket_completion(app, run, "succeeded")
+    data = json.loads((tmp_path / "done" / "RTEMS-1.json").read_text())
+    assert "r1" in data["comments"][-1]["body"] and "succeeded" in data["comments"][-1]["body"]
+
+    make_ticket(tmp_path / "in-progress", "RTEMS-2", ["anvil"])
+    _comment_local_ticket_completion(app, {**run, "jira_key": "RTEMS-2"}, "failed")
+    data = json.loads((tmp_path / "in-progress" / "RTEMS-2.json").read_text())
+    assert "failed" in data["comments"][-1]["body"]          # commented, not moved
+
+    # a non-local run never touches the ticket
+    _comment_local_ticket_completion(app, {"run_id": "r9", "trigger": "ui", "jira_key": "RTEMS-2"},
+                                     "succeeded")
+    assert json.loads((tmp_path / "in-progress" / "RTEMS-2.json").read_text())["comments"][-1]["body"].count("r9") == 0

@@ -284,12 +284,26 @@ def test_run_bound_wait_is_clamped_to_the_budget_and_sees_cancel(monkeypatch):
     assert seen["stop"]() == "budget"
 
 
-def test_checks_returns_at_once_when_the_pr_has_no_checks(monkeypatch):
-    """#17: a PR with no CI checks must return "none" immediately, not poll until the wait
+def test_checks_returns_none_after_the_grace_when_the_pr_has_no_checks(monkeypatch):
+    """#17: a PR with no CI returns "none" after the grace window, not after the whole wait
     deadline (ANVIL-100)."""
     from anvil.tools import github
     called = []
     monkeypatch.setattr(github, "_check_state",
                         lambda *a, **k: called.append(1) or {"state": "none", "checks": [], "head_sha": "x"})
+    monkeypatch.setattr(github, "_pause", lambda *a, **k: None)
     out = github.github_checks("o/r", 7, wait_seconds=900, poll_seconds=20)
-    assert out["state"] == "none" and len(called) == 1   # one poll, no waiting for a missing CI
+    assert out["state"] == "none" and len(called) == 3   # the grace window, then it gives up
+
+
+def test_checks_polls_through_the_none_grace_then_returns(monkeypatch):
+    """#17 round 2: 'none' right after the push keeps polling (checks register late); a real
+    'none' returns after the grace window (ANVIL-100)."""
+    from anvil.tools import github
+    states = iter(["none", "none", "pending", "success"])
+    called = []
+    monkeypatch.setattr(github, "_check_state",
+                        lambda *a, **k: called.append(1) or {"state": next(states), "checks": [], "head_sha": "x"})
+    monkeypatch.setattr(github, "_pause", lambda *a, **k: None)
+    out = github.github_checks("o/r", 7, wait_seconds=900, poll_seconds=20)
+    assert out["state"] == "success" and len(called) == 4   # waited out the late CI

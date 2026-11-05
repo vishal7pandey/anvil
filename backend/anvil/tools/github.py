@@ -200,11 +200,17 @@ def github_checks(repo: str, pr: int, wait_seconds: int = 900, poll_seconds: int
     of the job log so you can fix the cause.
     """
     name, deadline = full_name(repo), time.monotonic() + wait_seconds
+    # Checks register a few seconds after the push/PR open, so "none" right away is too early to
+    # judge: keep polling through a short grace before reporting a missing CI (ANVIL-100 #17).
+    none_grace_deadline = time.monotonic() + 90.0
+    none_polls = 0
     while True:
         result = _check_state(name, pr, with_logs=False, default_required=default_required)
-        # "none" breaks too (ANVIL-100 #17): a PR with no checks returns at once — polling until the
-        # deadline can't make a missing CI appear.
-        if result["state"] in {"success", "failure", "none"} or time.monotonic() >= deadline:
+        if result["state"] == "none":
+            none_polls += 1
+            if none_polls >= 3 or time.monotonic() >= none_grace_deadline:
+                break                          # genuinely no CI after the grace window
+        elif result["state"] in {"success", "failure"} or time.monotonic() >= deadline:
             break
         if stopped := _pause(min(poll_seconds, max(0.0, deadline - time.monotonic())), should_stop):
             if stopped == "cancelled":

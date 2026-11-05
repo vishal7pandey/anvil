@@ -369,6 +369,26 @@ async def test_compaction_is_reported_as_an_event_in_order():
     assert [e["seq"] for e in events] == list(range(1, len(events) + 1))
 
 
+def test_checkout_restores_offline_network_even_when_the_clone_fails():
+    """#11: a failed clone must not leave an "offline" run with egress — set_network is restored
+    in a finally (ANVIL-100)."""
+    class FailSandbox:
+        def __init__(self):
+            self.calls = []
+        def set_network(self, network):
+            self.calls.append(("network", network))
+        def execute(self, command, *, timeout=None):
+            return type("R", (), {"exit_code": 1, "output": "clone blew up"})()
+        def upload_files(self, files):
+            return [type("U", (), {"path": p, "error": None})() for p, _ in files]
+
+    sb = FailSandbox()
+    with pytest.raises(RuntimeError, match="checkout failed"):
+        DeepAgentExecutor(image="unused").checkout(sb, RUN)
+    # bridge went on for the clone; offline was restored in the finally despite the raise
+    assert sb.calls[0] == ("network", "bridge") and sb.calls[-1] == ("network", None)
+
+
 async def test_stream_closes_at_waiting_approval_not_after_the_rest():
     """An interrupt pauses the run: the generator must close there, not keep streaming the items that
     follow — a suspended generator's finally would run late (on GC) and clear the RESUMED run's

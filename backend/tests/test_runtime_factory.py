@@ -247,36 +247,44 @@ def test_approval_policy_is_default_deny_for_an_unknown_mode():
 
 
 def test_github_merge_is_bound_to_the_runs_pr_and_passes_required(monkeypatch):
-    """Merge only the PR this run opened, with the case's required_checks (ANVIL-98)."""
+    """Merge binds to this run's PR (head=work branch, base=run base) on a FRESH run_tools — it
+    works after a resume too, when the tool set is rebuilt (ANVIL-98 review)."""
     from anvil.tools import run_scope, github as gh
 
     calls: dict = {}
-    monkeypatch.setattr(gh, "github_open_pr",
-                        lambda repo, branch, title, body, base="main", draft=False:
-                        {"number": 42, "head_sha": "abc", "url": "u"})
     monkeypatch.setattr(gh, "github_merge",
-                        lambda repo, pr, method="squash", required=None:
-                        calls.update(pr=pr, required=required) or {"merged": True})
+                        lambda repo, pr, method="squash", required=None, work_branch=None, base=None:
+                        calls.update(pr=pr, required=required, work_branch=work_branch, base=base)
+                        or {"merged": True})
 
-    run = {"run_id": "r1", "repo": "vishal7pandey/rtems", "base_ref": "main", "trigger": "x"}
+    run = {"run_id": "r1", "repo": "vishal7pandey/rtems", "base_ref": "tc1/5776-base",
+           "jira_key": "RTEMS-1", "trigger": "x"}
+    # A FRESH run_tools (as a resume would build): merge still binds, nothing is remembered.
     tools = {t.__name__: t for t in run_scope.run_tools(run, object())}
-    tools["github_open_pr"]("anvil/x", "RTEMS-1: t", "b")
-    import pytest as _p
-    from anvil.tools.errors import ToolError as _TE
-    with _p.raises(_TE, match="bound to this run's PR"):
-        tools["github_merge"](99)          # not the PR this run opened
     tools["github_merge"](42)
-    assert calls["pr"] == 42 and "required" in calls
+    assert calls["work_branch"] == "anvil/rtems-1" and calls["base"] == "tc1/5776-base" \
+        and calls["pr"] == 42
 
 
 def test_upload_files_stays_inside_the_workspace():
-    """upload_files rejects '..' and paths outside /workspace or /.anvil (ANVIL-98)."""
+    """upload_files rejects '..' and paths outside /workspace (ANVIL-98)."""
     from anvil.runtime.sandbox import DockerSandbox
-    bad = [(p, b"x") for p in ("rel.txt", "/workspace/../etc/cron", "/etc/passwd", "/workspace/x/../../o")]
+    bad = [(p, b"x") for p in ("rel.txt", "/workspace/../etc/cron", "/etc/passwd",
+                              "/workspace/x/../../o", "/.anvil/checks/x.py")]
     s = object.__new__(DockerSandbox)
     s._container = None          # never reached: every path is rejected before the container call
     out = DockerSandbox.upload_files(s, bad)
     assert all(r.error == "invalid_path" for r in out)
+    # what IS allowed
+    ok = [(p, b"x") for p in ("/workspace/repo/f.py", "/workspace/.anvil/checks/c.py")]
+    class _C:
+        def exec_run(self, *a, **k):
+            class R: exit_code = 0
+            return R()
+        def put_archive(self, *a, **k): return True
+    s._container = _C()
+    s._uid = 0
+    assert all(r.error is None for r in DockerSandbox.upload_files(s, ok))
 
 
 def test_extract_archive_refuses_outside_entries(tmp_path):
@@ -290,3 +298,34 @@ def test_extract_archive_refuses_outside_entries(tmp_path):
         zf.writestr("../escape.txt", "x")
     with pytest.raises(ValueError, match="refusing archive entry"):
         _extract_archive(z, tmp_path / "out")
+
+
+def test_github_merge_refuses_a_pr_that_is_not_the_runs(monkeypatch):
+    """head/base binding: a PR on another branch or base is refused before anything merges."""
+    from anvil.tools import github as gh
+    from anvil.tools.errors import ToolError
+    import pytest
+
+    monkeypatch.setattr(gh, "_gh", lambda *a, **k:
+        {"head": {"ref": "anvil/other"}, "base": {"ref": "main"}} if "pulls/7" in str(a[1]) else {})
+    monkeypatch.setattr(gh, "full_name", lambda r: "o/r")
+    with pytest.raises(ToolError, match="not this run's"):
+        gh.github_merge("o/r", 7, work_branch="anvil/rtems-1", base="main")
+    with pytest.raises(ToolError, match="not this run's base"):
+        gh.github_merge("o/r", 7, work_branch="anvil/other", base="tc1/5776-base")
+
+
+def test_extract_archive_refuses_sibling_prefix_entries(tmp_path):
+    """is_relative_to stops entries that resolve to a sibling dir sharing the root's prefix
+    (the old str.startswith check missed these, ANVIL-98)."""
+    import zipfile
+    from anvil.runtime.source import _extract_archive
+    import pytest
+
+    root = tmp_path / "root"
+    # "root/../root-x/escape.txt" — starts with the same string prefix but is OUTSIDE the root
+    z = tmp_path / "sib.zip"
+    with zipfile.ZipFile(z, "w") as zf:
+        zf.writestr("../root-x/escape.txt", "x")
+    with pytest.raises(ValueError, match="refusing archive entry"):
+        _extract_archive(z, root)

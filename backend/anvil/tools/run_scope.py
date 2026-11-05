@@ -46,14 +46,10 @@ def run_tools(run: dict[str, Any], sandbox: Any) -> list[Any]:
         """
         return push(repo, branch)
 
-    run_pr: dict[str, Any] = {}
-
     def github_open_pr(branch: str, title: str, body: str, draft: bool = False) -> dict[str, Any]:
         """Open a pull request from your pushed `anvil/...` branch into this run's base branch
         (or return the one already open). Call git_push first. Title must start with the Jira key."""
-        result = github.github_open_pr(repo, branch, title, body, base=base, draft=draft)
-        run_pr.update(result)   # remember this run's PR so merge can't be pointed at another
-        return result
+        return github.github_open_pr(repo, branch, title, body, base=base, draft=draft)
 
     def _stop() -> str | None:
         """Why a waiting tool must stop now: the run was cancelled, or its time budget ended (ANVIL-76)."""
@@ -90,13 +86,14 @@ def run_tools(run: dict[str, Any], sandbox: Any) -> list[Any]:
         return github.github_pr_state(repo, pr, wait_seconds=_budgeted(wait_seconds), poll_seconds=poll_seconds,
                                       should_stop=_stop)
 
+    # The run's work branch, stateless (run_tools rebuilds on resume: a remembered PR number would
+    # die in the closure, ANVIL-98 review). Merge binds to the PR whose head is this branch.
+    work = run.get("branch") or f"anvil/{(key or 'run-' + run['run_id'][:8]).lower()}"
+
     def github_merge(pr: int, method: str = "squash") -> dict[str, Any]:
         """Merge your PR (only when the run's merge policy allows it; always needs approval)."""
-        # Bound to the PR this run opened — never an arbitrary number the agent supplies (ANVIL-98).
-        if not run_pr or pr != run_pr["number"]:
-            raise ToolError(f"github_merge is bound to this run's PR "
-                            f"{run_pr.get('number') or '(none opened yet)'}; got #{pr}")
-        return github.github_merge(repo, pr, method=method, required=required)
+        return github.github_merge(repo, pr, method=method, required=required,
+                                   work_branch=work, base=base)
 
     from anvil.runtime.source import is_local
 

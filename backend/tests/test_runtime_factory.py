@@ -244,3 +244,49 @@ def test_approval_policy_is_default_deny_for_an_unknown_mode():
         assert all(policy[t] for t in gated), bad
     # the only permissive mode is explicit
     assert not any(approval_policy("autonomous", "agent")[t] for t in gated)
+
+
+def test_github_merge_is_bound_to_the_runs_pr_and_passes_required(monkeypatch):
+    """Merge only the PR this run opened, with the case's required_checks (ANVIL-98)."""
+    from anvil.tools import run_scope, github as gh
+
+    calls: dict = {}
+    monkeypatch.setattr(gh, "github_open_pr",
+                        lambda repo, branch, title, body, base="main", draft=False:
+                        {"number": 42, "head_sha": "abc", "url": "u"})
+    monkeypatch.setattr(gh, "github_merge",
+                        lambda repo, pr, method="squash", required=None:
+                        calls.update(pr=pr, required=required) or {"merged": True})
+
+    run = {"run_id": "r1", "repo": "vishal7pandey/rtems", "base_ref": "main", "trigger": "x"}
+    tools = {t.__name__: t for t in run_scope.run_tools(run, object())}
+    tools["github_open_pr"]("anvil/x", "RTEMS-1: t", "b")
+    import pytest as _p
+    from anvil.tools.errors import ToolError as _TE
+    with _p.raises(_TE, match="bound to this run's PR"):
+        tools["github_merge"](99)          # not the PR this run opened
+    tools["github_merge"](42)
+    assert calls["pr"] == 42 and "required" in calls
+
+
+def test_upload_files_stays_inside_the_workspace():
+    """upload_files rejects '..' and paths outside /workspace or /.anvil (ANVIL-98)."""
+    from anvil.runtime.sandbox import DockerSandbox
+    bad = [(p, b"x") for p in ("rel.txt", "/workspace/../etc/cron", "/etc/passwd", "/workspace/x/../../o")]
+    s = object.__new__(DockerSandbox)
+    s._container = None          # never reached: every path is rejected before the container call
+    out = DockerSandbox.upload_files(s, bad)
+    assert all(r.error == "invalid_path" for r in out)
+
+
+def test_extract_archive_refuses_outside_entries(tmp_path):
+    """_extract_archive's is_relative_to stops entries that resolve outside (ANVIL-98)."""
+    import zipfile
+    from anvil.runtime.source import _extract_archive
+    import pytest
+
+    z = tmp_path / "evil.zip"
+    with zipfile.ZipFile(z, "w") as zf:
+        zf.writestr("../escape.txt", "x")
+    with pytest.raises(ValueError, match="refusing archive entry"):
+        _extract_archive(z, tmp_path / "out")

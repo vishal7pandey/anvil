@@ -131,3 +131,26 @@ def test_create_rejects_a_project_key_that_escapes_the_tickets_dir(tmp_path):
     # a normal project still creates
     out = tracker.create("GATE", "Task", "ok")
     assert out["key"] == "GATE-1"
+
+
+def test_jira_create_is_bound_to_the_runs_project(tmp_path, monkeypatch):
+    """A run on RTEMS-1 can't create in another project (ANVIL-98)."""
+    monkeypatch.setenv("ANVIL_TICKETS_DIR", str(tmp_path))
+    make_ticket(tmp_path / "todo", "RTEMS-1", ["anvil"])
+    run = {"run_id": "r1", "trigger": "local:RTEMS-1", "jira_key": "RTEMS-1",
+           "repo": "C:\work\rtems", "base_ref": "tc1/5776-base"}
+    tools = {t.__name__: t for t in run_tools(run, object())}
+    with pytest.raises(ToolError, match="bound to this run's project"):
+        tools["jira_create"]("OTHER", "Task", "evil ticket")
+    assert tools["jira_create"]("RTEMS", "Task", "ok")["key"] == "RTEMS-2"
+
+
+def test_publish_evidence_is_bound_to_the_runs_ticket(tmp_path, monkeypatch):
+    """publish_evidence's key must be this run's ticket (ANVIL-98)."""
+    monkeypatch.setenv("ANVIL_TICKETS_DIR", str(tmp_path))
+    make_ticket(tmp_path / "todo", "RTEMS-1", ["anvil"])
+    run = {"run_id": "r1", "trigger": "local:RTEMS-1", "jira_key": "RTEMS-1",
+           "repo": "C:\work\rtems", "base_ref": "tc1/5776-base"}
+    tools = {t.__name__: t for t in run_tools(run, object())}
+    with pytest.raises(ToolError, match="bound to this run's ticket"):
+        tools["publish_evidence"]({"key": "ANVIL-9", "summary": "wrong ticket"})

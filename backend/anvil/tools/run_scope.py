@@ -46,10 +46,14 @@ def run_tools(run: dict[str, Any], sandbox: Any) -> list[Any]:
         """
         return push(repo, branch)
 
+    run_pr: dict[str, Any] = {}
+
     def github_open_pr(branch: str, title: str, body: str, draft: bool = False) -> dict[str, Any]:
         """Open a pull request from your pushed `anvil/...` branch into this run's base branch
         (or return the one already open). Call git_push first. Title must start with the Jira key."""
-        return github.github_open_pr(repo, branch, title, body, base=base, draft=draft)
+        result = github.github_open_pr(repo, branch, title, body, base=base, draft=draft)
+        run_pr.update(result)   # remember this run's PR so merge can't be pointed at another
+        return result
 
     def _stop() -> str | None:
         """Why a waiting tool must stop now: the run was cancelled, or its time budget ended (ANVIL-76)."""
@@ -88,7 +92,11 @@ def run_tools(run: dict[str, Any], sandbox: Any) -> list[Any]:
 
     def github_merge(pr: int, method: str = "squash") -> dict[str, Any]:
         """Merge your PR (only when the run's merge policy allows it; always needs approval)."""
-        return github.github_merge(repo, pr, method=method)
+        # Bound to the PR this run opened — never an arbitrary number the agent supplies (ANVIL-98).
+        if not run_pr or pr != run_pr["number"]:
+            raise ToolError(f"github_merge is bound to this run's PR "
+                            f"{run_pr.get('number') or '(none opened yet)'}; got #{pr}")
+        return github.github_merge(repo, pr, method=method, required=required)
 
     from anvil.runtime.source import is_local
 
@@ -119,12 +127,19 @@ def run_tools(run: dict[str, Any], sandbox: Any) -> list[Any]:
         def jira_create(project: str, type: str, summary: str, description: str = "",
                         labels: list[str] | None = None) -> dict[str, str]:
             """Create a Jira issue (description in Markdown). Returns the new key and URL."""
+            _require_run_project(project, key)
             return tracker.create(project, type, summary, description, labels)
 
         jira_tools: list[Any] = [jira_get, jira_search, jira_create]
         _comment, _transition, _set_labels = tracker.comment, tracker.transition, tracker.set_labels
     else:
-        jira_tools = [jira.jira_get, jira.jira_search, jira.jira_create]
+        def jira_create(project: str, type: str, summary: str, description: str = "",
+                        labels: list[str] | None = None) -> dict[str, str]:
+            """Create a Jira issue (description in Markdown). Returns the new key and URL."""
+            _require_run_project(project, key)
+            return jira.jira_create(project, type, summary, description, labels)
+
+        jira_tools = [jira.jira_get, jira.jira_search, jira_create]
         _comment, _transition, _set_labels = jira.jira_comment, jira.jira_transition, jira.jira_set_labels
 
     tools: list[Any] = [*github_tools, *jira_tools]
@@ -147,6 +162,22 @@ def run_tools(run: dict[str, Any], sandbox: Any) -> list[Any]:
     return tools
 
 
+def _require_run_project(project: str, key: str | None) -> None:
+    """jira_create can only create inside this run's project — an agent can't be steered into
+    opening tickets on another project (ANVIL-98)."""
+    if key and project != key.split("-")[0]:
+        raise ToolError(
+            f"jira_create is bound to this run's project '{key.split('-')[0]}'; got '{project}'"
+        )
+
+
+def _require_run_ticket(ev: dict[str, Any], key: str | None) -> None:
+    """publish_evidence's key must be this run's ticket — not another issue the agent names
+    (ANVIL-98)."""
+    if key and str(ev.get("key")) != key:
+        raise ToolError(f"publish_evidence is bound to this run's ticket '{key}'; got '{ev.get('key')}'")
+
+
 def _knowledge_tools(run: dict[str, Any], tracker: Any = None) -> list[Any]:
     """confluence_* + publish_evidence for this run (ANVIL-60/59).
 
@@ -158,6 +189,8 @@ def _knowledge_tools(run: dict[str, Any], tracker: Any = None) -> list[Any]:
     from anvil.kb.local import LocalKnowledge
     from anvil.runtime.source import is_local
     from anvil.tools import confluence, evidence
+
+    key: str | None = run.get("jira_key")
     from anvil.tools._atlassian import AtlassianSettings
 
     def _atlassian_configured() -> bool:
@@ -208,6 +241,7 @@ def _knowledge_tools(run: dict[str, Any], tracker: Any = None) -> list[Any]:
                 from anvil.tools.errors import ToolError
 
                 raise ToolError(f"evidence pages go to {sorted(evidence.EVIDENCE_SPACES)}, not '{space}'")
+            _require_run_ticket(ev, key)
             title, md = evidence.confluence_evidence(ev)
             page = knowledge.write_page(space, title, md, parent_id)
             result: dict[str, Any] = {"confluence_page": page, "jira_comment": None, "labels": None}
@@ -230,6 +264,7 @@ def _knowledge_tools(run: dict[str, Any], tracker: Any = None) -> list[Any]:
     def publish_evidence(ev: dict[str, Any], space: str = "RTKB",
                          parent_id: str | None = None) -> dict[str, Any]:
         """Write the evidence package (RTKB page + Jira comment + label), indexed for kb_search."""
+        _require_run_ticket(ev, key)
         result = evidence.publish_evidence(ev, space, parent_id)
         title, md = evidence.confluence_evidence(ev)
         page = result.get("confluence_page") or {}

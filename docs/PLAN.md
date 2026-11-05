@@ -1,6 +1,6 @@
 # Anvil: plan of record
 
-Snapshot of **2026-11-05, 11:45 IST** (main after #129, plus this file). Written so that work can resume on another
+Snapshot of **2026-11-05, 11:50 IST** (main after #132, plus this file). Written so that work can resume on another
 machine **without Jira and without the old laptop**. The full backlog is in [`backlog/`](../backlog/): one JSON
 file per ticket, with comments, plus [`backlog/STATUS.md`](../backlog/STATUS.md) (one table per epic). Refresh it with
 `uv run python scripts/export_trackers.py` (needs Jira) or `--status-md` (offline). Jira stays the live board when it's
@@ -68,8 +68,9 @@ Reviewer in brackets.
 **devin** [claude]
 1. ANVIL-100 (audit P1), the checklist on the ticket:
    - #123 needs main merged in;
-   - #124 and #126 have change requests;
-   - #130, #131 and #132 are in review.
+   - #124 and #126 have change requests.
+
+   Merged so far: #6, #7, #9, #11, #12, #13, #20, #21+#23, #22, #38.
 2. ANVIL-104: the local tracker writes a completion comment and moves the file per `merge_policy`.
 3. ANVIL-102: ruff in CI, blocking on changed files, with a ratchet baseline for the existing 218 findings.
 4. ANVIL-82: the `vendor_reimport` three-way-merge tool for TC2 (proven by unit test first). Then ANVIL-66, the
@@ -92,7 +93,6 @@ Reviewer in brackets.
 | #123 | ANVIL-100 #8: startup recovery of orphaned runs | approved; conflicts with #121, needs main merged in |
 | #124 | ANVIL-100 #17: `github_checks` and "no checks" | changes requested: a grace period before returning `none` |
 | #126 | ANVIL-100 #24: `kb.config` without cases | changes requested: KB-writing paths must refuse while the leak guard is empty |
-| #130, #131, #132 | ANVIL-100 #21+#23, #22, #20 | awaiting claude's review |
 
 ## 6. Waiting on the owner (also on ANVIL-48)
 

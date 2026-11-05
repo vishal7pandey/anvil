@@ -328,8 +328,12 @@ visible_docs AS (
 vec AS (
     SELECT c.id, row_number() OVER (ORDER BY c.embedding <=> CAST(:qvec AS vector)) AS rn
     FROM kb_chunks c
+    JOIN kb_documents d ON d.id = c.document_id
     WHERE c.document_id NOT IN (SELECT id FROM excluded)
       AND c.document_id IN (SELECT id FROM visible_docs)
+      -- ANVIL-100 #22: filter the source before LIMIT :cand — filtering in the outer SELECT could
+      -- starve a sources-scoped query down to far fewer than k.
+      AND (:sources IS NULL OR d.source = ANY(:sources))
     ORDER BY c.embedding <=> CAST(:qvec AS vector)
     LIMIT :cand
 ),
@@ -338,8 +342,10 @@ fts AS (
         ORDER BY ts_rank_cd(to_tsvector('english', c.content), websearch_to_tsquery('english', :q)) DESC
     ) AS rn
     FROM kb_chunks c
+    JOIN kb_documents d ON d.id = c.document_id
     WHERE c.document_id NOT IN (SELECT id FROM excluded)
       AND c.document_id IN (SELECT id FROM visible_docs)
+      AND (:sources IS NULL OR d.source = ANY(:sources))
       AND to_tsvector('english', c.content) @@ websearch_to_tsquery('english', :q)
     ORDER BY ts_rank_cd(to_tsvector('english', c.content), websearch_to_tsquery('english', :q)) DESC
     LIMIT :cand

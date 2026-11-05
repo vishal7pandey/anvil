@@ -74,6 +74,14 @@ Due to file size and offline requirements, these assets are distributed separate
 
 ## 4. Step-by-Step Installation
 
+### Reference Setup Timings (Empirical Benchmark)
+
+From clean-laptop rehearsal measurements:
+* **Initial `uv sync`**: ~16 s (environment install).
+* **Sandbox image hash verification**: ~7 s (`import-sandbox-image.ps1`).
+* **First API boot & module imports**: ~40 s (`.\scripts\start-api.ps1 -Force`).
+* **Knowledge base snapshot import**: ~6 minutes (measured 367 s under load; 7,573 documents, 14,654 chunks, 0 gateway calls).
+
 ### Step 1: Configure Environment Variables
 
 Copy `.env.example` to `.env` in the repository root:
@@ -121,7 +129,8 @@ OPENAI_API_KEY=
 ```
 
 > [!IMPORTANT]
-> Do **NOT** set `ATLASSIAN_*` or `GITHUB_*` credentials in `.env` for offline execution. When `ATLASSIAN_*` is unset, the API runs exclusively in offline local ticketing mode.
+> - **Demo Auth Token:** `ANVIL_DEMO_TOKEN` **must** be set in `.env` (the API reads `.env` directly from disk, not from your ambient shell environment). Without it, the API fails fast with HTTP 503 ("Demo authentication is not configured").
+> - **Offline Credentials:** Do **NOT** set `ATLASSIAN_*` or `GITHUB_*` credentials in `.env` for offline execution. When `ATLASSIAN_*` is unset, the API runs exclusively in offline local ticketing mode.
 
 ---
 
@@ -157,9 +166,13 @@ Start PostgreSQL 16 (with `pgvector`) and the LiteLLM Gateway proxy:
 
 Load the offline knowledge base snapshot into PostgreSQL `pgvector`:
 
+`import-snapshot --from` takes the **directory** holding `manifest.json` (pass `--from data/kb`), **not** an individual `.gz` file. The committed snapshot (`manifest.json` and `kb-snapshot.jsonl.gz`) plus **both vector sidecar files** (`kb-snapshot-vectors.manifest.json` and `kb-snapshot-vectors.jsonl.gz`, copied from the handover folder as described in `private/handover/README.txt`) must reside in `data/kb/` before running:
+
 ```powershell
-uv run --directory backend python -m anvil.kb import-snapshot --from ..\data\kb
+uv run --directory backend python -m anvil.kb import-snapshot --from data/kb
 ```
+
+This ingests 7,573 documents and 14,654 chunks directly with pre-computed embeddings, taking ~6 minutes (367 s measured under load) and requiring **0 gateway embedding calls** without needing a live embedding provider.
 
 **Vectors Sidecar Verification & Operation:**
 * When `kb-snapshot-vectors.manifest.json` and `kb-snapshot-vectors.jsonl.gz` reside in `data\kb\`, `import-snapshot` validates that:
@@ -193,17 +206,23 @@ Verify that local subsystems, ports, dependencies, and images are properly initi
 .\scripts\preflight.ps1
 ```
 
-**Offline Preflight Expectations:**
-* **Must Pass [PASS]:**
-  - Check 1: Docker Sandbox Image (`anvil-sandbox-rtems:7.1` present and valid ID).
+Or for disconnected laptops:
+```powershell
+.\scripts\preflight.ps1 -Offline
+```
+
+**Preflight Expectations:**
+* **Active Checks [PASS]:**
+  - Check 1: Docker Sandbox Image (`anvil-sandbox-rtems:7.1` present and matches ID prefix `bc17ec29`).
   - Check 2: Python Runtime (CPython signed, unicodedata/requests importable).
-  - Check 3: Control API (once running on port :8000).
+  - Check 3: Control API (running on port :8000, responds 200 on `/api/sessions`).
   - Check 4: Local Stack (containers `anvil-gateway` and `anvil-postgres` healthy).
   - Check 5: Build Lock (free or held by presenter).
   - Check 8: Ephemeral Containers (no leftover `anvil-sbx-*` containers).
-* **Ignored for Offline Demos [FAIL / WARN]:**
-  - Check 6: Jira Baseline (fails when running without Atlassian Cloud credentials).
-  - Check 7: Submodule Reachability (checks external GitLab/GitHub networks; ignored for local sources).
+* **Offline Checks [SKIP]:**
+  - Check 6: Jira Baseline — automatically skips (`[SKIP]`) when no Atlassian credentials are configured in `.env` or environment.
+  - Check 7: Submodule Reachability — passes if upstream git networks are reachable; automatically skips (`[SKIP]`) if unreachable in offline mode or when `-Offline` is passed.
+* **Expected Result:** `PREFLIGHT RESULT: ALL CHECKS PASSED (6 passed, 2 skipped (offline))` (or `7 passed, 1 skipped` if internet is reachable).
 
 ---
 
@@ -328,10 +347,10 @@ Code base: branch `tc1/5776-base` of C:\work\rtems
 ## 6. Troubleshooting & FAQs
 
 ### Q: Does local checkout support git submodules?
-**A:** Local repository sources (`C:\work\...`) do not support submodules in the current release. TC1 operates self-contained within RTEMS core and does not require submodules. Preflight Check 7 can be safely ignored.
+**A:** Local repository sources (`C:\work\...`) do not support submodules in the current release. TC1 operates self-contained within RTEMS core and does not require submodules. Preflight Check 7 automatically skips (`[SKIP]`) when offline.
 
-### Q: `preflight.ps1` Check 6 fails with `reset_demo.py check failed`?
-**A:** Check 6 verifies cloud Jira baseline states. For an offline local demo using `ANVIL_TICKETS_DIR`, Check 6 is expected to fail or report drift and does not block offline execution.
+### Q: Why does `preflight.ps1` Check 6 show `[SKIP]`?
+**A:** Check 6 verifies cloud Jira baseline states. For an offline local demo using `ANVIL_TICKETS_DIR`, Check 6 automatically skips when Atlassian credentials are not configured in `.env` and counts toward a clean preflight pass (`PREFLIGHT RESULT: ALL CHECKS PASSED (6 passed, 2 skipped (offline))`).
 
 ### Q: `import-sandbox-image.ps1` reports `SHA-256 mismatch`?
 **A:** The tar archive was corrupted during copy or is incomplete. Re-copy the file along with `anvil-sandbox-rtems-7.1.tar.sha256` and rerun the import script.

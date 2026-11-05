@@ -19,8 +19,8 @@ Paths with spaces work when quoted. The source never needs a remote, a Jira acco
   snapshot. **Uncommitted changes are reported, not copied** (the run's export is commits only).
   Submodules are not followed.
 - **Plain folder**: an ephemeral single-commit snapshot is made. `.gitignore` is respected and
-  transient directories (`node_modules/`, `build/`, `.venv/`, `dist/`, VCS data) are excluded — a
-  ~10k-file folder stages in about 110 s.
+  transient directories (`node_modules/`, `build/`, `.venv/`, `dist/`, VCS data) are excluded —
+  the ANVIL-91 plain-folder rehearsal measured ~110 s to stage ~10k files.
 - **Archive**: extracted into the workspace with path-traversal safeguards (entries that escape the
   root — `..`, absolute paths, a sibling-prefix — are refused).
 

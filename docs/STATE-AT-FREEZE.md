@@ -28,8 +28,12 @@ Honest capability table for the scope freeze. `works` = run live with evidence n
 - **The online GitHub/Jira path** — **partial**. Intake, gate and PR flow proven earlier via real PRs
   and the gate experiment's outward calls; not re-run end-to-end against live GitHub/Jira in the
   current build.
-- **TC2 / TC3 / TC4** — **partial**. Case specs exist (`cases/*.toml`); a clean full run of each in
-  the current build is not on record.
+- **TC2** — **partial**. Run 8 (2026-11-04) is a real agent upgrade that meets acceptance
+  (245/245 after #63) — an upgrade run, not a clean end-to-end replay; a full TC2 replay in the
+  current build is not on record.
+- **TC3** — **unproven**. Two runs on 2026-11-04 both failed before finishing (a GitLab outage → #64,
+  a KB-database failure → #67); no TC3 run has completed.
+- **TC4** — **unproven**. Case spec exists; no run on record in the current build.
 
 ## Demo expectations — TC1 to TC4
 

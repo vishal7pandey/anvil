@@ -133,7 +133,13 @@ def _run_metrics(
     for event in events:
         events_by_run[event.run_id].append(event)
 
-    spend_totals = _spend_totals_for_runs(request, run_ids)
+    # Only reach for the LiteLLM spend table when some run actually used tokens — offline (no
+    # gateway) no run has usage, so there's nothing to look up and metrics must not 503 (ANVIL-100 #7).
+    spend_totals = (
+        _spend_totals_for_runs(request, run_ids)
+        if any(run.input_tokens or run.output_tokens for run in runs)
+        else {}
+    )
     missing_spend_logs = [
         run
         for run in runs

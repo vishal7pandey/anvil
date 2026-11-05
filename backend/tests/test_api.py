@@ -980,3 +980,25 @@ def test_list_runs_for_session_newest_first(api_factory, client_factory):
 
     runs = client.get(f"/api/sessions/{session_id}/runs", headers=AUTH).json()
     assert [r["id"] for r in runs[:2]] == [run_ids[1], run_ids[0]]
+
+
+def test_run_metrics_do_not_503_offline_when_no_run_has_token_usage(api_factory, client_factory):
+    """#7: with no LiteLLM engine (offline) and no run using tokens, the metrics endpoints return
+    200 with free cost fields — there's nothing to look up (ANVIL-100)."""
+    app = api_factory(executor=SuccessfulExecutor())      # no spend_log_provider, no litellm engine
+    client = client_factory(app)
+    session_id = create_session(client)
+
+    start = client.post(
+        f"/api/sessions/{session_id}/messages",
+        headers=AUTH,
+        json={"text": "hello"},
+    )
+    run_id = start.json()["id"]
+    client.get(f"/api/runs/{run_id}/events", headers=AUTH)
+
+    for url in (f"/api/runs/{run_id}", "/api/metrics"):
+        response = client.get(url, headers=AUTH)
+        assert response.status_code == 200, url
+        data = response.json()
+        assert data["cost_status"] == "available" and data["cost_usd"] == 0.0

@@ -10,7 +10,7 @@ text, PR number). Reads that are not tied to the run (jira_get, jira_search, con
 
 from __future__ import annotations
 
-from anvil.runtime.sandbox import host_run
+from anvil.runtime.sandbox import verify_run
 import logging
 import time
 from typing import Any
@@ -277,12 +277,25 @@ def verify_outcome(run: dict[str, Any], sandbox: Any) -> list[str]:
     path = shlex.quote(repo_path(run["repo"]))
     if is_local(run["repo"]):
         return _local_problems(sandbox, path) + case_problems(run, sandbox)
-    branch = host_run(sandbox, f"git -C {path} rev-parse --abbrev-ref HEAD", timeout=60).output.strip()
-    changed = host_run(sandbox, 
+    # Hardened path (ANVIL-99): the agent's shell startup files and PATH cannot change these answers, and a
+    # failed git command is a failed verification, never "nothing changed".
+    reads = {
+        "the branch": verify_run(sandbox, f"git -C {path} rev-parse --abbrev-ref HEAD", timeout=60),
+        "the last commit": verify_run(sandbox, f"git -C {path} rev-parse HEAD", timeout=60),
         # committed + tracked edits; untracked build leftovers (config.ini, build/) don't count
-        f"cd {path} && {{ git diff --name-only origin/{shlex.quote(base)} HEAD; git diff --name-only HEAD; }}",
-        timeout=60,
-    ).output.strip()
+        "the changed files": verify_run(
+            sandbox,
+            f"cd {path} && git diff --name-only origin/{shlex.quote(base)} HEAD && git diff --name-only HEAD",
+            timeout=60),
+    }
+    unreadable = [f"could not verify the run: reading {what} failed (git exit {r.exit_code}): "
+                  f"{(r.output or '').strip()[-200:] or 'no output'}"
+                  for what, r in reads.items() if r.exit_code != 0]
+    if unreadable:
+        return unreadable
+    branch = reads["the branch"].output.strip()
+    head_sha = reads["the last commit"].output.strip()
+    changed = reads["the changed files"].output.strip()
 
     name = github.full_name(run["repo"])
     owner = name.split("/")[0]
@@ -293,14 +306,26 @@ def verify_outcome(run: dict[str, Any], sandbox: Any) -> list[str]:
         if changed:
             problems.append(f"the code changed on `{branch}` but no pull request was opened")
     else:
-        problems += _pr_problems(run, prs[0], base)
+        # An open PR whose head is the run's last commit; closed or stale PRs for the same branch name
+        # (state=all returns them newest first) must not decide the verdict.
+        open_prs = [p for p in prs if p.get("state", "open") == "open"] or prs
+        pr = next((p for p in open_prs if (p.get("head") or {}).get("sha") == head_sha), open_prs[0])
+        pr_sha = (pr.get("head") or {}).get("sha")
+        if pr_sha and head_sha and pr_sha != head_sha:
+            problems.append(f"PR #{pr['number']} points at {pr_sha[:7]}, not the run's last commit "
+                            f"{head_sha[:7]}: later work was never pushed")
+        problems += _pr_problems(run, pr, base)
     return problems + case_problems(run, sandbox)
 
 
 def _local_problems(sandbox: Any, qpath: str) -> list[str]:
     """A local source has no PR or CI: what can be checked is that the work is committed (the export
     takes commits only) and, for a case replay, the case's acceptance checks (ANVIL-55)."""
-    dirty = host_run(sandbox, f"cd {qpath} && git status --porcelain --untracked-files=no", timeout=60).output.strip()
+    res = verify_run(sandbox, f"cd {qpath} && git status --porcelain --untracked-files=no", timeout=60)
+    if res.exit_code != 0:
+        return [f"could not verify the run: git status failed (git exit {res.exit_code}): "
+                f"{(res.output or '').strip()[-200:] or 'no output'}"]
+    dirty = res.output.strip()
     return ["the agent left uncommitted changes to tracked files (only commits are exported)"] if dirty else []
 
 

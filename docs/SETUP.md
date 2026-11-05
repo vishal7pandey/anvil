@@ -294,6 +294,9 @@ npm run dev
 
 Open your browser to `http://localhost:5173`. If every request fails with 401, the two tokens differ.
 
+The UI proxies `/api` to `http://127.0.0.1:8000`. If your API runs on another port, set `ANVIL_API_PROXY` before
+starting the dev server, e.g. `$env:ANVIL_API_PROXY = "http://127.0.0.1:8010"; npm run dev` (ANVIL-108).
+
 ---
 
 ### 4. Execution & Verification Flow

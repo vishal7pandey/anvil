@@ -356,3 +356,13 @@ def test_github_merge_allows_the_runs_slugged_branch(monkeypatch):
     # anvil/rtems-10 must not match anvil/rtems-1
     with pytest.raises(ToolError, match="not this run's"):
         gh.github_merge("o/r", 9, work_branch="anvil/rtems-1", base="main")
+
+
+def test_kb_config_imports_without_a_cases_dir(monkeypatch, tmp_path):
+    """#24: kb.config must import when there are no eval cases — the release archive ships none
+    (ANVIL-100)."""
+    import importlib
+    import anvil.kb.config as kc
+    monkeypatch.setattr("anvil.cases.spec.load_cases", lambda *a, **k: [])
+    out = kc._withheld()
+    assert out == ((), (), ())   # empty guard, no raise

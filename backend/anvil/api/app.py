@@ -529,6 +529,30 @@ def _mark_run_cancelled(session_factory: SessionFactory, run_id: UUID) -> None:
             db.commit()
 
 
+def _recover_orphaned_runs(session_factory: SessionFactory) -> int:
+    """At boot, a fresh process can't own any run's live task: any run still queued/running after a
+    crash is orphaned — mark it failed so it doesn't sit non-terminal forever (ANVIL-100 #8).
+    `waiting_approval` runs are left alone: they resume through the approval flow."""
+    recovered = 0
+    with session_factory() as db:
+        for run in db.scalars(
+            select(Run).where(Run.status.in_({"queued", "running"})).with_for_update()
+        ):
+            cancelled = run.cancel_requested_at is not None
+            new_status = "cancelled" if cancelled else "failed"
+            error = None if cancelled else "Interrupted by API restart"
+            run.status = new_status
+            run.error = error
+            run.ended_at = utc_now()
+            _append_event(db, run, "run.status",
+                          {"status": new_status, **({"error": error} if error else {})}, "api")
+            recovered += 1
+        db.commit()
+    if recovered:
+        logger.info("Recovered %s orphaned run(s) left over from a previous API process", recovered)
+    return recovered
+
+
 def _mark_run_interrupted(session_factory: SessionFactory, run_id: UUID) -> None:
     with _run_write_lock(run_id):
         with session_factory() as db:
@@ -1058,6 +1082,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         _seed_demo_user(app.state.engine, app.state.settings)
+        _recover_orphaned_runs(app.state.session_factory)
         if app.state.executor is not None and app.state.start_intake_loop:
             # No ticket source configured -> no loop at all, and say so once (ANVIL-80).
             if app.state.jira_candidates or _atlassian_configured() or getattr(app.state, "tickets_dir", None):

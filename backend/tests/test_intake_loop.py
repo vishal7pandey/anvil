@@ -112,6 +112,37 @@ def test_poll_reports_source_failures_so_the_loop_can_back_off(tmp_path, monkeyp
         assert db.scalars(select(Run).where(Run.trigger == "local:D-1")).one()
 
 
+def test_startup_recovers_orphaned_runs(tmp_path, monkeypatch):
+    """#8: a run left queued/running when the API crashed is marked failed at boot, not left
+    non-terminal forever; a cancel-requested one becomes cancelled (ANVIL-100)."""
+    import asyncio
+    from sqlalchemy import select
+    from anvil.api.app import create_app, _recover_orphaned_runs
+    from anvil.api.models import Run
+    from anvil.api.config import Settings
+    from pydantic import SecretStr
+
+    for var in ("ATLASSIAN_SITE", "ATLASSIAN_EMAIL", "ATLASSIAN_API_TOKEN"):
+        monkeypatch.delenv(var, raising=False)
+    app = create_app(
+        settings=Settings(demo_token=SecretStr("t"), demo_user_id="u", demo_user_email="u@x"),
+        database_url=f"sqlite:///{(tmp_path / 'b.db').as_posix()}",
+        executor=SuccessfulExecutor(), start_intake_loop=False)
+    Base.metadata.create_all(app.state.engine)
+    with app.state.session_factory() as db:
+        db.add(Run(session_id=__import__("uuid").uuid4(), repo="o/r", base_ref="main",
+                   trigger="x", status="running", mode="interactive", input_text="x"))
+        db.add(Run(session_id=__import__("uuid").uuid4(), repo="o/r", base_ref="main",
+                   trigger="x", status="queued", mode="interactive", input_text="x",
+                   cancel_requested_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc)))
+        db.add(Run(session_id=__import__("uuid").uuid4(), repo="o/r", base_ref="main",
+                   trigger="x", status="waiting_approval", mode="interactive", input_text="x"))
+        db.commit()
+    assert _recover_orphaned_runs(app.state.session_factory) == 2
+    with app.state.session_factory() as db:
+        by = {r.status for r in db.scalars(select(Run))}
+    # running -> failed, cancel-requested queued -> cancelled, waiting_approval untouched
+    assert "failed" in by and "cancelled" in by and "waiting_approval" in by and "running" not in by
 def test_intake_loop_survives_an_unexpected_exception(monkeypatch):
     """#9: a poll crash that isn't an expected Jira error must not kill the loop — it backs off
     and keeps polling (ANVIL-100)."""

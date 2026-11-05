@@ -329,3 +329,30 @@ def test_extract_archive_refuses_sibling_prefix_entries(tmp_path):
         zf.writestr("../root-x/escape.txt", "x")
     with pytest.raises(ValueError, match="refusing archive entry"):
         _extract_archive(z, root)
+
+
+def test_github_merge_allows_the_runs_slugged_branch(monkeypatch):
+    """anvil/<key>-<slug> is this run's too; anvil/<key>N other tickets are not."""
+    from anvil.tools import github as gh
+    from anvil.tools.errors import ToolError
+    import pytest
+
+    heads = {"pulls/7": "anvil/rtems-1-retry", "pulls/9": "anvil/rtems-10"}
+    monkeypatch.setattr(gh, "full_name", lambda r: "o/r")
+    monkeypatch.setattr(gh, "is_protected", lambda p: False)
+    monkeypatch.setattr(gh, "_check_state", lambda *a, **k: {"state": "success", "failing": [],
+                                                           "head_sha": "abc"})
+    def _fake_gh(method, url, **kw):
+        if method == "GET" and "/pulls/" in url:
+            for k, h in heads.items():
+                if url.endswith(k):
+                    return {"head": {"ref": h, "sha": "abc"}, "base": {"ref": "main"}, "number": int(k.rsplit("/", 1)[1])}
+            return []          # files list
+        return {"merged": True, "sha": "abc"}
+    monkeypatch.setattr(gh, "_gh", _fake_gh)
+    # slugged branch is this run's: the head/base binding does not refuse it
+    out = gh.github_merge("o/r", 7, work_branch="anvil/rtems-1", base="main")
+    assert out["merged"]
+    # anvil/rtems-10 must not match anvil/rtems-1
+    with pytest.raises(ToolError, match="not this run's"):
+        gh.github_merge("o/r", 9, work_branch="anvil/rtems-1", base="main")

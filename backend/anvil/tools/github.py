@@ -286,7 +286,8 @@ def github_merge(repo: str, pr: int, method: str = "squash",
     name = full_name(repo)
     pull = _gh("GET", f"/repos/{name}/pulls/{pr}")
     head = pull["head"]["ref"]
-    if work_branch and head != work_branch:
+    if work_branch and head != work_branch and not head.startswith(work_branch + "-"):
+        # anvil/<key>-<slug> branches are this run's too; anvil/rtems-10 must not match rtems-1
         raise ToolError(f"refused: PR #{pr} is {head}, not this run's {work_branch} (bound to the run's PR)")
     if base and pull["base"]["ref"] != base:
         raise ToolError(f"refused: PR #{pr} targets {pull['base']['ref']}, not this run's base {base}")

@@ -88,7 +88,11 @@ def run_tools(run: dict[str, Any], sandbox: Any) -> list[Any]:
 
     # The run's work branch, stateless (run_tools rebuilds on resume: a remembered PR number would
     # die in the closure, ANVIL-98 review). Merge binds to the PR whose head is this branch.
-    work = run.get("branch") or f"anvil/{(key or 'run-' + run['run_id'][:8]).lower()}"
+    try:
+        from anvil.runtime.executor import work_branch
+        work = work_branch(run)
+    except ImportError:     # test fakes stub the executor module
+        work = run.get("branch") or f"anvil/{(key or 'run-' + run['run_id'][:8]).lower()}"
 
     def github_merge(pr: int, method: str = "squash") -> dict[str, Any]:
         """Merge your PR (only when the run's merge policy allows it; always needs approval)."""

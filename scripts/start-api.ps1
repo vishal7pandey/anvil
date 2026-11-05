@@ -6,15 +6,18 @@
     Implements ANVIL-46:
     1. Validates that the worktree is on latest origin/main (overridable with -Force).
     2. Loads .env (root and backend) without leaking secret values.
-    3. Fails loudly upfront if required Atlassian/Jira credentials are missing.
+    3. Requires ANVIL_DEMO_TOKEN. Atlassian credentials are optional (ANVIL-97): with none set the API runs
+       offline on local JSON tickets; a half-set Atlassian configuration fails loudly.
     4. Sets ANVIL_EXECUTOR=deepagent and ANVIL_DATABASE_URL.
     5. Terminates any existing process listening on the target port.
-    6. Starts uvicorn with the SelectorEventLoop factory in the background, logging to file.
+    6. Applies the database migrations (alembic upgrade head), then starts uvicorn with the
+       SelectorEventLoop factory in the background, logging to file.
     7. Waits for GET /api/sessions to return 200 with ANVIL_DEMO_TOKEN.
-    8. Performs one POST /api/intake/jira/poll check to verify Jira credentials work live.
+    8. With Atlassian configured, performs one POST /api/intake/jira/poll check to verify the credentials work.
 
 .PARAMETER DatabaseUrl
-    Postgres database connection string. Defaults to anvil_claude (or anvil).
+    Postgres database connection string. Defaults to ANVIL_DATABASE_URL from .env, else the compose
+    database "anvil". Per-agent run databases are chosen explicitly (e.g. anvil_claude).
 .PARAMETER KbDatabaseUrl
     Database holding the shared, read-only knowledge base (kb_documents/kb_chunks). Defaults to
     anvil. Kept apart from DatabaseUrl so a per-agent run database still sees the KB (ANVIL-51).
@@ -28,8 +31,10 @@
     Bypasses the origin/main fast-forward equality check.
 #>
 param(
-    [string]$DatabaseUrl = "postgresql+psycopg://anvil:anvil@localhost:5433/anvil_claude",
-    [string]$KbDatabaseUrl = "postgresql+psycopg://anvil:anvil@localhost:5433/anvil",
+    # Empty = ANVIL_DATABASE_URL from .env, else the compose database "anvil" (ANVIL-97). Per-agent run
+    # databases are chosen explicitly with -DatabaseUrl.
+    [string]$DatabaseUrl = "",
+    [string]$KbDatabaseUrl = "",
     [int]$Port = 8000,
     [string]$HostAddress = "127.0.0.1",
     [string]$LogFile = "api-8000.log",
@@ -47,8 +52,6 @@ Write-Host "=== Anvil Control API Startup (ANVIL-46) ===" -ForegroundColor Cyan
 Write-Host "Repository root: $repoRoot"
 Write-Host "Backend dir:     $backendDir"
 Write-Host "Target:          http://${HostAddress}:${Port}"
-Write-Host "Database URL:    $DatabaseUrl"
-Write-Host "KB database URL: $KbDatabaseUrl"
 Write-Host "Log file:        $logPath"
 
 # 1. Check Git origin/main alignment
@@ -108,24 +111,45 @@ if (-not $env:ATLASSIAN_API_TOKEN -and $env:JIRA_API_TOKEN) {
     $env:ATLASSIAN_API_TOKEN = $env:JIRA_API_TOKEN
 }
 
-# 3. Fail loudly upfront if credentials missing
-Write-Host "`n3. Validating required credentials..." -ForegroundColor Yellow
+# 3. Validate credentials. Atlassian is optional (ANVIL-97): with none set the API runs offline, on local
+#    JSON tickets only (docs/SETUP.md). A half-set Atlassian configuration is still an error. The demo token is
+#    always required: the API answers 503 "Demo authentication is not configured" without it.
+Write-Host "`n3. Validating credentials..." -ForegroundColor Yellow
+$atlassianSet = @($env:ATLASSIAN_SITE, $env:ATLASSIAN_EMAIL, $env:ATLASSIAN_API_TOKEN | Where-Object { $_ })
+$offlineMode = ($atlassianSet.Count -eq 0)
 $missing = @()
-if (-not $env:ATLASSIAN_SITE) { $missing += "ATLASSIAN_SITE (or JIRA_URL)" }
-if (-not $env:ATLASSIAN_EMAIL) { $missing += "ATLASSIAN_EMAIL (or JIRA_USER_EMAIL)" }
-if (-not $env:ATLASSIAN_API_TOKEN) { $missing += "ATLASSIAN_API_TOKEN (or JIRA_API_TOKEN)" }
-if (-not $env:ANVIL_DEMO_TOKEN) { $missing += "ANVIL_DEMO_TOKEN" }
+if (-not $env:ANVIL_DEMO_TOKEN) { $missing += "ANVIL_DEMO_TOKEN (any string; the UI's frontend/.env.local VITE_DEMO_TOKEN must be the same)" }
+if (-not $offlineMode) {
+    if (-not $env:ATLASSIAN_SITE) { $missing += "ATLASSIAN_SITE (or JIRA_URL)" }
+    if (-not $env:ATLASSIAN_EMAIL) { $missing += "ATLASSIAN_EMAIL (or JIRA_USER_EMAIL)" }
+    if (-not $env:ATLASSIAN_API_TOKEN) { $missing += "ATLASSIAN_API_TOKEN (or JIRA_API_TOKEN)" }
+}
 
 if ($missing.Count -gt 0) {
-    Write-Error "Missing required credentials in .env: $($missing -join ', '). Cannot start API securely."
+    Write-Error "Missing required settings in .env: $($missing -join ', '). Cannot start API."
     exit 1
 }
-Write-Host "  [PASS] Atlassian site: $env:ATLASSIAN_SITE" -ForegroundColor Green
-Write-Host "  [PASS] Atlassian user: $env:ATLASSIAN_EMAIL" -ForegroundColor Green
-Write-Host "  [PASS] Atlassian token: [configured]" -ForegroundColor Green
+if ($offlineMode) {
+    Write-Host "  [INFO] No Atlassian credentials: offline mode (local JSON tickets only, ANVIL_TICKETS_DIR=$env:ANVIL_TICKETS_DIR)." -ForegroundColor Cyan
+    if (-not $env:ANVIL_TICKETS_DIR) {
+        Write-Host "  [WARN] ANVIL_TICKETS_DIR is not set: there will be no ticket source, so no intake." -ForegroundColor DarkYellow
+    }
+} else {
+    Write-Host "  [PASS] Atlassian site: $env:ATLASSIAN_SITE" -ForegroundColor Green
+    Write-Host "  [PASS] Atlassian user: $env:ATLASSIAN_EMAIL" -ForegroundColor Green
+    Write-Host "  [PASS] Atlassian token: [configured]" -ForegroundColor Green
+}
 Write-Host "  [PASS] Demo token:      [configured]" -ForegroundColor Green
 
-# 4. Configure runtime environment
+# 4. Configure runtime environment. Database: the parameter, else .env, else the compose database "anvil".
+if (-not $DatabaseUrl) {
+    $DatabaseUrl = if ($env:ANVIL_DATABASE_URL) { $env:ANVIL_DATABASE_URL } else { "postgresql+psycopg://anvil:anvil@localhost:5433/anvil" }
+}
+if (-not $KbDatabaseUrl) {
+    $KbDatabaseUrl = if ($env:ANVIL_KB_DATABASE_URL) { $env:ANVIL_KB_DATABASE_URL } else { "postgresql+psycopg://anvil:anvil@localhost:5433/anvil" }
+}
+Write-Host "  Database URL:    $DatabaseUrl"
+Write-Host "  KB database URL: $KbDatabaseUrl"
 $env:ANVIL_EXECUTOR = "deepagent"
 $env:ANVIL_DATABASE_URL = $DatabaseUrl
 $env:ANVIL_KB_DATABASE_URL = $KbDatabaseUrl
@@ -160,6 +184,27 @@ if (-not (Test-Path $pythonExe)) {
 }
 Write-Host "  Using Python runtime: $pythonExe"
 
+# Create or upgrade the Control API tables (users, sessions, runs, events, ...). They exist only as Alembic
+# migrations: nothing else creates them, so a fresh database made the API die with
+# 'relation "users" does not exist' (ANVIL-97). A no-op on a database that is already at head.
+Write-Host "  Applying database migrations (alembic upgrade head)..."
+Push-Location $backendDir
+$prevPref = $ErrorActionPreference
+$ErrorActionPreference = "Continue"   # alembic logs to stderr; PowerShell 5.1 must not treat that as a failure
+try {
+    $migrationOutput = & $pythonExe -m alembic upgrade head 2>&1 | ForEach-Object { "$_" }
+    $migrationExit = $LASTEXITCODE
+} finally {
+    $ErrorActionPreference = $prevPref
+    Pop-Location
+}
+$migrationOutput | ForEach-Object { Write-Host "    $_" }
+if ($migrationExit -ne 0) {
+    Write-Error "Database migration failed (exit $migrationExit). Is Postgres up (.\scripts\up.ps1) and does the database in $DatabaseUrl exist?"
+    exit 1
+}
+Write-Host "  [PASS] Database schema is at head." -ForegroundColor Green
+
 $demoToken = $env:ANVIL_DEMO_TOKEN
 $runCmd = Join-Path $PSScriptRoot "run-api.cmd"
 
@@ -181,6 +226,7 @@ Write-Host "  Spawned Control API launcher on PID $spawnedPid"
 Write-Host "`n6. Waiting for API readiness on http://${HostAddress}:${Port}..." -ForegroundColor Yellow
 $authHeader = @{ "Authorization" = "Bearer $demoToken" }
 $ready = $false
+$httpErrors = 0
 $maxAttempts = 120
 $actualApiPid = $null
 
@@ -195,7 +241,17 @@ for ($i = 1; $i -le $maxAttempts; $i++) {
                 break
             }
         } catch {
-            # Retry until ready
+            # Not connectable yet: retry. But an API that answers with an HTTP error again and again is up and
+            # misconfigured, so say why instead of waiting for the timeout (ANVIL-97). The usual cause is a demo
+            # token that only this shell has: the API is started in a separate process and reads .env itself.
+            if ($_.Exception.Response) {
+                $httpErrors++
+                if ($httpErrors -ge 10) {
+                    $code = [int]$_.Exception.Response.StatusCode
+                    Write-Error "The API is running but answers HTTP $code to GET /api/sessions. If it is 503 or 401, put ANVIL_DEMO_TOKEN in the .env file (the API process reads .env, not this shell's environment) and rerun. Logs: $logPath, $errLogPath."
+                    exit 1
+                }
+            }
         }
     }
     Start-Sleep -Milliseconds 500
@@ -207,15 +263,19 @@ if (-not $ready) {
 }
 Write-Host "  [PASS] API is healthy and accepting requests (PID $actualApiPid)" -ForegroundColor Green
 
-# 8. Test live Jira intake poll
+# 8. Test live Jira intake poll (only when Atlassian is configured; offline mode has no Jira to poll)
 Write-Host "`n7. Validating Jira intake connectivity..." -ForegroundColor Yellow
-try {
-    $pollRes = Invoke-RestMethod -Method Post -Uri "http://${HostAddress}:${Port}/api/intake/jira/poll" -Headers $authHeader -TimeoutSec 10 -ErrorAction Stop
-    $acceptedCount = [int]$pollRes.accepted  # an int (IntakeResponse.accepted), not a list: .Count was always 1
-    Write-Host "  [PASS] Jira intake poll succeeded (accepted candidates: $acceptedCount)" -ForegroundColor Green
-} catch {
-    Write-Error "Live Jira intake poll failed: $($_.Exception.Message). Check Jira credentials in .env and API logs at $logPath."
-    exit 1
+if ($offlineMode) {
+    Write-Host "  [SKIP] Offline mode: no Atlassian credentials, tickets come from ANVIL_TICKETS_DIR." -ForegroundColor Cyan
+} else {
+    try {
+        $pollRes = Invoke-RestMethod -Method Post -Uri "http://${HostAddress}:${Port}/api/intake/jira/poll" -Headers $authHeader -TimeoutSec 10 -ErrorAction Stop
+        $acceptedCount = [int]$pollRes.accepted  # an int (IntakeResponse.accepted), not a list: .Count was always 1
+        Write-Host "  [PASS] Jira intake poll succeeded (accepted candidates: $acceptedCount)" -ForegroundColor Green
+    } catch {
+        Write-Error "Live Jira intake poll failed: $($_.Exception.Message). Check Jira credentials in .env and API logs at $logPath."
+        exit 1
+    }
 }
 
 Write-Host "`n========================================================" -ForegroundColor Cyan

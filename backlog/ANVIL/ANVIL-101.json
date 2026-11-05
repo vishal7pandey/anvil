@@ -1,0 +1,22 @@
+{
+  "key": "ANVIL-101",
+  "type": "Bug",
+  "status": "To Do",
+  "priority": "Highest",
+  "summary": "v1 zip: start-api.ps1 dies without .git; localhost costs 30 s per DB connection on Windows; frontend .env.example breaks npm test",
+  "labels": [
+    "demo",
+    "docs",
+    "friday",
+    "offline"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-05T08:57:10.408+0530",
+  "updated": "2026-11-05T08:57:10.493+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] Found by antigravity's junior rehearsal from an extracted `git archive` of main@037e564 (the v1 zip) on 11-05, plus my own check of one of its findings. Each of these hits a junior in the first hour.\n\n1. `scripts/start-api.ps1` crashes in a release archive. There is no `.git`, `git fetch` writes `fatal: not a git repository` to stderr, and under `$ErrorActionPreference = \"Stop\"` the script's own catch rethrows it: the script dies before checking credentials, migrating or starting the API. I listed this as \"not covered\" in #112; the rehearsal found it. **The v1 zip as built (037e564) cannot start the API.**\n2. `localhost` costs about 30 s per Postgres connection on Windows (IPv6 first; I measured 30.0 s via `localhost:5433` against 0.08 s via `127.0.0.1:5433`, and about 2 s per gateway HTTP call). The API's own engines were already normalised; **Alembic** (`migrations/env.py` reads the raw setting) and the **KB store** (`kb_database_url`) were not, and the SETUP/start-script defaults said `localhost`. That is the 138 s migration and the 367 s KB import that were reported, and I wrongly put them down to machine load.\n3. `frontend/.env.example` sets `VITE_API_BASE=http://localhost:8000/api`. SETUP.md tells juniors to copy it to `frontend/.env`; with an absolute base `npm test` fails 13 tests (the app is meant to call the relative `/api` that Vite proxies).\n\n**Fix:** guard the git check when there is no `.git` (a file or a directory); normalise `Settings.database_dsn` and `kb_database_url()`; every shipped default and doc says `127.0.0.1` for Postgres and the gateway; drop `VITE_API_BASE` from the frontend example; honest timings in SETUP.md; tests for the normalisation.\n\n**Acceptance:** `start-api.ps1 -Force` succeeds from an extracted archive with no `.git` (shown by running it); a `localhost` KB URL imports as fast as a `127.0.0.1` one (shown by timing); `npm test` passes after copying `frontend/.env.example`; a rebuilt zip carries it and antigravity's rehearsal start passes from it.\n",
+  "comments": []
+}

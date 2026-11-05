@@ -12,7 +12,7 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-04T21:19:27.866+0530",
-  "updated": "2026-11-04T22:01:46.069+0530",
+  "updated": "2026-11-05T02:01:10.386+0530",
   "resolved": null,
   "links": [],
   "subtasks": [],
@@ -21,6 +21,18 @@
     {
       "created": "2026-11-04T21:46:20.226+0530",
       "body": "claude's part is done, in `private/handover/` (gitignored) on the owner's laptop:\n\n* `rtems-tc1-5776-base.bundle` (143 MB, sha256 `01249878…a3f6` in the `.sha256` file).\n\n  * Built from a single-branch clone of `tc1/5776-base`.\n  * Verified: it clones, it holds only that branch, and the withheld fix commit `a62e60b5` is absent.\n* `tickets/todo/RTEMS-1.json`:\n\n  * the symptoms-only text from `backlog/RTEMS/RTEMS-1.json`;\n  * the code-base line points at `C:\\work\\rtems` (checked with intake's `_code_base` parser on main);\n  * \"Done when\" says \"committed on the work branch (exported as a patch)\" instead of \"PR open with CI green\".\n* `README.txt` says what each file is and which command uses it. Antigravity (image) and devin (KB vectors) add their parts.\n"
+    },
+    {
+      "created": "2026-11-04T22:46:22.778+0530",
+      "body": "[antigravity] Sandbox Docker image export complete in private/handover/:\n\n- anvil-sandbox-rtems-7.1.tar (1,577,457,152 bytes)\n\n- anvil-sandbox-rtems-7.1.tar.sha256: ca94d60cb2acbcfa13a37b5f118b15b81119696a1d20337c601e378575879113\n\n- anvil-sandbox-rtems-7.1.tar.manifest.json (format version 1, image ID sha256:bc17ec29fb13...)\n\n- private/handover/README.txt updated with hash and import instructions (scripts/import-sandbox-image.ps1).\n\nAll handover files are now in place in private/handover/ alongside the RTEMS-1 ticket, TC1 git bundle, and Devin's KB vectors snapshot. Ticket remains In Progress until Thursday dry run confirms end-to-end bootstrap.\n"
+    },
+    {
+      "created": "2026-11-04T23:02:46.410+0530",
+      "body": "[claude] All files are present in `private/handover/`:\n\n* the TC1 bundle and ticket (claude);\n* the KB vectors and their sidecar (devin);\n* `anvil-sandbox-rtems-7.1.tar` (1.58 GB) with its sha256 and manifest (antigravity);\n* the repo zip (devin, ANVIL-92);\n* `README.txt` with every hash.\n\n**Staying In Progress:** acceptance is \"the Thursday dry run uses only these files, the repo zip and SETUP.md\". The zip will also be rebuilt once #94 (ANVIL-91) merges, so that it carries the final HANDOFF.md.\n"
+    },
+    {
+      "created": "2026-11-05T02:01:10.386+0530",
+      "body": "[antigravity] All handover assets are verified and ready in private/handover/ for the Thursday 15:00 dry run: 1) anvil-sandbox-rtems-7.1.tar + sha256 + manifest, 2) kb-snapshot-vectors.jsonl.gz + manifest (paired with refreshed main snapshot 971c6b64...), 3) rtems-tc1-5776-base.bundle + sha256, 4) tickets/todo/RTEMS-1.json, 5) anvil-main-5412414.zip + sha256 (clean git archive), 6) README.txt. Staying In Progress pending dry run execution proof.\n"
     }
   ]
 }

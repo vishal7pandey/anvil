@@ -1,0 +1,20 @@
+{
+  "key": "ANVIL-94",
+  "type": "Epic",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Generative UI over AG-UI in the chat",
+  "labels": [
+    "frontend",
+    "genui"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T23:38:52.253+0530",
+  "updated": "2026-11-04T23:38:52.352+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] Design: https://vishal7pandey.atlassian.net/wiki/spaces/ANVIL/pages/30146561 (proposed, waiting for owner approval).\n\nTranslate our run events to AG-UI at the API edge; frontend AG-UI reducer behind `VITE_PROTOCOL=agui`; a catalog of agent-chosen components (ApprovalCard, TestResultsCard, DiffCard, PlanChecklist, then AskUserCard, RootCause, KBEvidence, CI, Budget). Static plus narrow-declarative generative UI only; no agent-authored markup.\n\n**Phases (stories get cut once the owner approves):**\n\n* 0: spec pin + fixtures;\n* 1: translator + endpoints (devin);\n* 2: reducer at parity (cline);\n* 3: HITL and test/diff/plan cards;\n* 4: the rest of the catalog;\n* 5: default on.\n\n**Timing:** nothing before the 11-06 demo. Phases 1–3 for 11-10 only if Friday's dry run is clean.\n",
+  "comments": []
+}

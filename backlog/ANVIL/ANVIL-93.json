@@ -1,0 +1,25 @@
+{
+  "key": "ANVIL-93",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Context compaction: make it visible, tuned and recoverable",
+  "labels": [
+    "observability",
+    "runtime"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-04T23:37:34.936+0530",
+  "updated": "2026-11-05T00:30:24.104+0530",
+  "resolved": "2026-11-05T00:30:24.083+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] Owner question 11-04: do we have a memory compaction workflow?\n\n**Today (implicit):** `create_deep_agent` adds deepagents' SummarizationMiddleware to the main agent and every subagent. Because our gateway aliases (anvil-main/anvil-fast) have no model profile, it uses the fallback: summarize at **170k tokens**, keep the last **6 messages**. Evicted history is written to `/workspace/.anvil/conversation_history/<thread>.md` inside the sandbox and the summary points to it. Bounded tool output (ANVIL-89, about 16 KB plus spill files) and large-result eviction already keep single turns small.\n\n**Gaps:**\n\n1. Invisible: nothing in the event log, UI or `anvil.analyze` says a compaction happened, so a run that \"forgot\" something can't be diagnosed.\n2. Untuned: the threshold ignores the real context window of the model behind the alias.\n3. Not recoverable after the run: the history file dies with the sandbox.\n\n**Simplest design:**\n\n* `EventMapper` emits a `context.compacted` event when a step's state carries a new `_summarization_event`: which agent, how many messages were summarized, the size of the summary, and the history file path.\n* `ANVIL_CONTEXT_WINDOW` (tokens, optional) sets the model profile's `max_input_tokens`, so the fraction defaults apply (summarize at 85%, keep 10%). If it is unset, the behaviour stays exactly as today.\n* The chat shows a one-line status (\"Context compacted: N earlier messages summarized\"); `anvil.analyze` counts compactions.\n\n**Acceptance criteria:**\n\n* A unit test feeds an `updates` chunk carrying `_summarization_event` through `EventMapper` and gets exactly one `context.compacted` event (and none when the event is unchanged).\n* Setting `ANVIL_CONTEXT_WINDOW` gives the built model a profile with that `max_input_tokens`; with it unset, there is no profile.\n* A chatItems test shows the status line.\n* Out of scope: copying history files to the host (later, with ANVIL-85 traces); compacting the cross-run `/memories/` store.\n",
+  "comments": [
+    {
+      "created": "2026-11-05T00:30:22.610+0530",
+      "body": "[claude] Done. Merged as b6b12d0 (PR #98; devin approved after the last commit, CI green).\n\nAcceptance met:\n\n* `EventMapper` path: `tests/test_runtime_executor.py::test_compaction_is_reported_as_an_event_in_order` gets exactly one `context.compacted` event, before the next reply, with `seq` still contiguous. `tests/test_compaction.py` shows no event when nothing was compacted and that sync and async model calls both report.\n* `ANVIL_CONTEXT_WINDOW`: with 400000 the built model's profile is `{'max_input_tokens': 400000}`; unset it is `None` (checked on the merged code). `test_real_agent_builds_with_the_observed_middleware_replacing_the_default` builds the real deepagents stack: langchain rejects duplicate middleware names, so ours replaced the default instead of adding a second summarizer.\n* Chat shows \"Context compacted: N earlier messages summarized\" (`chatItems.test.ts`); `anvil.analyze` counts compactions.\n\nNot done, as scoped: copying the history file to the host after the run (goes with ANVIL-85 traces); compacting the cross-run `/memories/` store. Not seen yet: a live compaction in a real run (a run has to cross the threshold; with `ANVIL_CONTEXT_WINDOW` set low on a long case it can be forced).\n"
+    }
+  ]
+}

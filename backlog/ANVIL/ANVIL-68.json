@@ -1,10 +1,11 @@
 {
   "key": "ANVIL-68",
   "type": "Bug",
-  "status": "To Do",
-  "priority": "Medium",
+  "status": "Done",
+  "priority": "High",
   "summary": "KB time guard misses rtems-docs and Confluence documents: they carry no date",
   "labels": [
+    "agent-antigravity",
     "kb",
     "leak-guard",
     "team-sync"
@@ -12,10 +13,27 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-04T18:36:59.299+0530",
-  "updated": "2026-11-04T18:36:59.475+0530",
-  "resolved": null,
+  "updated": "2026-11-05T01:50:58.702+0530",
+  "resolved": "2026-11-05T01:50:58.686+0530",
   "links": [],
   "subtasks": [],
   "description": "Source: KB review 2026-11-04 (P7).\n\nThe time-based leak guard (ANVIL-43) hides documents created after a case's `as_of`. rtems-docs and Confluence documents have no date in their metadata, so the guard can't filter them. A doc page written after the fix could leak the answer.\n\n**Want:**\n\n* rtems-docs dated from the git log of each file (last commit date at the snapshot commit, or per-file history);\n* Confluence pages dated from their created/updated times;\n* undated documents are either excluded for a case with `as_of`, or the case's choice is recorded explicitly.\n\n**Acceptance:** tests show a post-`as_of` docs page and Confluence page are hidden for a TC1 case.\n",
-  "comments": []
+  "comments": [
+    {
+      "created": "2026-11-04T23:43:04.402+0530",
+      "body": "[antigravity] PR #96 open: https://github.com/vishal7pandey/anvil/pull/96\n\nImplementation details:\n\n- rtems-docs: dated from git log history in a single fast pass using git log --name-only --format=COMMIT:%cI.\n\n- Confluence / RTKB: dated from createdAt / versionCreatedAt in fetch_confluence_pages and confluence_get.\n\n- Undated document policy recorded: in _SEARCH_SQL and store.py docstrings, when as_of is set, undated documents (created_at IS NULL) are excluded by default to ensure answer leaks cannot occur through undated pages.\n\n- Snapshot backfill: _backfill_created_at in cli.py backfills created_at from doc_metadata across all sources.\n\nProven by: backend/tests/kb/test_time_guard.py (63/63 passed in KB test suite; verifies post-as_of docs and Confluence pages are hidden for TC1 case, and undated documents are excluded when as_of is active), backend/tests/kb/test_sources.py.\n"
+    },
+    {
+      "created": "2026-11-05T01:00:12.875+0530",
+      "body": "[antigravity] PR #96 updated in commit 4ff682d with full-history clone ingestion for rtems-docs (490/490 dated) and Confluence (12/12 dated). Total dated documents in re-exported snapshot: 7,573/7,576. Shallow-clone guard active to prevent tip-date pollution. Live proof of as_of hybrid search posted on PR.\n"
+    },
+    {
+      "created": "2026-11-05T01:38:12.277+0530",
+      "body": "[antigravity] PR #96 updated in commit 7824445: purged 3 dev test fixture pages (source=local) from DB, updated export_snapshot to exclude source=local by default (--include-local to opt in), re-exported clean snapshot manifest (7,573 docs, 14,654 chunks across confluence, gitlab-issue, gitlab-mr, and rtems-docs, all 100% dated), and updated sidecar vectors in private/handover/.\n"
+    },
+    {
+      "created": "2026-11-05T01:50:56.731+0530",
+      "body": "[claude] Done. Merged as 362ff01 (PR #96, antigravity; claude approved after the last commit, CI green; two review rounds).\n\nAcceptance (\"tests show a post-`as_of` docs page and Confluence page are hidden for a TC1 case\"): `backend/tests/kb/test_time_guard.py::test_search_hides_post_as_of_docs_and_confluence_pages` runs against Postgres in CI: a docs page and a Confluence page created after 2026-09-20 are hidden, an undated Confluence page is excluded, older ones stay visible.\n\nWhat shipped:\n\n* rtems-docs dated from `git log` (latest commit per file, one pass; shallow clones are left undated with a warning, not stamped with the tip date); Confluence from created/version times.\n* Policy recorded in `_SEARCH_SQL`: with `as_of` set, undated documents are excluded; with no `as_of`, everything is visible.\n* The shipped snapshot is dated, which I counted myself: rtems-docs 490/490, confluence 12/12, gitlab issues 5519/5519, MRs 1552/1552. Under TC1's `as_of`, 483/490 docs, 5490/5519 issues and 1492/1552 MRs stay visible, so the KB is still useful to a TC1 run.\n* `export-snapshot` skips `source = \"local\"` by default (a laptop's own run and ticket write-backs are not shipped); `--include-local` opts in. A first version of the snapshot had 3 test pages from another PR's tests; caught in review and removed.\n* Snapshot and handover vectors sidecar hashes match their manifests.\n\nNot covered: pages in other sources get no date (only these two were undated); the dating of docs is \"last changed\", which errs toward hiding.\n"
+    }
+  ]
 }

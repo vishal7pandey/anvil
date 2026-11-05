@@ -1,0 +1,26 @@
+{
+  "key": "ANVIL-99",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Highest",
+  "summary": "Audit P0: host-side acceptance and verification must not run through the agent's login shell",
+  "labels": [
+    "audit",
+    "runtime",
+    "security"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-05T07:22:03.662+0530",
+  "updated": "2026-11-05T08:19:53.843+0530",
+  "resolved": "2026-11-05T08:19:53.821+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] Source: opencode audit 11-05 (P0-1, plus P1-15); I confirmed it in the code.\n\nEvery sandbox command, including the host-side checks (`host_run` / `run_internal`: case acceptance scripts, `verify_outcome`), runs as `bash -lc`. A login shell reads files in the agent's home that the agent can write, so a verification result is only as trustworthy as the agent's profile. That undermines every \"verified\" claim.\n\n**Fix:**\n\n* host-side checks run with a clean, non-login shell (`bash -c`, explicit `env -i` and PATH), never via the profile;\n* uploaded check scripts live outside the agent-writable workspace;\n* `verify_outcome` checks exit codes (branch, changed files), selects the open PR whose head SHA equals the run branch, and fails closed (P1-15).\n\n**Acceptance:** a test where the agent writes a profile file and a PATH shim that would fake `git` / `python3`, and the host check's verdict does not change. Existing behaviour for the agent's own commands (login shell, toolchain on PATH) stays. Owner: claude. Reviewer: devin.\n",
+  "comments": [
+    {
+      "created": "2026-11-05T08:19:52.117+0530",
+      "body": "[claude] Done. PR #113 merged (claude author; approved by devin and antigravity after the last commit, CI green).\n\nAcceptance (\"a test where the agent writes a profile file and a PATH shim that would fake `git` / `python3`, and the host check's verdict does not change; the agent's own commands keep the login shell\"): `backend/tests/test_sandbox_verification.py`, run in the real `anvil-sandbox-rtems:7.1` image as the real `agent` user (skipped without Docker or the image), each test showing the attack on the agent's own shell first (the control):\n\n* a planted PATH shim plus a profile line: the agent's shell prints FAKE and HIJACKED; `run_verified` prints 42 and neither;\n* a planted `core.fsmonitor` in the repo's `.git/config` runs under the agent's `git status` and does not run under `run_verified`;\n* check scripts uploaded with `upload_trusted` are `root 644` in a `root 755` directory; the agent's append fails; the hardened runner still executes them;\n* argv-level tests: no login shell and a clean environment for verification (`env -i`, `bash --noprofile --norc`, no outer shell); `execute` and `run_internal` still use `bash -lc`.\n`verify_outcome` also fails closed now (a failed git command is a failed verification, not \"nothing changed\") and uses the open PR whose head is the run's last commit (P1-15): `test_a_failed_git_command_is_a_failed_verification_not_nothing_changed`, `test_a_pr_that_does_not_contain_the_runs_last_commit_is_flagged`, `test_the_open_pr_with_the_runs_head_decides_not_a_stale_closed_one`. Offline chain test 2/2 through the hardened path.\n\nNot covered (known limits): an agent that leaves a background process running can still race a check by changing repository files while it runs (the real defence is verifying from host-captured hashes, ANVIL-100); the setup commands (checkout, export, push) still use the login shell on purpose; the RTEMS toolchain is not on the verification PATH (the python3/git checks don't need it).\n"
+    }
+  ]
+}

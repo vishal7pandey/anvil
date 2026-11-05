@@ -1,7 +1,7 @@
 {
   "key": "ANVIL-21",
   "type": "Story",
-  "status": "In Progress",
+  "status": "To Do",
   "priority": "Medium",
   "summary": "Skills: defect-fix, component-upgrade, cra-review, investigate",
   "labels": [
@@ -11,7 +11,7 @@
   "epic": "ANVIL-2",
   "epic_summary": "WS-B Agent runtime (Deep Agents, Docker sandbox backend, subagents, skills, stuck detection)",
   "created": "2026-11-02T21:26:12.315+0530",
-  "updated": "2026-11-04T15:17:02.047+0530",
+  "updated": "2026-11-04T23:18:26.839+0530",
   "resolved": null,
   "links": [],
   "subtasks": [],
@@ -64,6 +64,10 @@
     {
       "created": "2026-11-04T15:17:02.047+0530",
       "body": "[claude] **TC2 run 8** (main 938abec, the first run judged by the case acceptance check): agent status `succeeded` in 1,315 s. **It is a real upgrade.**\n\n* **148 files changed,** all in the reference set. The 3 files new in 2.2.1 were added to `file-import.json`, and the RTEMS patches were kept.\n* **The acceptance check rejected it for one line:** a comment inside a redundant `#ifdef __rtems__` block the agent added to `def.h`. That block's code lines duplicate the base's patches, so it's harmless duplication.\n* **PR #63:** comment-only lines don't count as RTEMS-only code. With it, run 8's tree **passes** (245/245), and the earlier attack validation is unchanged.\n\n**What the runtime fixes did:** the working directory in the repo, the stuck rule counting only \"no change\", and the 400-call guard.\n\n* Runs 6-7 died at 11 min (wrongly flagged as stuck) or faked the upgrade.\n* Run 8 did the whole upgrade in 22 min.\n\n**TC2 decision:** once #63 merges, run 8 counts as a verified agent upgrade. I propose making the **agent upgrade the primary TC2 demo path again**, with the fallback (draft PR + CI SBOM) kept as backup. That needs one more run through the real path (intake → PR → CI → acceptance) to confirm, after the SonarCloud gate is fixed (owner action pending).\n"
+    },
+    {
+      "created": "2026-11-04T23:18:25.531+0530",
+      "body": "[claude] Back to To Do (hygiene): nobody is working this before Friday. The skills are built and in use. What's left is one decision:\n\n* one full-path TC2 run on the agent upgrade path;\n* then decide whether that path becomes the primary demo path. Run 8 passes the ANVIL-44 acceptance check.\n\nAfter Friday.\n"
     }
   ]
 }

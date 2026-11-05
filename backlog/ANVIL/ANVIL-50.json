@@ -11,7 +11,7 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-04T14:31:04.281+0530",
-  "updated": "2026-11-04T22:21:03.996+0530",
+  "updated": "2026-11-05T01:33:29.988+0530",
   "resolved": null,
   "links": [],
   "subtasks": [],
@@ -32,6 +32,10 @@
     {
       "created": "2026-11-04T22:21:02.659+0530",
       "body": "Back to To Do (hygiene): nobody is working this before Friday. The Friday demo is the TC1 offline path.\n\n**State:**\n\n* done: #62 (intake mode, branch scan inputs), #64 (submodule mirrors), #67 (KB DSN);\n* the TC3 re-run is not done;\n* host-side acceptance for review runs is not built.\n\nThe ANVIL-89 output bounding will also help the CRA review, since SBOM and scan outputs are large. Pick this up after Friday.\n"
+    },
+    {
+      "created": "2026-11-05T01:33:29.988+0530",
+      "body": "[claude] Added acceptance from ANVIL-64: TC3 must declare its web_search allowlist host-side (case file `[web] allow`, or `ANVIL_WEB_ALLOWLIST` set by whatever starts the TC3 session): eur-lex.europa.eu, digital-strategy.ec.europa.eu, enisa.europa.eu, osv.dev, nvd.nist.gov, cve.org. Until then a TC3 run can search anywhere. The mechanism is merged (7c8f8b7).\n"
     }
   ]
 }

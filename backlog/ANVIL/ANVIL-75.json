@@ -1,7 +1,7 @@
 {
   "key": "ANVIL-75",
   "type": "Bug",
-  "status": "In Progress",
+  "status": "Done",
   "priority": "Medium",
   "summary": "Stuck detector loopholes: a comment edit resets repeated failures; no bound before the first edit",
   "labels": [
@@ -12,8 +12,8 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-04T18:39:28.779+0530",
-  "updated": "2026-11-04T22:21:12.879+0530",
-  "resolved": null,
+  "updated": "2026-11-04T23:19:29.604+0530",
+  "resolved": "2026-11-04T23:16:59.830+0530",
   "links": [],
   "subtasks": [],
   "description": "Source: DFMEA 2026-11-04 (F06, RPN 336). Confirmed in `runtime/stuck.py`.\n\n1. **Failures reset on any edit:** `note_diff_state` clears `failures` on any diff change, including a comment or whitespace edit. Edit a comment, rerun the same failing build, repeat: `same_failure_limit` never trips.\n2. **No bound before the first edit:** the no-progress check needs `_diff_state is not None`, so before the first edit only the 400-call guard and the time budget bound reading and searching.\n\n**Fix:**\n\n* The diff signature ignores comment-only and whitespace-only changes. Reuse `strip_c_comments` from the ANVIL-44 checker for C files.\n* Repeated-failure counting resets only when the change touches code that the failing command builds or tests (at minimum: a non-comment change).\n* An explicit exploration budget before the first edit, set per skill (an investigate run is read-only by design and needs its own limit).\n\n**Acceptance:** tests for comment-edit thrash tripping, the exploration limit tripping, and a real fix after a failure still resetting the counter.\n",
@@ -21,6 +21,14 @@
     {
       "created": "2026-11-04T22:03:07.929+0530",
       "body": "[devin] PR #92 up: https://github.com/vishal7pandey/anvil/pull/92 — code_signature (strip_c_comments + whitespace collapse) so comment/whitespace edits can't reset the failure counter; new exploration_tool_calls budget (120, ANVIL_EXPLORE_CALLS, per-run override) bounds read-only investigation before the first diff report. 11/11 tests.\n"
+    },
+    {
+      "created": "2026-11-04T23:16:58.460+0530",
+      "body": "[claude] Done: PR #92 merged (7f83b61), devin's work reviewed by claude.\n\nAcceptance met (`tests/test_runtime_stuck.py`, `tests/test_runtime_executor.py`):\n\n* **Comment-edit thrash trips:** `test_comment_edit_does_not_reset_the_failure_counter`; `code_signature` ignores comment-only and whitespace-only edits.\n* **Exploration limit trips:** `test_exploration_budget_bounds_runs_with_no_diff_report`.\n* **A real fix still resets the counter:** `test_a_real_code_change_still_resets_the_counter`.\n* **Added in review:** `diff_state` reads complete output via `run_internal` (`test_diff_state_prefers_run_internal_and_signs_content`), so the bounded model output can't change the signature, and untracked files are hashed per file instead of read in full.\n"
+    },
+    {
+      "created": "2026-11-04T23:19:28.366+0530",
+      "body": "[devin] Merged as 7f83b61 (PR #92). Acceptance: comment-only/whitespace edits can't reset the failure counter — code_signature (strip_c_comments + whitespace collapse) via test_comment_edit_does_not_reset_the_failure_counter; exploration bounded pre-first-diff — test_exploration_budget_bounds_runs_with_no_diff_report; real fix still resets — test_a_real_code_change_still_resets_the_counter. 12/12 tests.\n"
     }
   ]
 }

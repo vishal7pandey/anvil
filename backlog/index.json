@@ -233,7 +233,7 @@
  {
   "key": "ANVIL-21",
   "type": "Story",
-  "status": "In Progress",
+  "status": "To Do",
   "priority": "Medium",
   "summary": "Skills: defect-fix, component-upgrade, cra-review, investigate",
   "labels": [
@@ -547,7 +547,7 @@
  {
   "key": "ANVIL-47",
   "type": "Task",
-  "status": "In Progress",
+  "status": "Done",
   "priority": "Medium",
   "summary": "Sandbox container lifecycle: remove finished-run sandboxes after their evidence is saved (10+ stale anvil-sbx-* tonight)",
   "labels": [
@@ -705,10 +705,11 @@
  {
   "key": "ANVIL-59",
   "type": "Story",
-  "status": "To Do",
+  "status": "Done",
   "priority": "High",
   "summary": "KB write-backs are searchable at once (TC4 self-learning without a reset)",
   "labels": [
+   "agent-devin",
    "demo",
    "kb",
    "team-sync"
@@ -718,11 +719,13 @@
  {
   "key": "ANVIL-60",
   "type": "Story",
-  "status": "To Do",
-  "priority": "Medium",
+  "status": "Done",
+  "priority": "High",
   "summary": "Local knowledge folder as a KB source and write-back target (no Atlassian)",
   "labels": [
+   "agent-devin",
    "demo",
+   "handoff",
    "kb",
    "offline",
    "team-sync"
@@ -747,7 +750,7 @@
  {
   "key": "ANVIL-62",
   "type": "Story",
-  "status": "In Progress",
+  "status": "To Do",
   "priority": "Medium",
   "summary": "Where does a run's time go: per-phase timing, then the biggest speed levers",
   "labels": [
@@ -775,7 +778,7 @@
  {
   "key": "ANVIL-64",
   "type": "Story",
-  "status": "To Do",
+  "status": "Done",
   "priority": "Medium",
   "summary": "web_search: allowlist of trusted domains per case/skill, not only a blocklist",
   "labels": [
@@ -826,10 +829,11 @@
  {
   "key": "ANVIL-68",
   "type": "Bug",
-  "status": "To Do",
-  "priority": "Medium",
+  "status": "Done",
+  "priority": "High",
   "summary": "KB time guard misses rtems-docs and Confluence documents: they carry no date",
   "labels": [
+   "agent-antigravity",
    "kb",
    "leak-guard",
    "team-sync"
@@ -924,7 +928,7 @@
  {
   "key": "ANVIL-75",
   "type": "Bug",
-  "status": "In Progress",
+  "status": "Done",
   "priority": "Medium",
   "summary": "Stuck detector loopholes: a comment edit resets repeated failures; no bound before the first edit",
   "labels": [
@@ -978,10 +982,11 @@
  {
   "key": "ANVIL-79",
   "type": "Bug",
-  "status": "To Do",
+  "status": "Done",
   "priority": "Medium",
   "summary": "Metrics: spend-log lookup scans unindexed JSON and the API answers 503 while spend rows lag",
   "labels": [
+   "agent-antigravity",
    "api",
    "dfmea"
   ],
@@ -1065,7 +1070,7 @@
  {
   "key": "ANVIL-86",
   "type": "Story",
-  "status": "To Do",
+  "status": "Done",
   "priority": "Medium",
   "summary": "Observability 4: team flow metrics: PR lead time, review wait, and comms response time for the build agents",
   "labels": [
@@ -1116,7 +1121,7 @@
  {
   "key": "ANVIL-90",
   "type": "Task",
-  "status": "In Progress",
+  "status": "Done",
   "priority": "Medium",
   "summary": "Known build recipe: [build] section in cases/*.toml wired into the run prompt",
   "labels": [
@@ -1129,7 +1134,7 @@
  {
   "key": "ANVIL-91",
   "type": "Story",
-  "status": "To Do",
+  "status": "Done",
   "priority": "Highest",
   "summary": "Point the factory at a local project in any shape: plain folder, git repo on any branch, archive, path with spaces",
   "labels": [
@@ -1142,13 +1147,125 @@
  {
   "key": "ANVIL-92",
   "type": "Task",
-  "status": "To Do",
+  "status": "Done",
   "priority": "Highest",
   "summary": "Junior hand-over by tomorrow morning: refresh backlog/Confluence export, HANDOFF.md, verified repo zip",
   "labels": [
    "agent-devin",
    "friday",
    "handoff"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-93",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Context compaction: make it visible, tuned and recoverable",
+  "labels": [
+   "observability",
+   "runtime"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-94",
+  "type": "Epic",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Generative UI over AG-UI in the chat",
+  "labels": [
+   "frontend",
+   "genui"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-95",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "High",
+  "summary": "acquire_lock waits an hour on a hand-written \"agent: none\" lock file",
+  "labels": [
+   "demo",
+   "runtime"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-96",
+  "type": "Task",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Approvals panel does not live-refresh: second approval on a run is invisible until reload",
+  "labels": [],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-97",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "Highest",
+  "summary": "The documented account-free start (SETUP.md step 3) cannot start the API on a clean laptop",
+  "labels": [
+   "demo",
+   "docs",
+   "friday",
+   "offline"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-98",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Highest",
+  "summary": "Audit P0: bind autonomous-path tools to the run and validate their inputs (mode, tracker project, evidence key, merge, paths)",
+  "labels": [
+   "audit",
+   "runtime",
+   "security"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-99",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Highest",
+  "summary": "Audit P0: host-side acceptance and verification must not run through the agent's login shell",
+  "labels": [
+   "audit",
+   "runtime",
+   "security"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-100",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Audit backlog (opencode 11-05): P1/P2 reliability and hardening items, scheduled after the demo",
+  "labels": [
+   "audit",
+   "post-demo",
+   "security"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-101",
+  "type": "Bug",
+  "status": "To Do",
+  "priority": "Highest",
+  "summary": "v1 zip: start-api.ps1 dies without .git; localhost costs 30 s per DB connection on Windows; frontend .env.example breaks npm test",
+  "labels": [
+   "demo",
+   "docs",
+   "friday",
+   "offline"
   ],
   "epic": null
  },

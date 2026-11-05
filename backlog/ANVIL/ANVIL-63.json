@@ -15,7 +15,7 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-04T18:36:50.389+0530",
-  "updated": "2026-11-04T22:21:01.782+0530",
+  "updated": "2026-11-05T07:51:41.967+0530",
   "resolved": null,
   "links": [],
   "subtasks": [],
@@ -28,6 +28,14 @@
     {
       "created": "2026-11-04T22:21:01.782+0530",
       "body": "PR #82 merged (04025f9): `docs/SETUP.md`, plus `.env.example` and `.gitignore`. **Staying In Progress:** the acceptance criterion is \"someone who has never run Anvil follows it on a clean machine with no GitHub/Atlassian access and gets a run started\". That is Thursday's dry run, done from the doc alone by antigravity.\n\nTwo follow-ups are due in that dry-run PR:\n\n* use the ANVIL-88 hand-over files (the TC1 bundle and the ready ticket JSON);\n* fix the inline ticket's \"Done when\", which can't say \"PR open\" offline.\n\nClose this once the dry run passes from the doc.\n"
+    },
+    {
+      "created": "2026-11-05T02:31:34.434+0530",
+      "body": "[antigravity] PR #105 opened on branch antigravity/setup-docs-catchup (commit ef8825a):\n\n* docs/SETUP.md updated with ANVIL_KNOWLEDGE_DIR, ingest-local, ANVIL_WEB_ALLOWLIST, ANVIL_CONTEXT_WINDOW (compaction), time guard NULL-exclusion (ANVIL-68), sidecar SHA pinning (971c6b64...), and CostMeter 'pending' status (ANVIL-79).\n* Removed unused estimate_cost in backend/anvil/api/metrics.py and its unit test.\n* Rehearsed against a clean unversioned workspace with spaces in its path; verified tar generation and repo slug normalization.\n* All GitHub Actions CI checks passed (backend, frontend, SBOM).\n"
+    },
+    {
+      "created": "2026-11-05T07:51:41.967+0530",
+      "body": "[antigravity] Opened PR #114 (https://github.com/vishal7pandey/anvil/pull/114) resolving the three junior-path setup and preflight issues reported by Devin:\n\n1. **Offline Preflight Verification (`scripts/preflight.ps1`)**:\n\n* Check 6 (Jira baseline) skips cleanly (`[SKIP]`) when no Atlassian credentials (`ATLASSIAN_EMAIL`/`ATLASSIAN_API_TOKEN`) are configured in `.env` or process environment.\n* Check 7 (Submodule reachability) skips cleanly (`[SKIP]`) if upstream git networks are unreachable in offline mode, or when `-Offline` switch is passed.\n* Preflight result summary now counts passes and skips cleanly: `PREFLIGHT RESULT: ALL CHECKS PASSED (6 passed, 2 skipped (offline))` (or `7 passed, 1 skipped` if internet is reachable), exiting 0.\n\n1. **Fixed Unhandled MethodInvocationException**:\n\n* Safely guards commit date parsing in Check 3 when running from an unzipped source tree where git history / `origin/main` is absent.\n\n1. **SETUP.md Documentation Updates**:\n\n* Step 4 clarifies that `import-snapshot --from` takes the **directory** holding `manifest.json` (`--from data/kb`), not individual `.gz` files, and notes that both vector sidecar files must reside in `data/kb/`.\n* Added honest setup benchmark timings from empirical clean-laptop rehearsals: initial `uv sync` (~16 s), sandbox image hash check (~7 s), API startup (~40 s), and KB snapshot import (~6 min / 367 s under load).\n* Reinforced that `ANVIL_DEMO_TOKEN` must be in `.env` (API reads file on disk, not shell).\n\n1. **Offline Startup (`start-api.ps1` & `.env.example`)**:\n\n* Cleared `ATLASSIAN_SITE=` by default in `.env.example` and allowed `start-api.ps1` to treat unset email/token as offline mode even if site URL was untouched.\n\nReady for review by Claude.\n"
     }
   ]
 }

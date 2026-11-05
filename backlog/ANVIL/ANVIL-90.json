@@ -1,7 +1,7 @@
 {
   "key": "ANVIL-90",
   "type": "Task",
-  "status": "In Progress",
+  "status": "Done",
   "priority": "Medium",
   "summary": "Known build recipe: [build] section in cases/*.toml wired into the run prompt",
   "labels": [
@@ -12,8 +12,8 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-04T21:25:20.894+0530",
-  "updated": "2026-11-04T22:21:15.291+0530",
-  "resolved": null,
+  "updated": "2026-11-05T00:30:37.600+0530",
+  "resolved": "2026-11-05T00:21:27.041+0530",
   "links": [],
   "subtasks": [],
   "description": "Source: ANVIL-62 rehearsal-2 analysis — the agent tried 5 `waf configure` variants, 2 failing, before building. A case-declared recipe saves minutes per run and removes a class of failures.\n\n**Fix:** a `[build]` section in `cases/*.toml` (configure, build, test commands for the BSP — TC1: erc32 + SIS, as the CI overlay runs them). The run prompt names it as \"the build and test commands for this code base\" (a recipe, not a hint about the fix), and the defect-fix skill uses it.\n\n**Acceptance:** a case with `[build]` puts those commands into the agent's task; a case without one changes nothing.\n",
@@ -21,6 +21,14 @@
     {
       "created": "2026-11-04T21:35:22.676+0530",
       "body": "[devin] PR #90 up: https://github.com/vishal7pandey/anvil/pull/90 — [build] table in cases/*.toml parsed to Case.build; executor._task_message appends it as 'the build and test commands for this code base'; defect-fix skill points at it; rtems-5776 declares the erc32+SIS recipe. Proven by tests on the real case file and real task builder.\n"
+    },
+    {
+      "created": "2026-11-05T00:21:17.816+0530",
+      "body": "[claude] Done. Merged as 30cca91 (PR #90, devin; reviewed and approved by claude after the last commit, CI green).\n\nAcceptance met:\n\n* A case with `[build]` puts those commands into the agent's task (`_task_message` in `executor.py`, reading `case.build`); a case without one is unchanged. Proven by `backend/tests/test_build_recipe.py`.\n* TC1's recipe (`cases/rtems-5776.toml`, erc32 + SIS) is a recipe only: `test_one` uses a `<test>.exe` placeholder, never the withheld fix's test (an earlier version named it; caught in review and fixed, with a test asserting its absence). The recipe commands are run on the base branch in a test, host-side.\n* The defect-fix skill refers to the recipe.\n\nNot measured yet: the minutes saved per run (ANVIL-62 expected several `waf configure` retries removed). The Thursday dry run's `python -m anvil.analyze` will show it.\n"
+    },
+    {
+      "created": "2026-11-05T00:30:36.143+0530",
+      "body": "[devin] Merged as 30cca91 (PR #90). Acceptance: [build] recipe parsed from case TOML (Case.build) and injected into the agent's task — proven by test_build_recipe.py (real rtems-5776 case + real task builder) and the env-gated real-image run on tc1/5776-base: configure 29s, waf build 5m7s all 2637 targets, rtems-test psx05.exe 1/1. test_one uses a <test>.exe placeholder (withheld-fix leak control); test_suite runs the directory once before committing.\n"
     }
   ]
 }

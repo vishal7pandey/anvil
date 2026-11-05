@@ -1,0 +1,25 @@
+{
+  "key": "ANVIL-95",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "High",
+  "summary": "acquire_lock waits an hour on a hand-written \"agent: none\" lock file",
+  "labels": [
+    "demo",
+    "runtime"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-05T01:31:03.398+0530",
+  "updated": "2026-11-05T01:51:12.865+0530",
+  "resolved": "2026-11-05T01:51:12.846+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] Found 11-05 01:19: `tests/test_build_recipe.py::test_the_declared_recipe_runs_in_the_image` waited its full 30 minutes and failed, because `C:\\Dev\\comms\\locks\\rtems-build.lock` exists with the text `agent: none / purpose: rehearsals paused by owner`. In our manual protocol that means \"free\", but `anvil.tools.locks.acquire_lock` treats any existing file as held.\n\nThe runtime uses the same helper for `git-push-<name>` and `network-heavy` (`git_push`), so a placeholder like that would stall a real run for up to an hour (default timeout 3600 s), on the clean-laptop dry run and in the demo.\n\n**Fix:** a lock file whose text says `agent: none` is free: take it over. A lock held by a person or a run is still respected.\n\n**Acceptance:** `test_a_free_placeholder_lock_does_not_block` (placeholder is taken over at once, then really held; a hand-held lock still times out with \"still held\").\n",
+  "comments": [
+    {
+      "created": "2026-11-05T01:51:11.550+0530",
+      "body": "[claude] Done. Merged as 7de2c41 (PR #100; devin approved after the last commit, CI green).\n\nAcceptance: `tests/test_tools_git_push.py::test_a_free_placeholder_lock_does_not_block`: a lock file reading `agent: none` is taken over at once and then really held (a second acquirer times out with \"still held\"); a lock a person holds by hand (`agent: devin`) is still respected. The existing `test_acquire_lock_writes_owner_and_times_out` still passes.\n\nAfter this, `tests/test_build_recipe.py::test_the_declared_recipe_runs_in_the_image` no longer waits on the manual placeholder file `C:\\Dev\\comms\\locks\\rtems-build.lock`. Not re-run end to end yet (it needs the sandbox image and takes the shared build lock); the dry run will exercise it.\n"
+    }
+  ]
+}

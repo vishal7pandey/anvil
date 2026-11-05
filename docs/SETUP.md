@@ -107,8 +107,9 @@ ANVIL_WEB_ALLOWLIST=
 # Emits context.compacted event and chat note.
 ANVIL_CONTEXT_WINDOW=
 
-# Optional Demo Auth Token (leave empty for unauthenticated local demo)
-ANVIL_DEMO_TOKEN=
+# Demo Auth Token. REQUIRED: the API answers 503 "Demo authentication is not configured" when it is empty.
+# Any string works locally; it must be the same as VITE_DEMO_TOKEN in frontend/.env (Step 3).
+ANVIL_DEMO_TOKEN=sk-anvil-local-change-me
 
 # Host Database & Gateway defaults
 ANVIL_DATABASE_URL=postgresql+psycopg://anvil:anvil@localhost:5433/anvil
@@ -255,15 +256,23 @@ In Terminal 1 (API Daemon):
 ```powershell
 .\scripts\start-api.ps1 -Force
 ```
+What it does on a fresh machine (no Atlassian credentials, an empty database):
+1. reads `.env` and requires `ANVIL_DEMO_TOKEN`; with no `ATLASSIAN_*` set it starts in **offline mode** (local JSON tickets from `ANVIL_TICKETS_DIR`) and skips the Jira check;
+2. uses the database from `ANVIL_DATABASE_URL` in `.env` (default `anvil` on the compose Postgres); pass `-DatabaseUrl` to use another;
+3. **creates the API's tables** by running the migrations (`alembic upgrade head`; on an existing database it does nothing);
+4. starts the API and waits until it answers. The first start takes about 40 seconds (imports); if it prints `answers HTTP 503`, `ANVIL_DEMO_TOKEN` is missing from `.env` (the API reads `.env`, not your shell's variables).
+
+To run the migrations by hand: `uv run --directory backend python -m alembic upgrade head`.
 
 In Terminal 2 (Frontend UI):
 ```powershell
+Copy-Item frontend\.env.example frontend\.env     # VITE_DEMO_TOKEN must equal ANVIL_DEMO_TOKEN
 cd frontend
 npm ci
 npm run dev
 ```
 
-Open your browser to `http://localhost:5173`.
+Open your browser to `http://localhost:5173`. If every request fails with 401, the two tokens differ.
 
 ---
 

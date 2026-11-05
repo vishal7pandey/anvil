@@ -14,10 +14,19 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-04T18:39:25.735+0530",
-  "updated": "2026-11-04T22:01:41.011+0530",
+  "updated": "2026-11-05T05:24:36.384+0530",
   "resolved": null,
   "links": [],
   "subtasks": [],
   "description": "Source: DFMEA 2026-11-04 (F03), and also seen in the team sync: clicking an existing session, or reloading the page, shows an empty chat. Confirmed: there's no `GET /api/sessions/{id}/runs`, and `handleSelectSession` clears state without loading anything.\n\n**Fix:**\n\n* API: `GET /api/sessions/{id}/runs`, newest first.\n* UI: on selecting a session (and on page load), load its latest run. Replay `GET /api/runs/{id}/timeline` through the ANVIL-52 render model. If the run is still active, attach the live stream after the last seq.\n* Optional: a small run switcher for older runs in the session.\n\n**Acceptance:**\n\n* reloading during a run shows the full conversation so far and keeps streaming;\n* opening a finished session shows its last run;\n* covered by an e2e test.\n",
-  "comments": []
+  "comments": [
+    {
+      "created": "2026-11-05T04:22:31.098+0530",
+      "body": "[claude] Reassigned from cline to devin (11-05 04:22). Cline's worktree has had no change since 00:30 and this is on Friday's critical path: a run started by intake has no UI stream, so the presenter would see nothing live until the session is reopened with its timeline and the stream reattached. Remaining on PR #79 (cline's branch, 2 commits in): App.tsx passes the timeline's last seq as `afterSeq` for an active run; an App.test.tsx case for a finished run and for the active-run attach (no repeated seq); the 409-safe backend test; the error banner placement. Cline moves to ANVIL-45.\n"
+    },
+    {
+      "created": "2026-11-05T05:24:36.384+0530",
+      "body": "[claude] Merged as 4b7af29 (PR #79: cline's endpoint and `afterSeq` option, finished by devin after reassignment; claude approved on ce40592, CI green). Stays In Progress until the dry run, because one acceptance bullet is not met as written.\n\nMet:\n\n* **Reloading during a run shows the conversation so far and keeps streaming:** `App.test.tsx` \"an active run reattaches at the last seq and shows no duplicate\" (timeline loaded, stream reattached with `Last-Event-ID` = last seq, the resent event is deduped by seq). Backed by the user-scoped `GET /api/sessions/{id}/runs` (newest first, 404 for unknown; `test_list_runs_for_session_newest_first`, which lets each run finish first because of the one-active-run rule).\n* **Opening a finished session shows its last run:** \"selecting a session whose latest run finished shows its You message\".\n* Race found in review and fixed with a test: switching sessions while an attach is in flight can no longer overwrite the newer session's chat or stream.\n\nNot met: \"covered by an e2e test\". These are component tests with mocked `fetch`, not a browser against a live API. The real proof is the 15:00 dry run (row \"an intake-started run shows up live\" is being added to `docs/dry-run-checklist.md`): start a run from a ticket in `todo/`, reload the UI after intake has picked it up, select the session, and confirm the chat shows the run so far with no event twice and that it keeps streaming. I will close this ticket on that evidence, or on a Playwright test if one is written.\n\nRelated and done: ANVIL-96 (#108) for the approvals panel refresh.\n"
+    }
+  ]
 }

@@ -1,0 +1,21 @@
+{
+  "key": "ANVIL-100",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Audit backlog (opencode 11-05): P1/P2 reliability and hardening items, scheduled after the demo",
+  "labels": [
+    "audit",
+    "post-demo",
+    "security"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-05T07:22:19.207+0530",
+  "updated": "2026-11-05T07:22:19.317+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] Source: opencode audit 11-05, main@5412414 (full report: `C:\\Dev\\comms\\claude\\Archived\\20261105-0652-opencode-anvil-security-audit.md`, item numbers below refer to it). My triage after reading the code:\n\n**Already done:** #19 (the demo-token contract: `.env.example` and SETUP.md now say the token is required, ANVIL-97 / #112); #10 (the stale vector sidecar was only this laptop's untracked copy in `data/kb/`; replaced from the verified handover copy, the importer refusing a stale sidecar is intended); #34, #36 and the other \"verified, not findings\" are not bugs.\n\n**Fix soon after the demo (P1, ordered by value):**\n\n* #6 close the generator at `waiting_approval` (a late finalizer can clear the resumed run's cancel and deadline state);\n* #8 startup recovery for orphaned queued/running runs; #9 intake loop must survive any exception (backoff);\n* #11 restore the sandbox network in a `finally` after checkout (an \"offline\" run can keep egress after a failed clone);\n* #12 refresh a reused session checkout when the base changes; #13 reaper must keep a handoff until its evidence exists;\n* #16 `github_merge` honours the case's required checks (done with ANVIL-98 item 4); #17 `github_checks` returns at once when a PR has no checks;\n* #7 metrics must not 503 offline when no run has token usage; #14 and #42 path hygiene (done with ANVIL-98 item 5);\n* #20 `run-api.cmd` interpolates host/port into Python code; #21 `jira_transition` exact match; #22 KB source filter applied after the candidate limit;\n* #23 lint filenames (NUL-separated, `--`); #24 `kb.config` must not raise at import without cases; #38 wrap transport errors as ToolError; #48 frontend: catch rejected `sendMessage`/`send`.\n\n**P2 (#25 to #50):** hardening and tidy-ups, scheduled as time allows (check-run vs Actions job id for log tails, protected-path normalisation, `full_name` strictness, redirects with bearer auth, unbounded timeline/event queries, trailing-dot host in the web-search blocklist, command-log I/O, etc.). Not security-critical; no deadline.\n\n**Also noted by the audit and worth a separate decision:** ruff is not in CI (218 findings); `npm audit` shows 6 dev-dependency vulnerabilities (vitest/tinypool critical, vite high). Dev-only, not shipped.\n\nEach fix needs its own regression test; reviewer claude. Owners assigned when scheduled.\n",
+  "comments": []
+}

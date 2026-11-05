@@ -1,11 +1,13 @@
 {
   "key": "ANVIL-60",
   "type": "Story",
-  "status": "To Do",
-  "priority": "Medium",
+  "status": "Done",
+  "priority": "High",
   "summary": "Local knowledge folder as a KB source and write-back target (no Atlassian)",
   "labels": [
+    "agent-devin",
     "demo",
+    "handoff",
     "kb",
     "offline",
     "team-sync"
@@ -13,10 +15,23 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-04T18:36:45.423+0530",
-  "updated": "2026-11-04T18:36:45.577+0530",
-  "resolved": null,
+  "updated": "2026-11-05T02:00:34.767+0530",
+  "resolved": "2026-11-05T01:57:48.033+0530",
   "links": [],
   "subtasks": [],
   "description": "Source: KB review 2026-11-04 (P4). This pairs with the local ticket tracker for the no-Jira / no-Confluence setup.\n\n**Want:**\n\n* `python -m anvil.kb ingest-local --dir kb/local/` reads markdown pages (and local JSON tickets) as KB documents with `source=\"local\"`, dated from front matter or file mtime.\n* Seed it from `docs/confluence/RTKB/*.md`.\n* When Confluence isn't configured, `confluence_write` / `publish_evidence` write their pages to this folder, and the page is indexed at once (the write-back story).\n\n**Acceptance:**\n\n* with Atlassian unset, a run's evidence page lands in `kb/local/` and is found by `kb_search`;\n* the leak guard applies.\n",
-  "comments": []
+  "comments": [
+    {
+      "created": "2026-11-04T23:36:39.710+0530",
+      "body": "[devin] PR #95 up: https://github.com/vishal7pandey/anvil/pull/95 — LocalKnowledge folder (ANVIL_KNOWLEDGE_DIR, default kb/local/); confluence__/publish_evidence bound to it for local: runs or when ATLASSIAN__ is unset, same tool names; ingest-local CLI added. 38 tests.\n"
+    },
+    {
+      "created": "2026-11-05T01:57:43.916+0530",
+      "body": "[claude] Done. Merged as 5412414 (PR #95, devin; two review rounds, claude approved after the last commit, CI green).\n\nAcceptance:\n\n* **Atlassian unset: the evidence page lands in the local folder and is found by **`kb_search`: `tests/test_local_knowledge.py::test_run_without_atlassian_falls_back_to_the_folder`, `::test_publish_evidence_writes_page_and_ticket_comment` (page + ticket comment + `anvil-in-review` label) and `::test_a_written_page_is_found_by_kb_search_straight_after`, which runs against pgvector in CI (CI sets `ANVIL_TEST_DATABASE_URL`; 13/13 in that file, none skipped). Same tool names as the REST tools, so skills and the approval gate are unchanged. `python -m anvil.kb ingest-local --dir ...` seeds a folder (e.g. `docs/confluence/RTKB/`).\n* **The leak guard applies:** every written-back page carries `created_at` (local and Atlassian paths), so the time guard hides it from an `as_of` run (`test_written_page_carries_created_at_for_the_leak_guard`; metadata → `created_at` column → hidden by `as_of` is covered link by link in `tests/kb/test_time_guard.py`). Not a single end-to-end test of \"page written, then hidden under `as_of`\".\n\nFound and fixed in review (all verified by re-running my probes): `write_page` took the space from the agent and could write outside the folder; `get` used a string-prefix check and could read a sibling folder; written pages were undated; three tests wrote into the real dev KB (that polluted an exported snapshot; after the fix the row counts per source are identical before and after running them).\n\nNot done: CQL on the local search is substring matching, not real CQL. The default folder `kb/local/` is gitignored.\n"
+    },
+    {
+      "created": "2026-11-05T02:00:32.337+0530",
+      "body": "[devin] Merged as 5412414 (PR #95). Acceptance: confluence_*/publish_evidence bound per-run — local: runs or no-Atlassian get the LocalKnowledge folder (ANVIL_KNOWLEDGE_DIR, default kb/local/), same tool names; ingest-local CLI added; leak guard via store.ingest; tests patched to never touch the real dev KB.\n"
+    }
+  ]
 }

@@ -1,7 +1,7 @@
 {
   "key": "ANVIL-92",
   "type": "Task",
-  "status": "To Do",
+  "status": "Done",
   "priority": "Highest",
   "summary": "Junior hand-over by tomorrow morning: refresh backlog/Confluence export, HANDOFF.md, verified repo zip",
   "labels": [
@@ -12,10 +12,23 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-04T22:29:28.487+0530",
-  "updated": "2026-11-04T22:29:28.573+0530",
-  "resolved": null,
+  "updated": "2026-11-05T02:00:53.189+0530",
+  "resolved": "2026-11-04T23:37:30.812+0530",
   "links": [],
   "subtasks": [],
   "description": "[claude] Owner, 2026-11-05: the codebase is handed to the juniors tomorrow morning. They have no access to our Jira, Confluence or GitHub. The hand-over bundle (#56) dates from 11-04 04:48 and is a day out of date.\n\n**Do:**\n\n1. Re-run `backend/scripts/export_trackers.py` so that `backlog/` (ANVIL and RTEMS, every ticket with its comments) and `docs/confluence/` match today's Jira and Confluence. Commit this via a PR.\n2. Update `HANDOFF.md` for a junior reader:\n\n  * what Anvil is;\n  * start at `docs/SETUP.md`;\n  * the offline path (local project folder plus local JSON tickets);\n  * where the board lives now (`backlog/`, plus the local tracker for new tickets);\n  * what is done and what is open (from the board);\n  * how to run the tests;\n  * the known limits.\n  Remove anything that assumes our accounts.\n3. Build the zip with `git archive` from main (never zip the folder: `.env` and `private/` must not leave the laptop). Verify the zip contains no `.env`, `private/` or `*.tar`. Put it in `private/handover/` with its sha256, next to the ANVIL-88 files, and add it to that README.\n\n**Acceptance:**\n\n* someone who unzips it with only the README and HANDOFF.md finds SETUP.md and the backlog;\n* `grep` of the zip for `ATLASSIAN_API_TOKEN=` / `ghp_` / `sk-` finds nothing.\n",
-  "comments": []
+  "comments": [
+    {
+      "created": "2026-11-04T22:47:38.727+0530",
+      "body": "[devin] Two of three pieces: PR #93 (backlog/ + docs/confluence/ re-exported: 92 ANVIL + 7 RTEMS issues, 16 pages; HANDOFF.md rewritten for the junior reader — SETUP.md first, offline path, local tracker, known limits). Zip: anvil-main-04025f9.zip + sha256 in private/handover/, verified 329 files / no .env / private/ / *.tar / no token patterns. Caveat: it's archived from main 04025f9 — will rebuild after #93 merges so it contains the new HANDOFF.\n"
+    },
+    {
+      "created": "2026-11-04T23:37:29.421+0530",
+      "body": "[devin] All three pieces delivered. PR #93 merged (966ea0f): backlog/ + docs/confluence/ re-exported, HANDOFF.md rewritten for the junior reader. Archive rebuilt from main post-#94: anvil-main-9e68e01.zip, sha256 3495f3e247ad6a9fbc8ec32cb9fba33404a9e2860181e6f1f7e88a6692c00560, in private/handover/ with its .sha256 and README entry. Secrets check: 376 files, no .env/private/*.tar; grep hits are ANVIL-92's own acceptance text in its backlog JSON and the sk-anvil-local-change-me placeholder — no real tokens. Acceptance: unzip → README + HANDOFF.md point to docs/SETUP.md and backlog/. Closing as Done.\n"
+    },
+    {
+      "created": "2026-11-05T02:00:53.189+0530",
+      "body": "[devin] Final archive rebuilt from main 5412414 (carries #90 build recipe, #94 any-shape local, #95 local knowledge + write-back, #96 KB time guard): anvil-main-5412414.zip, sha256 ae8c66715909eb3253ea47952454f929c2a725844d2888b41b6d0ba6e10356fe. 381 files, no .env/private/*.tar; only ANVIL-92's own acceptance text and the sk-anvil-local-change-me placeholder match the token patterns. In private/handover/ with README updated.\n"
+    }
+  ]
 }

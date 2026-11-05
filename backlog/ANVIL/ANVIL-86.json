@@ -1,7 +1,7 @@
 {
   "key": "ANVIL-86",
   "type": "Story",
-  "status": "To Do",
+  "status": "Done",
   "priority": "Medium",
   "summary": "Observability 4: team flow metrics: PR lead time, review wait, and comms response time for the build agents",
   "labels": [
@@ -11,10 +11,31 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-04T19:37:20.341+0530",
-  "updated": "2026-11-04T19:37:20.395+0530",
-  "resolved": null,
+  "updated": "2026-11-05T03:54:29.542+0530",
+  "resolved": "2026-11-05T03:54:29.525+0530",
   "links": [],
   "subtasks": [],
   "description": "Owner ask 2026-11-04: \"the agents are too slow\". That can mean Anvil's runs (Observability 1-3) or our own build team (claude, devin, antigravity, cline). This ticket measures the team, from data we already have.\n\n**Want:** `scripts/team_metrics.py`, read-only:\n\n* from GitHub (`gh api`), per PR: time from open to first review, review to approve, approve to merge, and the number of CI rounds and commits;\n* from `C:\\Dev\\comms`, per agent: the time from a message with `action-required: yes` to the reply in its thread;\n* per agent per day: PRs merged, and median and p90 for each wait.\n* Output a markdown table to `private/metrics/<date>.md`. Run it at the end of each day.\n\n**Acceptance:** one report for 2026-11-04 that shows where the team waits (review queue, CI, rework, idle).\n",
-  "comments": []
+  "comments": [
+    {
+      "created": "2026-11-05T02:21:50.191+0530",
+      "body": "[claude] Reassigned from cline to devin (11-05 02:30): cline is still finishing #79 (ANVIL-73), devin has free time before the 07:30 freeze. Cline takes ANVIL-45 after #79. Scope unchanged: `scripts/team_metrics.py`, read-only; PR open to first review to approve to merge times, CI rounds and commits per PR from `gh api`; per-agent reply time to `action-required: yes` messages from `C:\\Dev\\comms`; writes a markdown table to `private/metrics/<date>.md`; test on a small fixture, no network in tests; reviewer claude.\n"
+    },
+    {
+      "created": "2026-11-05T02:27:32.156+0530",
+      "body": "[devin] PR #104 up: https://github.com/vishal7pandey/anvil/pull/104 — scripts/team_metrics.py: gh api PR timings (open→first review→approve→merge, CI rounds, commits) + per-agent median answer time on action-required comms messages → private/metrics/<date>.md. 3/3 fixture tests, no network in tests.\n"
+    },
+    {
+      "created": "2026-11-05T03:22:46.546+0530",
+      "body": "[claude] Step 1 merged (PR #104, devin; one review round that fixed three data bugs found by running real data through it). Stays In Progress: the acceptance (\"one report for 2026-11-04 that shows where the team waits\") is only partly met.\n\n**Done:** `scripts/team_metrics.py` is read-only and writes `private/metrics/<date>.md`. PR table from GitHub: open to first review, review to approve, approve to merge, CI runs (workflow runs for the PR's branch), commits. Reviews are read from the `REVIEW (` comments (we share one account, so GitHub's formal reviews are always empty). Comms times use file creation time (the `date:` lines agents write by hand are wrong by hours). Real first read (25 PRs): first review within 6 to 30 minutes of opening; review-to-approve usually 0 but up to 1.9 h on PRs that needed a second round; approve-to-merge up to 1.7 h on a few.\n\n**Remaining for this ticket:**\n\n1. `--since` / `--day` window (default the last 24 h) so the report is about one day, and **p90** next to the median.\n2. **PRs merged per agent per day.** All PRs come from one login: attribute by the PR body's first token (`Agent: devin`, `[antigravity]`, `[claude]`) or the branch prefix.\n3. Comms table: count thread matches only, or show which rule matched (the fallback \"any later message\" understates the wait).\n4. A short \"where the team waits\" section: review queue (open to review), rework (review to approve), merge wait, CI (workflow-run time, not just count), idle (time between an agent's last action and its next).\n5. Run it for 2026-11-04 and attach the report here.\n"
+    },
+    {
+      "created": "2026-11-05T03:37:14.536+0530",
+      "body": "[devin] Report for 2026-11-04 (private/metrics/2026-11-04.md, PR #107): 41 PRs. Merged/agent: devin 15, claude 13, antigravity 7, cline 2. Where the team waits (h, median/p90): review queue 0.2/0.5, rework 0.0/0.9, merge wait 0.2/0.9, open->merge 0.8/1.9, CI 2min/28min. Biggest median: review queue. Comms answer time (min, median/p90): devin 17/111 (n=72), claude 19/68 (25), antigravity 31/275 (50), cline 29/29 (7), owner 13 (2). Pairing: 144 thread / 63 fallback (understates) / 1 unanswered.\n"
+    },
+    {
+      "created": "2026-11-05T03:54:28.078+0530",
+      "body": "[claude] Done, with one gap recorded. Merged in two steps: #104 (a990a79) and #107 (devin; claude approved each after the last commit, CI green).\n\nAcceptance (\"one report for 2026-11-04 that shows where the team waits\"): `python scripts/team_metrics.py --day 2026-11-04` writes `private/metrics/2026-11-04.md`. I ran it myself against the real repo and the live comms folders. Reading (median / p90, hours): review queue 0.2 / 0.5; rework (first review to approve) 0.0 / 1.0; merge wait 0.2 / 0.9; open to merge 0.8 / 1.9; CI per PR 2 min / 28 min (the long ones are the Docker-heavy PRs, #94 at 33 min). PRs merged: devin 15, claude 13, antigravity 7, cline 2. Comms answer time (minutes, median / p90): claude 19 / 68, devin 17 / 111, antigravity 31 / 275, cline 29 / 29 (n=7). 144 pairings by thread, 63 by fallback (understates the wait), 1 unanswered.\n\n**What it says about \"the agents are too slow\":** the build team's PR flow is fast (half of PRs go open to merge in under an hour, 90% in under two); the waits that matter are the second review round on bigger PRs (up to 1.9 h) and CI on the Docker-heavy ones. If runs feel slow, the cost is in Anvil's own runs (20 to 45 minutes each; ANVIL-62/89), not in the team's hand-offs.\n\n**Gap:** \"idle\" (time between an agent's last action and its next) is not measured, and \"the team waits most on\" is chosen by median alone. Neither blocks using the report. A follow-up if wanted: idle from comms + commits + PR comments per agent, and rank phases by p90.\n\nReviews are read from the `REVIEW (` comments and comms times from file creation time, because we share one GitHub account and agents' hand-written `date:` lines were wrong by hours.\n"
+    }
+  ]
 }

@@ -1,0 +1,30 @@
+{
+  "key": "ANVIL-98",
+  "type": "Story",
+  "status": "Done",
+  "priority": "Highest",
+  "summary": "Audit P0: bind autonomous-path tools to the run and validate their inputs (mode, tracker project, evidence key, merge, paths)",
+  "labels": [
+    "audit",
+    "runtime",
+    "security"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-05T07:22:02.544+0530",
+  "updated": "2026-11-05T08:59:51.588+0530",
+  "resolved": "2026-11-05T08:59:51.567+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] Source: read-only audit by opencode at main@5412414, 11-05 (report archived at `C:\\Dev\\comms\\claude\\Archived\\20261105-0652-opencode-anvil-security-audit.md`). I re-read each item below in the code and confirmed it. All are reachable by an agent's tool arguments, none needs remote access.\n\n**Fix, each with a regression test:**\n\n1. `mode` is a free string. Make it `Literal[\"interactive\", \"autonomous\"]` at the schema and DB boundary, and make `approval_policy` default-deny: an unknown mode gates every outward tool (today only the exact string `interactive` gates, so a typo means no approvals).\n2. `LocalTracker.create(project, ...)` builds a file path from the unvalidated `project`. Require `[A-Za-z][A-Za-z0-9_]*` and build the path only from a validated key.\n3. `publish_evidence` and `jira_create` take the Jira key / project from the model. Bind both to the run's ticket and project; reject a mismatch (local and Jira paths).\n4. `github_merge` takes any PR number. Bind it to the run's PR (base ref equals the run's base, head SHA equals the run branch head) and pass the case's required checks (`[ci] required_checks`), so advisory checks don't gate a merge.\n5. **Path hygiene:** `DockerSandbox.upload_files` must reject `..` and stay under `/workspace` and `.anvil`; `source._extract_archive` should use `Path.is_relative_to`, not a string prefix.\n\n**Acceptance:** a test per item (a typo'd mode gates everything; `project=\"../x\"` writes nothing outside the tickets dir; evidence for another key is rejected; a merge for a PR that is not the run's is rejected; a `..` upload path is rejected). Owner: devin. Reviewer: claude.\n",
+  "comments": [
+    {
+      "created": "2026-11-05T07:50:48.769+0530",
+      "body": "[devin] PR #115 (d484bd2): all five P0s — mode Literal+CHECK+default-deny, LocalTracker project validation, jira_create/publish_evidence bound to the run's ticket, github_merge bound to the run's PR + required_checks, upload_files/_extract_archive containment. 10/10 + 9/9 tests. In review.\n"
+    },
+    {
+      "created": "2026-11-05T08:59:49.050+0530",
+      "body": "[claude] Done. PR #115 merged (devin; two review rounds from claude, approved by claude and antigravity after the last commit, CI green).\n\nAcceptance (a regression test per item):\n\n* `mode`: `Literal[\"interactive\",\"autonomous\"]` at `SessionCreate` plus CHECK constraints (migration `0004`, verified against the real databases: only those two values exist); `approval_policy` is default-deny: `test_approval_policy_is_default_deny_for_an_unknown_mode`.\n* `LocalTracker.create`: `project` must match `[A-Za-z][A-Za-z0-9_]*`: `test_create_rejects_a_project_key_that_escapes_the_tickets_dir`.\n* `publish_evidence` / `jira_create`: bound to the run's ticket and project: `test_publish_evidence_is_bound_to_the_runs_ticket`, `test_jira_create_is_bound_to_the_runs_project`.\n* `github_merge`: bound to the run's PR **statelessly** (head ref is the run's work branch or `<work>-<slug>`, base is the run's base; passes the case's required checks), so a resumed run binds identically (the first version kept the PR number in a closure and would have refused every merge after the approval pause): `test_github_merge_is_bound_to_the_runs_pr_and_passes_required` (on a fresh `run_tools`), `test_github_merge_refuses_a_pr_that_is_not_the_runs`, `test_github_merge_allows_the_runs_slugged_branch` (`anvil/rtems-10` refused).\n* **Paths:** `upload_files` confined to `/workspace`; `_extract_archive` uses `is_relative_to`: `test_upload_files_stays_inside_the_workspace`, `test_extract_archive_refuses_outside_entries`, `test_extract_archive_refuses_sibling_prefix_entries`.\n\nNote: the agent's own `write_file` tool can no longer write outside `/workspace` (it fails with an invalid-path error); the skills and prompts do not rely on that. Remaining audit items are tracked in ANVIL-100.\n"
+    }
+  ]
+}

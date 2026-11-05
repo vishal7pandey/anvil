@@ -1,0 +1,157 @@
+# Backlog status
+
+Regenerate: `uv run python scripts/export_trackers.py --status-md` (offline).
+Counts: 101 ANVIL + 7 RTEMS = 108 (from the on-disk JSON).
+
+## WS-A Sandbox image (RTEMS toolchain + SIS, pre-commit, GHCR)  (1)
+
+| key | summary | status | owner | merged | last comment | handoff scope |
+|-----|---------|--------|-------|--------|--------------|---------------|
+| ANVIL-8 | Sandbox image: smoke passes, pre-commit installed, p | Done | codex | #19 | 2026-11-03 | — |
+
+## WS-B Agent runtime (Deep Agents, Docker sandbox backend, subagents, skills, stuck detection)  (6)
+
+| key | summary | status | owner | merged | last comment | handoff scope |
+|-----|---------|--------|-------|--------|--------------|---------------|
+| ANVIL-10 | Runtime walking skeleton: DockerSandbox backend + bu | Done | claude | #6 | 2026-11-03 | — |
+| ANVIL-15 | Local stack up: compose (Postgres + LiteLLM), OpenAI | Done | claude | — | 2026-11-02 | — |
+| ANVIL-19 | Runtime executor: sessions -> sandbox, repo checkout | Done | claude | #31 | 2026-11-04 | — |
+| ANVIL-20 | Stuck detection, handoff and budgets | Done | devin | #26 | 2026-11-04 | — |
+| ANVIL-21 | Skills: defect-fix, component-upgrade, cra-review, i | To Do | claude | #57 | 2026-11-04 | — |
+| ANVIL-23 | web_search tool with domain blocklist | Done | claude | — | 2026-11-02 | — |
+
+## WS-C Control API (FastAPI, sessions, runs, SSE events, approvals)  (3)
+
+| key | summary | status | owner | merged | last comment | handoff scope |
+|-----|---------|--------|-------|--------|--------------|---------------|
+| ANVIL-11 | Control API skeleton: models, REST and SSE per contr | Done | copilot | #9 | 2026-11-02 | — |
+| ANVIL-24 | API: Jira intake loop, approvals resume, cancel, exe | Done | claude | #50 | 2026-11-04 | — |
+| ANVIL-25 | API: run metrics endpoint (time, USD, tokens, human  | Done | copilot | #30 | 2026-11-03 | — |
+
+## WS-D Web UI (sessions, chat stream, plan, tool calls, diffs, approvals)  (2)
+
+| key | summary | status | owner | merged | last comment | handoff scope |
+|-----|---------|--------|-------|--------|--------------|---------------|
+| ANVIL-12 | Web UI skeleton: sessions, new-session dialog, event | Done | cline | #31 | 2026-11-03 | — |
+| ANVIL-26 | UI: approvals inbox, run record page, metrics page,  | Done | antigravity | #39 | 2026-11-03 | — |
+
+## WS-E Integrations (Jira, Confluence, GitHub push/PR/checks/merge, Sonar, intake, web search)  (2)
+
+| key | summary | status | owner | merged | last comment | handoff scope |
+|-----|---------|--------|-------|--------|--------------|---------------|
+| ANVIL-13 | Host tools: Jira, Confluence, git_push, GitHub PR/ch | Done | devin | #2 | 2026-11-02 | — |
+| ANVIL-27 | Evidence writer + merge watch: Jira/PR/Confluence te | Done | devin | #4 | 2026-11-02 | — |
+
+## WS-F Quality gates (Actions build+test on SIS, CodeQL, SonarCloud, SBOM, OSV, Dependabot)  (4)
+
+| key | summary | status | owner | merged | last comment | handoff scope |
+|-----|---------|--------|-------|--------|--------------|---------------|
+| ANVIL-9 | rtems mirror CI: build erc32 + run POSIX tests on SI | Done | codex | #3 | 2026-11-03 | — |
+| ANVIL-29 | Pre-commit + CI on rtems-lwip (TC2) and pre-commit c | Done | antigravity | #2 | 2026-11-03 | — |
+| ANVIL-30 | SBOM + vulnerability + licence artefacts (Syft, OSV- | Done | copilot | #33 | 2026-11-03 | — |
+| ANVIL-33 | CI for the anvil repo: backend pytest + frontend tes | Done | claude | — | 2026-11-03 | — |
+
+## WS-G Knowledge base (TC4) + TC1 eval harness  (3)
+
+| key | summary | status | owner | merged | last comment | handoff scope |
+|-----|---------|--------|-------|--------|--------------|---------------|
+| ANVIL-14 | Knowledge base: ingest RTEMS issues + rtems-docs int | Done | antigravity | #3 | 2026-11-03 | — |
+| ANVIL-22 | TC1 eval harness + answer-leak controls | Done | claude | — | 2026-11-04 | — |
+| ANVIL-31 | TC4 spec + seed RTKB knowledge space + RTEMS ticket | Done | antigravity | #16 | 2026-11-03 | — |
+
+## WS-H Demo scenarios + QA (TC2 upgrade, end-to-end browser tests, rehearsal)  (3)
+
+| key | summary | status | owner | merged | last comment | handoff scope |
+|-----|---------|--------|-------|--------|--------------|---------------|
+| ANVIL-17 | TC2 spike: lwIP upgrade path in rtems-lwip, pick the | Done | antigravity | #27 | 2026-11-03 | — |
+| ANVIL-28 | TC3 spec: CRA compliance review of a reference RTEMS | Done | devin | — | 2026-11-02 | — |
+| ANVIL-32 | E2E browser tests, demo runbook, reset script, rehea | In Progress | antigravity | #65 | 2026-11-04 | — |
+
+## —  (84)
+
+| key | summary | status | owner | merged | last comment | handoff scope |
+|-----|---------|--------|-------|--------|--------------|---------------|
+| ANVIL-1 | WS-A Sandbox image (RTEMS toolchain + SIS, pre-commi | Done | claude | — | 2026-11-03 | — |
+| RTEMS-1 | Mutex reports EBUSY / crashes after a failed pthread | To Do | — | bc1b186 | 2026-11-04 | — |
+| ANVIL-2 | WS-B Agent runtime (Deep Agents, Docker sandbox back | In Progress | claude | — | — | — |
+| RTEMS-2 | Upgrade vendored lwIP to 2.2.1 in rtems-lwip | To Do | — | — | — | — |
+| ANVIL-3 | WS-C Control API (FastAPI, sessions, runs, SSE event | In Progress | claude | — | — | — |
+| RTEMS-3 | [TC3] CRA Annex I compliance review of reference RTE | To Do | — | — | — | — |
+| ANVIL-4 | WS-D Web UI (sessions, chat stream, plan, tool calls | Done | cline | — | 2026-11-03 | — |
+| RTEMS-4 | GRETH RX drops ~3% of frames under sustained 100 Mbi | To Do | — | — | 2026-11-04 | — |
+| ANVIL-5 | WS-E Integrations (Jira, Confluence, GitHub push/PR/ | Done | devin | #22 | 2026-11-03 | — |
+| RTEMS-5 | [TC4] Incident: Telemetry packet drops and TM_GUIDAN | To Do | — | — | — | — |
+| ANVIL-6 | WS-F Quality gates (Actions build+test on SIS, CodeQ | Done | claude | — | 2026-11-03 | — |
+| RTEMS-6 | [TC4] Secondary payload instrument reports intermitt | To Do | — | — | — | — |
+| ANVIL-7 | WS-G Knowledge base (TC4) + TC1 eval harness | In Progress | antigravity | — | — | — |
+| RTEMS-7 | Counter conversions return wrong values above a few  | To Do | — | — | — | — |
+| ANVIL-16 | WS-H Demo scenarios + QA (TC2 upgrade, end-to-end br | Done | antigravity | — | — | — |
+| ANVIL-18 | anvil smoke test (safe to delete) | Done | — | — | 2026-11-02 | — |
+| ANVIL-34 | Metrics: aggregate cost must not go null when one ru | Done | claude | — | — | — |
+| ANVIL-35 | Frontend type-check: tsconfig + `npm run typecheck`  | Done | cline | — | 2026-11-03 | — |
+| ANVIL-36 | Flaky: test_cancel_falls_back_to_task_cancellation_a | Done | claude | #46 | 2026-11-03 | — |
+| ANVIL-37 | GET /api/runs/{id} on a running run crashes on SQLit | Done | devin | — | 2026-11-03 | — |
+| ANVIL-38 | Generic bug-replay eval cases: any upstream fix beco | Done | claude | #49 | 2026-11-03 | — |
+| ANVIL-39 | KB sources: GitLab issues with comments, merge reque | Done | claude | — | 2026-11-04 | — |
+| ANVIL-40 | github_open_pr on an unpushed branch: say "push firs | Done | claude | #52 | 2026-11-04 | — |
+| ANVIL-41 | Decide the TC1 run time budget (now 45 min) from the | Done | claude | #51 | 2026-11-04 | — |
+| ANVIL-42 | Second real bug-replay case from the TC1 shortlist,  | Done | devin | 988b042 | 2026-11-04 | — |
+| ANVIL-43 | Time-based leak guard: during an eval run, KB search | Done | devin | — | 2026-11-04 | — |
+| ANVIL-44 | TC2 as a case spec (component-upgrade): declare the  | Done | claude | #63 | 2026-11-04 | — |
+| ANVIL-45 | KB: mailing-list archive loader (pipermail devel/use | To Do | cline | — | — | — |
+| ANVIL-46 | One command to (re)start the demo API from main with | Done | antigravity | #53 | 2026-11-04 | — |
+| ANVIL-47 | Sandbox container lifecycle: remove finished-run san | Done | antigravity | #89 | 2026-11-04 | — |
+| ANVIL-48 | Owner actions before the demo: GHCR push of the 7.1  | To Do | — | — | — | — |
+| ANVIL-49 | Reset + preflight protect every case ticket (cases/* | Done | antigravity | — | 2026-11-04 | — |
+| ANVIL-50 | TC3 readiness: make the CRA review runnable end to e | To Do | claude | 7c8f8b7 | 2026-11-05 | — |
+| ANVIL-51 | kb_search reads the per-agent run database, and a KB | Done | — | #67 | 2026-11-04 | — |
+| ANVIL-52 | Chat stream shows a run, not its event log: render m | Done | — | — | — | — |
+| ANVIL-53 | Post-demo workspace redesign: plan, narrative, inspe | To Do | — | — | — | — |
+| ANVIL-54 | Cost meter shows $0 on live runs: usage events carry | Done | cline | — | — | — |
+| ANVIL-55 | Local workspace as a session source: run on a folder | Done | claude | — | — | — |
+| ANVIL-56 | Local ticket tracker: JSON tickets in status folders | Done | devin | — | 2026-11-04 | — |
+| ANVIL-57 | Sandbox image without GitHub: ship the RTEMS 7.1 ima | Done | antigravity | — | — | — |
+| ANVIL-58 | Shareable KB with vectors: snapshot export/import th | Done | devin | — | 2026-11-04 | — |
+| ANVIL-59 | KB write-backs are searchable at once (TC4 self-lear | Done | devin | #95 | 2026-11-05 | — |
+| ANVIL-60 | Local knowledge folder as a KB source and write-back | Done | devin | #95 | 2026-11-05 | — |
+| ANVIL-61 | New Session dialog a first-time user can complete wi | Done | cline | — | 2026-11-04 | — |
+| ANVIL-62 | Where does a run's time go: per-phase timing, then t | To Do | — | — | 2026-11-04 | — |
+| ANVIL-63 | Setup guide for a fresh laptop without our accounts  | In Progress | antigravity | ef8825a | 2026-11-05 | — |
+| ANVIL-64 | web_search: allowlist of trusted domains per case/sk | Done | — | #97 | 2026-11-05 | — |
+| ANVIL-65 | CRA scanning with open-source tools: the agent runs  | To Do | — | — | — | — |
+| ANVIL-66 | Component-upgrade input: a version registry so the a | To Do | — | — | — | — |
+| ANVIL-67 | KB: faster import and incremental refresh from a sna | To Do | — | — | 2026-11-04 | — |
+| ANVIL-68 | KB time guard misses rtems-docs and Confluence docum | Done | antigravity | #96 | 2026-11-05 | — |
+| ANVIL-69 | KB: configurable embedding model and dimension (on-p | To Do | — | — | — | — |
+| ANVIL-70 | Route a ticket to its repo from ticket metadata when | To Do | — | — | — | — |
+| ANVIL-71 | One active run per session: a second message while a | Done | claude | — | — | — |
+| ANVIL-72 | Graph checkpoints are keyed by session, not run: a n | Done | claude | — | — | — |
+| ANVIL-73 | Reopening a session shows nothing: load the session' | In Progress | cline | #79 | 2026-11-05 | — |
+| ANVIL-74 | The main prompt orders `pre-commit run --all-files`, | Done | claude | — | — | — |
+| ANVIL-75 | Stuck detector loopholes: a comment edit resets repe | Done | devin | #92 | 2026-11-04 | — |
+| ANVIL-76 | Polling tools (github_checks, github_pr_state) sleep | Done | claude | #85 | 2026-11-04 | — |
+| ANVIL-77 | Calling handoff doesn't end the run: the agent can k | Done | devin | — | 2026-11-04 | — |
+| ANVIL-78 | First requests on a clean database can fail with 500 | Done | devin | — | 2026-11-04 | — |
+| ANVIL-79 | Metrics: spend-log lookup scans unindexed JSON and t | Done | antigravity | #99 | 2026-11-05 | — |
+| ANVIL-80 | Jira intake loop retries every 60 s forever when Jir | Done | — | — | 2026-11-04 | — |
+| ANVIL-81 | git_push: the shared host bare clone is locked only  | Done | — | — | 2026-11-04 | — |
+| ANVIL-82 | Deterministic vendor re-import tool (three-way merge | To Do | — | — | — | — |
+| ANVIL-83 | Observability 1: persist per-step timing (tool, comm | Done | claude | — | — | — |
+| ANVIL-84 | Observability 2: persistent, structured, run-correla | Done | devin | — | 2026-11-04 | — |
+| ANVIL-85 | Observability 3: OpenTelemetry traces for runs, mode | To Do | antigravity | — | — | — |
+| ANVIL-86 | Observability 4: team flow metrics: PR lead time, re | Done | cline | #107 | 2026-11-05 | — |
+| ANVIL-87 | Offline chain integration test without an LLM: local | Done | devin | — | 2026-11-04 | — |
+| ANVIL-88 | Produce the Friday hand-over files: sandbox image ar | In Progress | — | a62e60b | 2026-11-05 | — |
+| ANVIL-89 | Speed: subagents consume 5M input tokens per TC1 run | In Progress | claude | #91 | 2026-11-04 | — |
+| ANVIL-90 | Known build recipe: [build] section in cases/*.toml  | Done | devin | #90 | 2026-11-05 | — |
+| ANVIL-91 | Point the factory at a local project in any shape: p | Done | claude | #94 | 2026-11-04 | — |
+| ANVIL-92 | Junior hand-over by tomorrow morning: refresh backlo | Done | devin | #93 | 2026-11-05 | — |
+| ANVIL-93 | Context compaction: make it visible, tuned and recov | Done | — | #98 | 2026-11-05 | — |
+| ANVIL-94 | Generative UI over AG-UI in the chat | To Do | — | — | — | — |
+| ANVIL-95 | acquire_lock waits an hour on a hand-written "agent: | Done | — | #100 | 2026-11-05 | — |
+| ANVIL-96 | Approvals panel does not live-refresh: second approv | Done | — | #108 | 2026-11-05 | — |
+| ANVIL-97 | The documented account-free start (SETUP.md step 3)  | Done | — | #112 | 2026-11-05 | — |
+| ANVIL-98 | Audit P0: bind autonomous-path tools to the run and  | Done | — | #115 | 2026-11-05 | — |
+| ANVIL-99 | Audit P0: host-side acceptance and verification must | Done | — | #113 | 2026-11-05 | — |
+| ANVIL-100 | Audit backlog (opencode 11-05): P1/P2 reliability an | To Do | — | — | — | — |
+| ANVIL-101 | v1 zip: start-api.ps1 dies without .git; localhost c | To Do | — | — | — | — |

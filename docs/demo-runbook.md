@@ -49,7 +49,7 @@ Complete these steps on the laptop while setting up the presenter display:
   ```powershell
   .\scripts\preflight.ps1 -Presenter offline
   ```
-  *Criteria:* Verifies Docker sandbox image, signed Python runtime, API port 8000, local stack health, and container hygiene. (Checks for Jira and remote submodules are skipped/ignored for offline mode).
+  *Criteria:* Reports 'PREFLIGHT RESULT: ALL CHECKS PASSED (6 passed, 2 skipped (offline))' (sandbox image, signed Python runtime, API port 8000, local stack health, and container hygiene; Jira baseline and submodule checks skip cleanly in offline mode).
 - [ ] **Stage the Target Ticket in `todo/`:**
   Copy the verified ticket from handover or cases template to `ANVIL_TICKETS_DIR\todo\RTEMS-1.json`:
   ```powershell

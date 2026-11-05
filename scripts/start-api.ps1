@@ -116,7 +116,7 @@ if (-not $env:ATLASSIAN_API_TOKEN -and $env:JIRA_API_TOKEN) {
 #    always required: the API answers 503 "Demo authentication is not configured" without it.
 Write-Host "`n3. Validating credentials..." -ForegroundColor Yellow
 $atlassianCredentials = @($env:ATLASSIAN_EMAIL, $env:ATLASSIAN_API_TOKEN | Where-Object { $_ })
-$offlineMode = ($atlassianCredentials.Count -eq 0 -and (-not $env:ATLASSIAN_SITE -or $env:ATLASSIAN_SITE -eq "https://vishal7pandey.atlassian.net" -or -not $env:ATLASSIAN_SITE.Trim()))
+$offlineMode = ($atlassianCredentials.Count -eq 0)
 $missing = @()
 if (-not $env:ANVIL_DEMO_TOKEN) { $missing += "ANVIL_DEMO_TOKEN (any string; the UI's frontend/.env.local VITE_DEMO_TOKEN must be the same)" }
 if (-not $offlineMode) {

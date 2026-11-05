@@ -166,10 +166,10 @@ Start PostgreSQL 16 (with `pgvector`) and the LiteLLM Gateway proxy:
 
 Load the offline knowledge base snapshot into PostgreSQL `pgvector`:
 
-`import-snapshot --from` takes the **directory** holding `manifest.json` (pass `--from data/kb`), **not** an individual `.gz` file. The committed snapshot (`manifest.json` and `kb-snapshot.jsonl.gz`) plus **both vector sidecar files** (`kb-snapshot-vectors.manifest.json` and `kb-snapshot-vectors.jsonl.gz`, copied from the handover folder as described in `private/handover/README.txt`) must reside in `data/kb/` before running:
+By default, `import-snapshot` loads the committed snapshot from `data/kb/` (or from `--from ..\data\kb`). If passing `--from`, specify the **directory** holding `manifest.json`, **not** an individual `.gz` file. The committed snapshot (`manifest.json` and `kb-snapshot.jsonl.gz`) plus **both vector sidecar files** (`kb-snapshot-vectors.manifest.json` and `kb-snapshot-vectors.jsonl.gz`, copied from the handover folder as described in `private/handover/README.txt`) must reside in `data/kb/` before running:
 
 ```powershell
-uv run --directory backend python -m anvil.kb import-snapshot --from data/kb
+uv run --directory backend python -m anvil.kb import-snapshot
 ```
 
 This ingests 7,573 documents and 14,654 chunks directly with pre-computed embeddings, taking ~6 minutes (367 s measured under load) and requiring **0 gateway embedding calls** without needing a live embedding provider.

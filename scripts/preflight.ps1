@@ -56,9 +56,11 @@ Write-Host ""
 $envFiles = @(
     (Join-Path $root ".env"),
     (Join-Path $backend ".env"),
-    (Join-Path $frontend ".env"),
-    "C:\Dev\projects\anvil\.env"
+    (Join-Path $frontend ".env")
 )
+if ($env:ANVIL_ENV_FILE -and (Test-Path $env:ANVIL_ENV_FILE)) {
+    $envFiles += $env:ANVIL_ENV_FILE
+}
 
 foreach ($ef in $envFiles) {
     if (Test-Path $ef) {

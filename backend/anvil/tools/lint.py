@@ -27,16 +27,19 @@ def lint_command(path: str, base: str, exclude: list[str] | None = None) -> str:
     """Shell for the sandbox: list the changed files, then run the hooks on exactly those."""
     p, b = shlex.quote(path), shlex.quote(f"origin/{base}")
     prefixes = [x for x in (e.strip().removeprefix("./") for e in exclude or []) if x]
-    drop = (f" | grep -v -E {shlex.quote('^(' + '|'.join(re.escape(x) for x in prefixes) + ')')}"
+    # NUL-separated everywhere (ANVIL-100 #23): git -z + grep -z + sort -z + xargs -0 survive any
+    # filename; the `--` before the file list keeps a file named like an option (e.g. --foo) from
+    # being parsed as one.
+    drop = (f" | grep -vz -E {shlex.quote('^(' + '|'.join(re.escape(x) for x in prefixes) + ')')}"
             if prefixes else "")
     return (
         f"cd {p} || exit 2; "
         f"if [ ! -f .pre-commit-config.yaml ]; then echo {NO_CONFIG}; exit 0; fi; "
         f"mb=$(git merge-base HEAD {b}) || exit 2; "
-        f"git diff --name-only --diff-filter=ACMR \"$mb\"{drop} | sort -u > /tmp/anvil-lint-files; "
+        f"git diff -z --name-only --diff-filter=ACMR \"$mb\"{drop} | sort -zu > /tmp/anvil-lint-files; "
         f"if [ ! -s /tmp/anvil-lint-files ]; then echo {NO_FILES}; exit 0; fi; "
-        f"echo {FILES_START}; cat /tmp/anvil-lint-files; echo {FILES_END}; "
-        f"xargs -d '\\n' -a /tmp/anvil-lint-files pre-commit run --files"
+        f"echo {FILES_START}; tr '\\0' '\\n' < /tmp/anvil-lint-files; echo {FILES_END}; "
+        f"xargs -0 -a /tmp/anvil-lint-files pre-commit run --files --"
     )
 
 

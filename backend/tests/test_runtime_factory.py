@@ -356,3 +356,13 @@ def test_github_merge_allows_the_runs_slugged_branch(monkeypatch):
     # anvil/rtems-10 must not match anvil/rtems-1
     with pytest.raises(ToolError, match="not this run's"):
         gh.github_merge("o/r", 9, work_branch="anvil/rtems-1", base="main")
+
+
+def test_run_api_cmd_passes_host_port_via_env_not_into_python():
+    """#20: run-api.cmd must not interpolate %1/%2 into the -c Python — a quote or non-numeric
+    value would inject. They travel as ANVIL_API_HOST/ANVIL_API_PORT env vars (ANVIL-100)."""
+    from pathlib import Path
+    cmd = Path(__file__).resolve().parents[2] / "scripts" / "run-api.cmd"
+    text = cmd.read_text(encoding="utf-8")
+    assert "ANVIL_API_HOST" in text and "ANVIL_API_PORT" in text
+    assert "host='%~1'" not in text and "port=%~2" not in text      # no %n inside the Python code

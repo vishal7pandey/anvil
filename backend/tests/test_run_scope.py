@@ -100,3 +100,31 @@ def test_a_pr_that_does_not_contain_the_runs_last_commit_is_flagged(gh):
 def test_the_open_pr_with_the_runs_head_decides_not_a_stale_closed_one(gh):
     gh["prs"] = [pr_at("c" * 40, state="closed"), pr_at(Heads.SHA, state="open")]   # state=all lists both
     assert run_scope.verify_outcome(RUN, Heads()) == []
+
+
+def test_jira_transition_matches_target_status_exactly_not_transition_name(monkeypatch):
+    """#21: matching the transition NAME collides (a transition "Done" whose target is another
+    status); only the target status decides (ANVIL-100)."""
+    from anvil.tools import jira
+    from anvil.tools.errors import ToolError
+    import pytest
+    transitions = [
+        {"id": "t1", "name": "Mark Done", "to": {"name": "In Review"}},
+        {"id": "t2", "name": "Resolve", "to": {"name": "Done"}},
+    ]
+    monkeypatch.setattr(jira, "request",
+                        lambda method, path, **kw: {"transitions": transitions} if method == "GET" else {})
+    out = jira.jira_transition("ANVIL-1", "Done")
+    assert out["status"] == "Done"          # transition-name "Mark Done" did not win
+    import anvil.tools.jira as j2
+    with pytest.raises(ToolError):
+        j2.jira_transition("ANVIL-1", "In Progress")   # not an available target
+
+
+def test_lint_command_uses_nul_filenames_and_dashdash():
+    """#23: the lint file list is NUL-separated end to end and the pre-commit call ends options
+    before the file list (ANVIL-100)."""
+    from anvil.tools.lint import lint_command
+    cmd = lint_command("/w", "main")
+    assert "git diff -z --name-only" in cmd and "sort -zu" in cmd
+    assert "xargs -0" in cmd and "pre-commit run --files --" in cmd

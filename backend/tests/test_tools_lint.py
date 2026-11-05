@@ -29,7 +29,7 @@ def test_command_lints_changed_files_against_the_run_base_never_all_files():
 
 def test_exclude_prefixes_are_escaped_and_dot_slash_tolerant():
     cmd = lint_command("/workspace/rtems-lwip", "main", ["./lwip/", ".github/", " "])
-    assert "grep -v -E '^(lwip/|\.github/)'" in cmd
+    assert r"grep -vz -E '^(lwip/|\.github/)'" in cmd
 
 
 def test_parse_reports_files_and_failures():

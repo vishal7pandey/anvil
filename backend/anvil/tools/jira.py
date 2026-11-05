@@ -50,7 +50,9 @@ def jira_transition(key: str, to_status: str) -> dict[str, str]:
     """Move a Jira issue to a status by name, e.g. 'In Progress', 'In Review' or 'Done'."""
     transitions = request("GET", f"/rest/api/3/issue/{key}/transitions")["transitions"]
     wanted = to_status.casefold()
-    match = next((t for t in transitions if wanted in (t["name"].casefold(), t["to"]["name"].casefold())), None)
+    # Exact match on the target status only (ANVIL-100 #21): a transition can be named after an
+    # action ("Mark Done") while its target is a different status — matching t["name"] collides.
+    match = next((t for t in transitions if wanted == t["to"]["name"].casefold()), None)
     if match is None:
         names = ", ".join(sorted({t["to"]["name"] for t in transitions}))
         raise ToolError(f"{key} cannot move to '{to_status}'. Available: {names}")

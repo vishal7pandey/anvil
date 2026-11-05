@@ -147,7 +147,7 @@ def _extract_archive(archive: Path, into: Path) -> Path:
 
     def check(name: str) -> None:
         target = (into / name).resolve()
-        if name.startswith(("/", "\\")) or ".." in re.split(r"[\\/]", name) or not str(target).startswith(str(root)):
+        if name.startswith(("/", "\\")) or ".." in re.split(r"[\\/]", name) or not target.is_relative_to(root):
             raise ValueError(f"refusing archive entry {name!r}")
 
     if archive.name.lower().endswith(".zip"):

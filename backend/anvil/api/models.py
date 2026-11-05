@@ -48,6 +48,10 @@ class Session(Base):
             "merge_policy IN ('human', 'agent-after-approval', 'agent')",
             name="ck_sessions_merge_policy",
         ),
+        CheckConstraint(
+            "mode IN ('interactive', 'autonomous')",
+            name="ck_sessions_mode",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
@@ -84,6 +88,10 @@ class Run(Base):
         CheckConstraint(
             "network IN ('offline', 'online')",
             name="ck_runs_network",
+        ),
+        CheckConstraint(
+            "mode IN ('interactive', 'autonomous')",
+            name="ck_runs_mode",
         ),
         Index("ix_runs_trigger", "trigger"),
     )

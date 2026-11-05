@@ -212,11 +212,67 @@ def page_markdown(page: dict, space_key: str) -> str:
 
 # -- main ------------------------------------------------------------------------------------------
 
+
+import re as _re
+
+
+def write_status_md(root: Path) -> int:
+    """Regenerate backlog/STATUS.md from the on-disk issue JSONs — no Jira needed (offline).
+    One table per epic: key, summary, status, owner label, merged PR/SHA, last comment, handoff scope."""
+    issues = []
+    for f in sorted((root / "backlog").glob("*/*.json")):
+        issues.append(__import__("json").loads(f.read_text(encoding="utf-8")))
+    by_epic: dict[str, list] = {}
+    for i in issues:
+        by_epic.setdefault(i.get("epic_summary") or i.get("epic") or "—", []).append(i)
+
+    def scope(labels):
+        for s in ("handoff-in", "post-handoff"):
+            if s in labels:
+                return s
+        return "—"
+
+    def merged_sha(comments, body=""):
+        text = " ".join(c.get("body", "") for c in comments) + " " + body
+        pr = _re.search(r"#(\d+).*merged|merged.*#(\d+)", text)
+        m = _re.search(r"(?:merged|sha|commit)\D{0,20}([0-9a-f]{7,40})", text, _re.I)
+        return ("#" + next(g for g in pr.groups() if g) if pr else (m.group(1)[:7] if m else "—"))
+
+    def last_comment(comments):
+        d = [c.get("created", "")[:10] for c in comments if c.get("created")]
+        return max(d) if d else "—"
+
+    anv = sum(1 for i in issues if i["key"].startswith("ANVIL-"))
+    rt = sum(1 for i in issues if i["key"].startswith("RTEMS-"))
+    lines = ["# Backlog status — freeze snapshot", "",
+             "Regenerate: `uv run python scripts/export_trackers.py --status-md` (offline).",
+             f"Counts: {anv} ANVIL + {rt} RTEMS = {len(issues)} (from the on-disk JSON).", ""]
+    for epic in sorted(by_epic):
+        rows = sorted(by_epic[epic], key=lambda x: int(_re.search(r"\d+", x["key"]).group()))
+        lines += [f"## {epic}  ({len(rows)})", "",
+                  "| key | summary | status | owner | merged | last comment | handoff scope |",
+                  "|-----|---------|--------|-------|--------|--------------|---------------|"]
+        for i in rows:
+            owner = next((l.replace("agent-", "") for l in i["labels"] if l.startswith("agent-")), "—")
+            lines.append("| {} | {} | {} | {} | {} | {} | {} |".format(
+                i["key"], i["summary"][:52].replace("|", "/"), i["status"], owner,
+                merged_sha(i.get("comments", []), i.get("summary", "")),
+                last_comment(i.get("comments", [])), scope(i["labels"])))
+        lines.append("")
+    (root / "backlog" / "STATUS.md").write_text("\n".join(lines), encoding="utf-8")
+    return len(issues)
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", default="..", help="repo root (default: parent of backend/)")
+    ap.add_argument("--status-md", action="store_true",
+                    help="regenerate backlog/STATUS.md from the on-disk JSON only — offline, no Jira fetch")
     args = ap.parse_args()
     root = Path(args.out).resolve()
+
+    if args.status_md:
+        print(f"STATUS.md: {write_status_md(root)} issues (offline)")
+        return 0
 
     index = []
     for project in JIRA_PROJECTS:
@@ -240,6 +296,8 @@ def main() -> int:
             (folder / f"{slug(page['title'])}.md").write_text(page_markdown(page, space), encoding="utf-8",
                                                               newline="\n")
         print(f"confluence {space}: {len(pages)} pages")
+
+    print(f"STATUS.md: {write_status_md(root)} issues")
     return 0
 
 

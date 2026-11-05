@@ -56,6 +56,40 @@ def host_run(sandbox: Any, command: str, *, timeout: int | None = None) -> Any:
     return runner(command, timeout=timeout) if runner else sandbox.execute(command, timeout=timeout)
 
 
+# Host-side VERIFICATION must not run through the agent's shell (ANVIL-99). Every sandbox command used to be
+# `bash -lc`, a login shell that reads ~/.profile and ~/.bashrc, files the agent owns and can write: a PATH
+# shim, a shell function or BASH_ENV there could make `git` or `python3` report whatever the agent wanted, so
+# acceptance checks and `verify_outcome` were only as honest as the agent's dotfiles. A verification command
+# now runs with an empty environment, no shell startup files, absolute tool paths, and git configuration taken
+# from the environment (which outranks every config file, including the agent-writable .git/config).
+VERIFY_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+VERIFY_ENV = [
+    "HOME=/nonexistent", "LANG=C.UTF-8", f"PATH={VERIFY_PATH}",
+    "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
+    "GIT_CONFIG_COUNT=3",
+    "GIT_CONFIG_KEY_0=core.fsmonitor", "GIT_CONFIG_VALUE_0=false",      # would run a program on `git status`
+    "GIT_CONFIG_KEY_1=core.hooksPath", "GIT_CONFIG_VALUE_1=/dev/null",  # no hooks
+    "GIT_CONFIG_KEY_2=safe.directory", "GIT_CONFIG_VALUE_2=*",          # ignored in global/repo config now
+]
+# Files the agent must not be able to change after the host uploaded them (acceptance check scripts).
+TRUSTED_DIR = "/opt/anvil"
+
+
+def verify_run(sandbox: Any, command: str, *, timeout: int | None = None) -> Any:
+    """Run a command whose output decides whether the agent's work counts as verified: the hardened,
+    non-login, clean-environment path when the sandbox offers `run_verified` (DockerSandbox), else the
+    plain host_run (test fakes)."""
+    runner = getattr(sandbox, "run_verified", None)
+    return runner(command, timeout=timeout) if runner else host_run(sandbox, command, timeout=timeout)
+
+
+def upload_trusted(sandbox: Any, files: list[tuple[str, bytes]]) -> list[Any]:
+    """Upload files the agent cannot change afterwards (root-owned, under TRUSTED_DIR) when the sandbox
+    offers `upload_trusted`, else plain `upload_files` (test fakes)."""
+    uploader = getattr(sandbox, "upload_trusted", None)
+    return uploader(files) if uploader else sandbox.upload_files(files)
+
+
 
 def refusal(command: str) -> str | None:
     """The reason `command` is refused in the sandbox, or None."""
@@ -189,7 +223,13 @@ class DockerSandbox(BaseSandbox):
         output, never cut or spilled, never shown to the agent. Same refusals and time budget."""
         return self._run(command, timeout=timeout, for_model=False)
 
-    def _run(self, command: str, *, timeout: int | None, for_model: bool) -> ExecuteResponse:
+    def run_verified(self, command: str, *, timeout: int | None = None) -> ExecuteResponse:
+        """A verification command (acceptance checks, `verify_outcome`): complete output like run_internal, but
+        run in a clean environment, with no login shell and no shell startup files, so the agent's dotfiles,
+        PATH and git config cannot change what it reports (ANVIL-99)."""
+        return self._run(command, timeout=timeout, for_model=False, verify=True)
+
+    def _run(self, command: str, *, timeout: int | None, for_model: bool, verify: bool = False) -> ExecuteResponse:
         requested = timeout if timeout is not None else self._default_timeout
         reason = refusal(command)
         if reason:
@@ -198,14 +238,20 @@ class DockerSandbox(BaseSandbox):
         if effective is None:
             return ExecuteResponse(output="[anvil] refused: the run's time budget is used up",
                                    exit_code=REFUSED_EXIT_CODE)
-        wrapped = command if effective == 0 else (
-            f"timeout --kill-after=10 {int(effective)} bash -lc {shlex.quote(command)}"
-        )
+        if verify:
+            # No outer shell at all: nothing the agent wrote is read before the command starts.
+            argv = ["/usr/bin/env", "-i", *VERIFY_ENV]
+            if effective:
+                argv += ["/usr/bin/timeout", "--kill-after=10", str(int(effective))]
+            argv += ["/bin/bash", "--noprofile", "--norc", "-c", command]
+        else:
+            wrapped = command if effective == 0 else (
+                f"timeout --kill-after=10 {int(effective)} bash -lc {shlex.quote(command)}"
+            )
+            argv = ["bash", "-lc", wrapped]
         started = time.monotonic()
         try:
-            result = self._container.exec_run(
-                ["bash", "-lc", wrapped], workdir=self._workdir, demux=False
-            )
+            result = self._container.exec_run(argv, workdir=self._workdir, demux=False)
         except APIError as exc:
             return ExecuteResponse(output=f"sandbox error: {exc.explanation or exc}", exit_code=None)
         full = result.output or b""
@@ -297,6 +343,34 @@ class DockerSandbox(BaseSandbox):
                 info.size = len(content)
                 info.mode = 0o644
                 info.uid = info.gid = self._uid
+                info.mtime = int(time.time())
+                tar.addfile(info, io.BytesIO(content))
+            try:
+                ok = self._container.put_archive(parent, buf.getvalue())
+            except (APIError, NotFound):
+                ok = False
+            responses.append(FileUploadResponse(path=path, error=None if ok else "permission_denied"))
+        return responses
+
+    def upload_trusted(self, files: list[tuple[str, bytes]]) -> list[FileUploadResponse]:
+        """Upload files the agent cannot change afterwards (ANVIL-99): the directory is created by root and
+        the files are root-owned and read-only for the agent. Paths must be under TRUSTED_DIR, without `..`."""
+        responses: list[FileUploadResponse] = []
+        for path, content in files:
+            if not path.startswith(TRUSTED_DIR + "/") or ".." in path.split("/"):
+                responses.append(FileUploadResponse(path=path, error="invalid_path"))
+                continue
+            parent = posixpath.dirname(path)
+            mk = self._container.exec_run(["mkdir", "-p", parent], user="root")
+            if mk.exit_code != 0:
+                responses.append(FileUploadResponse(path=path, error="permission_denied"))
+                continue
+            buf = io.BytesIO()
+            with tarfile.open(fileobj=buf, mode="w") as tar:
+                info = tarfile.TarInfo(name=posixpath.basename(path))
+                info.size = len(content)
+                info.mode = 0o644
+                info.uid = info.gid = 0
                 info.mtime = int(time.time())
                 tar.addfile(info, io.BytesIO(content))
             try:

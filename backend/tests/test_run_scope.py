@@ -61,3 +61,42 @@ def test_run_tools_have_no_repo_base_or_ticket_parameters(monkeypatch):
         if tool.__module__ == "anvil.tools.run_scope":
             assert not {"repo", "base", "key"} & set(inspect.signature(tool).parameters), tool.__name__
     assert "jira_comment" not in [t.__name__ for t in run_scope.run_tools({**RUN, "jira_key": None}, Sandbox())]
+
+
+# -- ANVIL-99: verification fails closed and looks at the right PR -------------------------------------------
+
+class GitFails:
+    """git cannot be read (corrupt repo, missing origin ref, broken sandbox): used to read as 'nothing changed'."""
+
+    def execute(self, cmd, timeout=None):
+        return SimpleNamespace(output="fatal: bad revision 'origin/x'\n", exit_code=128)
+
+
+class Heads(Sandbox):
+    SHA = "a" * 40
+
+    def execute(self, cmd, timeout=None):
+        if "rev-parse HEAD" in cmd:
+            return SimpleNamespace(output=self.SHA + "\n", exit_code=0)
+        return super().execute(cmd, timeout)
+
+
+def pr_at(sha, state="open"):
+    return {"number": 10, "state": state, "base": {"ref": "tc1/5776-base"}, "head": {"sha": sha}}
+
+
+def test_a_failed_git_command_is_a_failed_verification_not_nothing_changed(gh):
+    gh["prs"] = []
+    problems = run_scope.verify_outcome(RUN, GitFails())
+    assert problems and all("could not verify the run" in p and "git exit 128" in p for p in problems)
+
+
+def test_a_pr_that_does_not_contain_the_runs_last_commit_is_flagged(gh):
+    gh["prs"] = [pr_at("b" * 40)]
+    problems = run_scope.verify_outcome(RUN, Heads())
+    assert any("later work was never pushed" in p and "bbbbbbb" in p and "aaaaaaa" in p for p in problems)
+
+
+def test_the_open_pr_with_the_runs_head_decides_not_a_stale_closed_one(gh):
+    gh["prs"] = [pr_at("c" * 40, state="closed"), pr_at(Heads.SHA, state="open")]   # state=all lists both
+    assert run_scope.verify_outcome(RUN, Heads()) == []

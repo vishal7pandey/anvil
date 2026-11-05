@@ -547,3 +547,30 @@ def test_executor_labels_sandbox_with_owner(monkeypatch):
     assert spec.labels["anvil.repo"] == "vishal7pandey/rtems"
 
 
+
+
+def test_handoff_run_without_evidence_is_kept_even_with_ended_at(db_session: DBSession):
+    """#13: a handoff run that ended before its evidence posted keeps its sandbox —
+    ended_at or not (ANVIL-100)."""
+    sess_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+    old = now - timedelta(hours=5)
+    session_obj = Session(
+        id=sess_id, user_id="demo", repo="vishal7pandey/rtems", environment="test",
+        mode="autonomous", merge_policy="human", model_profile="default")
+    db_session.add(session_obj)
+    run = Run(
+        id=uuid.uuid4(), session_id=sess_id, trigger="test", repo="vishal7pandey/rtems",
+        status="handoff", mode="autonomous", input_text="Fix issue",
+        started_at=old, ended_at=old + timedelta(hours=1), artifacts=[])
+    db_session.add(run)
+    db_session.commit()
+
+    c = MagicMock()
+    c.name = f"anvil-sbx-{str(sess_id)[:24]}"
+    c.id = "c-ho-1"
+    c.labels = {"anvil.session_id": str(sess_id)}
+    c.attrs = {"Created": old.isoformat() + "Z"}
+
+    res = evaluate_container_for_reap(c, db_session, max_age_hours=2.0, now=now)
+    assert not res.should_reap and "handoff evidence" in res.reason.lower()

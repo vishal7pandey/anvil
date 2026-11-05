@@ -367,3 +367,20 @@ async def test_compaction_is_reported_as_an_event_in_order():
     assert compacted["data"]["cutoff_index"] == 42 and compacted["agent"] == "main"
     assert types.index("context.compacted") < types.index("message")   # it happened before the next reply
     assert [e["seq"] for e in events] == list(range(1, len(events) + 1))
+
+
+async def test_stream_closes_at_waiting_approval_not_after_the_rest():
+    """An interrupt pauses the run: the generator must close there, not keep streaming the items that
+    follow — a suspended generator's finally would run late (on GC) and clear the RESUMED run's
+    cancel + deadline (ANVIL-100)."""
+    class _Intr:      # the interrupt object shape _map_interrupts reads
+        id = "a1"
+        value = {"action_requests": [{"name": "jira_comment", "args": {}, "description": "post"}]}
+
+    interrupt_item = ((), "updates", {"__interrupt__": [_Intr()]})
+    more = [((), "updates", {"model": {"messages": [AIMessage(content=f"x{i}")]}}) for i in range(10)]
+    ex = OfflineExecutor(agent_factory=factory_for([interrupt_item] + more))
+    events = await collect(ex.start(RUN, "x"))
+    assert events[-1]["data"]["status"] == "waiting_approval"     # ended AT the pause
+    assert not any(e["type"] == "message" for e in events)        # the 10 later items never streamed
+    assert ex._cancel.get(RUN["run_id"]) is None                  # finally ran: own state popped

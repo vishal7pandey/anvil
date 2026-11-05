@@ -1,7 +1,7 @@
 {
   "key": "ANVIL-63",
   "type": "Story",
-  "status": "In Progress",
+  "status": "Done",
   "priority": "Highest",
   "summary": "Setup guide for a fresh laptop without our accounts (zip to first run)",
   "labels": [
@@ -15,8 +15,8 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-04T18:36:50.389+0530",
-  "updated": "2026-11-05T07:51:41.967+0530",
-  "resolved": null,
+  "updated": "2026-11-05T10:50:35.413+0530",
+  "resolved": "2026-11-05T10:50:35.388+0530",
   "links": [],
   "subtasks": [],
   "description": "Source: team sync 2026-11-04. The team was blocked on Docker, the sandbox image, GitHub access and the KB build, and didn't know which steps they could skip. For example, `export_trackers.py` isn't needed because `backlog/` already has the tickets.\n\n**Want:** `docs/SETUP.md`, one path from the repo zip to a first run:\n\n* prerequisites (Docker Desktop, Python via uv, Node) and how to check each;\n* `.env` from `.env.example`, listing which keys are required and which are optional;\n* sandbox image from the shared file;\n* KB from the shared file;\n* `start-api.ps1` and the frontend;\n* a first TC1 run with a local ticket and a local repo;\n* a \"what you can skip\" table;\n* troubleshooting for the errors we've actually seen.\n\n**Acceptance:** someone who has never run Anvil follows it on a clean machine with no GitHub or Atlassian access and gets a run started. Every gap they hit gets fixed in the doc.\n",
@@ -36,6 +36,10 @@
     {
       "created": "2026-11-05T07:51:41.967+0530",
       "body": "[antigravity] Opened PR #114 (https://github.com/vishal7pandey/anvil/pull/114) resolving the three junior-path setup and preflight issues reported by Devin:\n\n1. **Offline Preflight Verification (`scripts/preflight.ps1`)**:\n\n* Check 6 (Jira baseline) skips cleanly (`[SKIP]`) when no Atlassian credentials (`ATLASSIAN_EMAIL`/`ATLASSIAN_API_TOKEN`) are configured in `.env` or process environment.\n* Check 7 (Submodule reachability) skips cleanly (`[SKIP]`) if upstream git networks are unreachable in offline mode, or when `-Offline` switch is passed.\n* Preflight result summary now counts passes and skips cleanly: `PREFLIGHT RESULT: ALL CHECKS PASSED (6 passed, 2 skipped (offline))` (or `7 passed, 1 skipped` if internet is reachable), exiting 0.\n\n1. **Fixed Unhandled MethodInvocationException**:\n\n* Safely guards commit date parsing in Check 3 when running from an unzipped source tree where git history / `origin/main` is absent.\n\n1. **SETUP.md Documentation Updates**:\n\n* Step 4 clarifies that `import-snapshot --from` takes the **directory** holding `manifest.json` (`--from data/kb`), not individual `.gz` files, and notes that both vector sidecar files must reside in `data/kb/`.\n* Added honest setup benchmark timings from empirical clean-laptop rehearsals: initial `uv sync` (~16 s), sandbox image hash check (~7 s), API startup (~40 s), and KB snapshot import (~6 min / 367 s under load).\n* Reinforced that `ANVIL_DEMO_TOKEN` must be in `.env` (API reads file on disk, not shell).\n\n1. **Offline Startup (`start-api.ps1` & `.env.example`)**:\n\n* Cleared `ATLASSIAN_SITE=` by default in `.env.example` and allowed `start-api.ps1` to treat unset email/token as offline mode even if site URL was untouched.\n\nReady for review by Claude.\n"
+    },
+    {
+      "created": "2026-11-05T10:50:34.143+0530",
+      "body": "[claude] Done. The acceptance was \"someone who has never run Anvil follows the guide on a clean machine with no GitHub/Atlassian access and gets a run started\". Antigravity's rehearsal on 2026-11-05 08:45 met it:\n\n* clean `git archive 037e564` at a path with spaces, plus devin's v1 zip;\n* zero Atlassian credentials, throwaway DB `anvil_clean_ag`;\n* uv sync 15 s, start-api 38 s, a file ticket (`GATE-1.json`) taken in and a run started, then approval and rejection exercised in the UI.\n\nThe setup blocker it found (start-api crashing with no `.git`) is fixed by #118 (ANVIL-101, 3d1d581), and SETUP was corrected in #114. A full TC1 run to completion is not part of this ticket; it's tracked on ANVIL-88 and ANVIL-89.\n"
     }
   ]
 }

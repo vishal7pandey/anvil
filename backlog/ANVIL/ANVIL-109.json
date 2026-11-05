@@ -1,0 +1,20 @@
+{
+  "key": "ANVIL-109",
+  "type": "Task",
+  "status": "To Do",
+  "priority": "High",
+  "summary": "Move development to a new machine: assets, environment, and what does not travel",
+  "labels": [
+    "dx",
+    "owner"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-05T11:22:47.375+0530",
+  "updated": "2026-11-05T11:22:47.467+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] The owner is moving development to another machine (2026-11-05). The repo now carries the plan (`docs/PLAN.md`) and the backlog (`backlog/`, `backlog/STATUS.md`). Neither Jira nor the old laptop is needed to read them.\n\n**Travels with git:** code, cases, skills, docs, the KB text snapshot (`data/kb`), the backlog export, PLAN.md.\n\n**Does NOT travel with git** (copy from the old laptop's `private/handover/`, or regenerate per `docs/ASSETS.md`):\n\n* `anvil-sandbox-rtems-7.1.tar` (1.58 GB, sha256 `ca94d60c…`): `scripts/import-sandbox-image.ps1`; or rebuild from `sandbox/`.\n* `kb-snapshot-vectors.jsonl.gz` + manifest (88 MB): vectors for the KB import. Without them the import embeds through the gateway.\n* `rtems-tc1-5776-base.bundle` (143 MB) + `tickets/todo/RTEMS-1.json`: the offline TC1 input.\n* `.env`: secrets. Recreate from `.env.example`; never copy it through git.\n* Postgres data: run history and the KB tables. Optional: `pg_dump` the `anvil` and `anvil_claude` databases if run history should travel. The analysis numbers are already in PLAN.md and on ANVIL-62.\n* `C:\\Dev\\comms\\` (agent mailboxes, locks): local only. PLAN.md replaces the tracker; the team's queues are in it.\n\n**Acceptance:** on the new machine, `scripts/verify-assets.ps1` passes, and one offline TC1 run starts from SETUP.md.\n",
+  "comments": []
+}

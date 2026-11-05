@@ -27,3 +27,4 @@ kb/local/
 data/sandbox/*.tar
 data/sandbox/*.tar.gz
 data/sandbox/*.tar.zst
+.env.local

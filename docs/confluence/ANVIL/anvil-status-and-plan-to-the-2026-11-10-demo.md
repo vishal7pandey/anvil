@@ -1,81 +1,82 @@
-<!-- Confluence ANVIL page 28639233, version 4, exported for offline use; parent 28475566 -->
+<!-- Confluence ANVIL page 28639233, version 5, exported for offline use; parent 28475566 -->
 
 # Anvil: status and plan to the 2026-11-10 demo
 
-Living page, maintained by claude (PM). Last update: 2026-11-04 05:30 IST.
+# Anvil status: 2026-11-05 (night)
 
-## Team (3 active agents, one laptop, one GitHub + Atlassian account)
+_Maintained by claude (PM/architect). Source of truth: GitHub PRs and the ANVIL board (138)._
 
-| Agent | Owns | Open work | Reviews |
-|---|---|---|---|
-| claude | PM, architect, runtime, API (ANVIL-3); merges approved PRs | PR #51 (ANVIL-41), PR #52 (ANVIL-40), M1 re-run via intake (ANVIL-24/19), TC2 run 6 (ANVIL-21), ANVIL-43/44/47 | devin's and antigravity's PRs |
-| devin | Integrations, TC1 eval runs | Review #51 (gates the rehearsals); ANVIL-42 second case; ANVIL-20 evidence | claude's PRs |
-| antigravity | Scenarios, QA, runbook | Holds the build lock: 3 recorded TC1 rehearsals (ANVIL-32) after #51; PR #53 start-api (changes requested); review #52 |  |
-| cline | Parked | ANVIL-45 mailing lists: claude takes it over if there's no reply by 11-04 12:00 |  |
-| ~~codex~~, ~~copilot~~ | Out of credits | Work reassigned |  |
+## Goals
 
-**Merge rule:** claude merges when the assigned reviewer has posted `REVIEW (<name>): APPROVE` after the last commit, CI is green, and there are no open change requests. Force-push is blocked: merge main into branches instead of rebasing.
+* **Friday 11-06:** the owner's team demos Anvil on their own laptops, **offline** (no GitHub, no Jira).
+* **Thursday morning:** the codebase is handed to the owner's juniors. They must be able to point the factory at their own project, in any shape.
+* **11-10:** RFP demo (TC1-TC4).
 
-## Milestones
+## Done (merged)
 
-| Milestone | Exit | Date | State |
-|---|---|---|---|
-| M0 Foundations | mirrors, trackers, image, local stack | 11-03 | **Done.** Demo image `anvil-sandbox-rtems:7.1` (local only; GHCR push waits on the owner, ANVIL-48) |
-| M1 Walking skeleton | UI -> API -> agent -> sandbox streamed | 11-05 | **Nearly done.** Intake starts a real run 52 s after the label. The first M1 run got the fix right but died at `git_push` (fixed in #45). Still to do: the re-run through intake, and approve/reject/cancel on an interactive session (claude's lock slot) |
-| M2 TC1 closed loop | ticket -> fix -> tests -> pre-commit -> PR -> CI -> merge; forced handoff | 11-07 | **On track after #51.** 3/3 runs found the upstream root cause (table below). Runs 2-3 handed off on the time budget, for a reason we found and fixed. Handoff path proven on RTEMS-4 (draft PR opened by the handoff) |
-| M3 TC2 + TC3 | upgrade PR with SBOM/CVE delta; CRA artefacts | 11-08 | **At risk.** TC2 run 6 is in claude's lock slot. If it hands off, the fallback track (draft PR + CI `sbom` job) becomes the demo path |
-| M4 TC4 + rehearsal | KB investigation, metrics, 3 clean TC1 runs | 11-09 | **KB complete:** 7,573 docs / 14,654 chunks (all RTEMS GitLab issues + MRs with comments, docs, synthetic Confluence). TC4 acceptance is 3/3 at rank 1 on the full KB. Rehearsals start after #51 merges |
+* **Offline path:**
 
-## TC1 consistency (case rtems-5776, upstream fix a62e60b5, base `tc1/5776-base`)
+  * local folder source, with a patch and a bundle out (#74);
+  * local JSON ticket tracker (#72);
+  * KB snapshot with vectors (#73);
+  * sandbox image as a file, checksummed (#77);
+  * SETUP.md (#82).
+* **Correctness (from the DFMEA):**
 
-| Run | Who | Outcome | Time | Files | Root cause (0-2) | Hunks vs upstream (±3) | Tests on erc32/SIS |
-|---|---|---|---|---|---|---|---|
-| 1 (9b562d72) | claude | succeeded | 18m40s | mutexinit.c, psx05/init.c (= upstream) | 2 | 2/3 | psx05 1/1; psxtests 87/87 |
-| 2 (7bc18405) | devin | handoff at budget | 61m36s | mutexinit.c + a new test psxmutexinvalid01 (+ build spec) | 2 | 2/3 | new test passes, psx05 passes; no failing-before-fix evidence; full suite not run |
-| 3 (0530b3c2) | devin | handoff at budget | 50m59s | mutexinit.c, psx05/init.c (= upstream) | 2 | 2/3 | psx05 **fails before the fix**, passes after; psxtests 87/87 |
+  * graph thread per run (#69);
+  * one active run per session (#76);
+  * handoff ends the run (#75);
+  * user bootstrap race (#70);
+  * push lock (#87);
+  * intake backoff (#84);
+  * CI polling respects cancel and the time budget (#85);
+  * lint only the changed files (#71).
+* **Observability:**
 
-* All three runs defer `the_mutex->flags = flags` until validation has passed. That is the upstream root cause; upstream stores the flags slightly later, after queue init, so 2/3 hunks is the ceiling for this equivalent fix.
-* **Why runs 2-3 handed off (ANVIL-41):** each had its fix by minute 12-13. Each then ran `pre-commit run --all-files` over the RTEMS tree (30 min), although the skill says `--files`. Also, the budget was only checked between tool calls. **Decision: keep 45 min.** PR #51 makes the sandbox enforce the budget inside a command and refuse whole-repo pre-commit.
-* Sandbox setup takes about 6 min before the first tool call. That's outside the budget but visible on a demo clock: a follow-up to look at.
+  * per-step timing and `python -m anvil.analyze` (#81);
+  * run-tagged JSON logs plus full command output (#83).
+* **UI:**
 
-## Changes since 11-03 21:20
+  * the chat shows a run as a conversation (#68);
+  * New Session dialog (#86);
+  * cost meter (#88);
+  * app icon (#78).
+* **Tests:** the offline chain test, local ticket → patch, with no LLM in about 4 min (#80).
 
-* **Generic bug-replay cases (ANVIL-38, #48/#49):**
+## Why runs were slow (rehearsal 2, 48 min, measured with `anvil.analyze`)
 
-  * `cases/<id>.toml` declares the upstream fix, the withheld issues/MRs/commits, the base (`fix^` + infra overlay, built with git plumbing), the ticket and the scoring.
-  * The KB leak guard is the union over all cases. No TC1 constants remain in the code.
-* **KB is complete (ANVIL-39):** all RTEMS GitLab issues and MRs with comments, via GraphQL. The 6 withheld items of each kind are excluded, and leak scans are clean.
-* **Fixes merged:** tool errors are returned to the agent instead of killing the run (#45); the intake re-runs a re-labelled ticket after a finished run (#50).
-* **Open PRs:**
+* Tools 27 min, model 18 min.
+* The builder subagent used **5.15M input tokens**, because each command could put up to 512 KB of output into its context. Fix: #91 bounds this to about 16 KB, with the full output kept on disk. Measured in Thursday's dry run.
+* Five guessed `waf configure` variants. Fix: #90, a build recipe in the case.
+* About 2.5 s per sandbox file operation (post-Friday lever).
 
-  * #51 time budget (review: devin)
-  * #52 "push before opening a PR" (review: antigravity)
-  * #53 start-api script (changes requested: secrets in a temp file)
-* **Discord:** the RTEMS Discord belongs to the RTEMS project. Reading it needs a bot invited by their admins; we don't scrape it with a user token. The KB uses GitLab now, and mailing lists are next (ANVIL-45).
+## Open for Thursday
 
-## Build lock queue (`comms/locks/rtems-build.lock`)
+| Item | Owner | State |
+|---|---|---|
+| ANVIL-91: a local project in any shape (plain folder, any branch, archive, spaces) | claude | PR going up tonight |
+| ANVIL-92: junior hand-over (export, HANDOFF.md, verified zip) | devin | started |
+| #91: bounded command output | claude | waiting on devin's re-review |
+| #90: build recipe | devin | changes requested (prove it runs) |
+| #92: stuck-detector loopholes | devin | changes requested |
+| #89: sandbox reaper | antigravity | changes requested (ownership) |
+| #79: reopen a session | cline | no new commits; deadline 09:30, then devin |
+| ANVIL-88: hand-over files | all | TC1 bundle, ticket and KB done; image tar pending (antigravity) |
+| Dry run from SETUP.md + one real offline TC1 run | antigravity | 15:00-18:00 |
 
-antigravity (3 rehearsals, after #51) -> claude (M1 re-run via intake; TC2 run 6).
+## Team rules (since the 11-04 retro)
 
-## Decisions (still valid)
+* Every PR has a `Proven by:` line naming a test on the real path.
+* Status = GitHub.
+* An approval doesn't override an open CHANGES REQUESTED.
+* Docs are executed before they merge.
+* Done = acceptance met.
+* One shared GitHub and Jira account: sign everything, and never write @agent.
 
-* Harness: LangChain Deep Agents. Gateway: LiteLLM -> OpenAI. One Docker sandbox per session.
-* No webhooks: PR and check state are polled. RTEMS tickets get the label `anvil-in-review`.
-* `git_push` and `github_merge` refuse `.github/` changes on the host side. In interactive mode, outward tools pause for approval; in autonomous mode, only merge does.
-* Answer-leak controls:
+## After Friday
 
-  * single-branch clone, and the sandbox goes offline after checkout;
-  * the KB excludes the withheld set of every case (a time-based guard is planned in ANVIL-43);
-  * scoring against the upstream fix runs host-side only.
-* The `anvil` label on an RTEMS ticket starts a real run.
-* Run budgets: 45 min, 150 tool calls; the time budget is enforced inside commands since #51.
-
-## Risks
-
-| Risk | Mitigation |
-|---|---|
-| Rehearsals start before #51 | antigravity holds them until claude says "merged, go" |
-| Reviews stall overnight (agents idle) | Owner nudges devin/antigravity; claude merges only with reviewer approval |
-| TC2 doesn't converge before 11-10 | Run 6 next; fallback track ready |
-| One laptop, one build lock, 10+ stale sandboxes | Strict lock queue; cleanup in ANVIL-47 |
-| Scope creep before 11-10 | TC1 must be flawless. TC2-TC4 degrade first |
+* TC2 primary-path decision (ANVIL-21).
+* TC3 re-run (ANVIL-50).
+* Traces (ANVIL-85).
+* UI redesign (ANVIL-53).
+* Owner items (ANVIL-48).

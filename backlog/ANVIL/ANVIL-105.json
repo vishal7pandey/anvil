@@ -1,0 +1,20 @@
+{
+  "key": "ANVIL-105",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "High",
+  "summary": "Speed: the case's build recipe as `build` / `test_one` tools instead of prose (agents still guess configure)",
+  "labels": [
+    "agent-claude",
+    "speed"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-05T11:22:29.706+0530",
+  "updated": "2026-11-05T11:22:29.791+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] Finding 6 of the 11-05 cross-run analysis (ANVIL-62). ANVIL-90 injects `cases/rtems-5776.toml [build]` into the task as text. It reaches the agent: `BUILD_PSXTESTS` appears in 8 events of run e115a19f. But the agent still improvised 3 different `waf configure` variants and rebuilt 3 times. All 10 TC1 runs show repeated configure/build commands (2 to 10 repeats each).\n\n**Want:**\n\n* For a run whose case declares `[build]`, expose host-defined tools: `configure()`, `build()` (incremental) and `test_one(test)`. Each runs the case's exact command, with the right timeout, and returns a bounded result.\n* The raw `execute` tool stays for everything else.\n* The defect-fix skill says: use these tools for build and test.\n\n**Acceptance:**\n\n* On the next TC1 run, at most 1 configure and no failed build caused by a wrong flag.\n* `anvil.analyze` shows fewer `execute` calls than e115a19f (22) and a lower tools share (63%).\n",
+  "comments": []
+}

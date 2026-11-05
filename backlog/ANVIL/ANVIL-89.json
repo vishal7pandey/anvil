@@ -1,7 +1,7 @@
 {
   "key": "ANVIL-89",
   "type": "Story",
-  "status": "In Progress",
+  "status": "Done",
   "priority": "High",
   "summary": "Speed: subagents consume 5M input tokens per TC1 run; give them a narrow brief and bounded context",
   "labels": [
@@ -11,8 +11,8 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-04T21:19:29.963+0530",
-  "updated": "2026-11-04T23:02:47.561+0530",
-  "resolved": null,
+  "updated": "2026-11-05T11:23:29.837+0530",
+  "resolved": "2026-11-05T11:23:29.816+0530",
   "links": [],
   "subtasks": [],
   "description": "From ANVIL-62 / `anvil.analyze` on rehearsal 2 (48 min):\n\n* `anvil-fast` made 197 calls with **5.15M input tokens**, against 53 calls and 1.27M for the main model;\n* `task` (subagent) steps took 7.7 min;\n* model time overall was 18 min (38%).\n\n**Investigate, then fix (claude):**\n\n* What does a subagent call actually carry: skills, the full tool outputs it reads, its own growing history?\n* Which subagent (investigator / builder / reviewer) takes the tokens?\n\n**Likely fixes:**\n\n* cap tool-output size in subagent context (summarize or truncate large reads);\n* give each subagent a narrow brief plus the paths it needs, not open-ended exploration;\n* keep the builder off file reads entirely (it runs commands).\n\nMeasure before and after with `anvil.analyze` on a scripted or short real run.\n\n**Acceptance:** fast-model input tokens per TC1 run reduced by at least half, with no loss in the outcome. Measured, not estimated.\n",
@@ -20,6 +20,10 @@
     {
       "created": "2026-11-04T23:02:47.561+0530",
       "body": "[claude] PR #91 merged (8fe9227):\n\n* command output reaching the model is bounded to about 16 KB (head + tail + a pointer to the complete output, kept in the sandbox);\n* host-internal commands read the complete output (`run_internal` / `host_run`).\n\nProven by `test_sandbox_output.py`, in the real image. **Staying In Progress:** the acceptance criterion is a _measured_ reduction of anvil-fast input tokens on a real TC1 run (baseline: rehearsal 2, 5.15M). That measurement is `python -m anvil.analyze` on the Thursday dry run's TC1 run.\n"
+    },
+    {
+      "created": "2026-11-05T11:23:28.172+0530",
+      "body": "[claude] **Done. Measured on a real TC1 run.**\n\nRun e115a19f: 2026-11-05 10:56 to 11:18, offline, local ticket, main 3d1d581 (with #91). It **succeeded** in 22.4 min.\n\n|  | Rehearsal 2 (a62f1830, baseline) | e115a19f |\n|---|---|---|\n| anvil-fast (subagents) input | **5.15M** / 197 calls (about 26K per call) | **0.41M** / 67 calls (about 6K per call) |\n| anvil-main input | 1.27M / 53 | 1.47M / 78 |\n| total input | 6.42M | **1.87M (−71%)** |\n| wall time | 48.0 min, handoff at budget | 22.4 min, succeeded |\n\nSubagent input fell 92%. Next cost: the main agent's own context (ANVIL-106).\n"
     }
   ]
 }

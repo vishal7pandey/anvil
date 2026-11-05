@@ -5,6 +5,7 @@
   "priority": "Medium",
   "summary": "Deterministic vendor re-import tool (three-way merge) for component upgrades",
   "labels": [
+    "agent-devin",
     "dfmea",
     "post-demo",
     "tc2"
@@ -12,7 +13,7 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-04T18:39:41.784+0530",
-  "updated": "2026-11-04T18:39:41.878+0530",
+  "updated": "2026-11-05T10:50:57.337+0530",
   "resolved": null,
   "links": [],
   "subtasks": [],

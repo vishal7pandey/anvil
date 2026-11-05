@@ -1,0 +1,20 @@
+{
+  "key": "ANVIL-103",
+  "type": "Bug",
+  "status": "To Do",
+  "priority": "High",
+  "summary": "Agents pass execute timeouts in milliseconds; the tool refuses them (63 wasted round-trips over 10 runs)",
+  "labels": [
+    "agent-claude",
+    "speed"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-05T11:16:45.730+0530",
+  "updated": "2026-11-05T11:16:45.900+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] Found in the 11-05 cross-run analysis (comment on ANVIL-62).\n\n**Symptom:** the agent (mostly subagents) calls `execute` with `timeout=120000` or `360000`, meaning milliseconds. deepagents' FilesystemMiddleware reads the value as seconds and refuses it: `Error: timeout 120000s exceeds maximum allowed (3600s).` The agent then retries the same command without a timeout. Every configure and every build pays one extra model round-trip.\n\n**Count** (`tool.result` events containing \"exceeds maximum allowed\"):\n\n| Run | Count |\n|---|---|\n| 8e9cec14 | 20 |\n| 750cffd7 | 8 |\n| e115a19f (today's offline TC1) | 7 |\n| 7772117c | 6 |\n| 170c75eb, 6d9317d3, a62f1830 | 5 each |\n| 825ae133 | 4 |\n| 30467063 | 2 |\n| ef37dd40 | 1 |\n\nThat's **63 in total**. Each one costs a full model call with the whole context (main averages 20-27K input tokens per call) plus a turn of latency.\n\n**Fix** (host side, in our tool layer, not a prompt rule):\n\n* Normalise before the middleware sees the value: if `timeout > max` and `timeout >= 1000`, treat it as milliseconds (`timeout // 1000`), clamped to the max. Note it in the tool result so the model learns the unit.\n* State the unit in the `execute` tool description (\"timeout: seconds, max 3600\").\n* Also record `duration_ms` on `sandbox.exec` events. Today only `tool.result` has it, so `anvil.analyze` still marks every command time `~` (estimated); this was a gap in ANVIL-83.\n\n**Acceptance:**\n\n* A unit test where `execute(timeout=120000)` runs with 120 s.\n* The next real run shows 0 \"exceeds maximum allowed\" results.\n* `anvil.analyze` shows exact command times (no `~`).\n",
+  "comments": []
+}

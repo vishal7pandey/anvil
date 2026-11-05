@@ -5,6 +5,7 @@
   "priority": "Medium",
   "summary": "CRA scanning with open-source tools: the agent runs the scanners and imports their reports",
   "labels": [
+    "agent-claude",
     "post-demo",
     "tc3",
     "team-sync"
@@ -12,7 +13,7 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-04T18:36:54.089+0530",
-  "updated": "2026-11-04T18:36:54.161+0530",
+  "updated": "2026-11-05T10:51:09.667+0530",
   "resolved": null,
   "links": [],
   "subtasks": [],

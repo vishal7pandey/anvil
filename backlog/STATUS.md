@@ -1,7 +1,7 @@
 # Backlog status
 
 Regenerate: `uv run python scripts/export_trackers.py --status-md` (offline).
-Counts: 101 ANVIL + 7 RTEMS = 108 (from the on-disk JSON).
+Counts: 109 ANVIL + 7 RTEMS = 116 (from the on-disk JSON).
 
 ## WS-A Sandbox image (RTEMS toolchain + SIS, pre-commit, GHCR)  (1)
 
@@ -65,9 +65,9 @@ Counts: 101 ANVIL + 7 RTEMS = 108 (from the on-disk JSON).
 |-----|---------|--------|-------|--------|--------------|---------------|
 | ANVIL-17 | TC2 spike: lwIP upgrade path in rtems-lwip, pick the | Done | antigravity | #27 | 2026-11-03 | — |
 | ANVIL-28 | TC3 spec: CRA compliance review of a reference RTEMS | Done | devin | — | 2026-11-02 | — |
-| ANVIL-32 | E2E browser tests, demo runbook, reset script, rehea | In Progress | antigravity | #65 | 2026-11-04 | — |
+| ANVIL-32 | E2E browser tests, demo runbook, reset script, rehea | In Progress | claude | #65 | 2026-11-05 | — |
 
-## —  (84)
+## —  (92)
 
 | key | summary | status | owner | merged | last comment | handoff scope |
 |-----|---------|--------|-------|--------|--------------|---------------|
@@ -101,7 +101,7 @@ Counts: 101 ANVIL + 7 RTEMS = 108 (from the on-disk JSON).
 | ANVIL-45 | KB: mailing-list archive loader (pipermail devel/use | To Do | cline | — | — | — |
 | ANVIL-46 | One command to (re)start the demo API from main with | Done | antigravity | #53 | 2026-11-04 | — |
 | ANVIL-47 | Sandbox container lifecycle: remove finished-run san | Done | antigravity | #89 | 2026-11-04 | — |
-| ANVIL-48 | Owner actions before the demo: GHCR push of the 7.1  | To Do | — | — | — | — |
+| ANVIL-48 | Owner actions before the demo: GHCR push of the 7.1  | To Do | — | — | 2026-11-05 | — |
 | ANVIL-49 | Reset + preflight protect every case ticket (cases/* | Done | antigravity | — | 2026-11-04 | — |
 | ANVIL-50 | TC3 readiness: make the CRA review runnable end to e | To Do | claude | 7c8f8b7 | 2026-11-05 | — |
 | ANVIL-51 | kb_search reads the per-agent run database, and a KB | Done | — | #67 | 2026-11-04 | — |
@@ -115,18 +115,18 @@ Counts: 101 ANVIL + 7 RTEMS = 108 (from the on-disk JSON).
 | ANVIL-59 | KB write-backs are searchable at once (TC4 self-lear | Done | devin | #95 | 2026-11-05 | — |
 | ANVIL-60 | Local knowledge folder as a KB source and write-back | Done | devin | #95 | 2026-11-05 | — |
 | ANVIL-61 | New Session dialog a first-time user can complete wi | Done | cline | — | 2026-11-04 | — |
-| ANVIL-62 | Where does a run's time go: per-phase timing, then t | To Do | — | — | 2026-11-04 | — |
-| ANVIL-63 | Setup guide for a fresh laptop without our accounts  | In Progress | antigravity | ef8825a | 2026-11-05 | — |
+| ANVIL-62 | Where does a run's time go: per-phase timing, then t | To Do | claude | — | 2026-11-05 | — |
+| ANVIL-63 | Setup guide for a fresh laptop without our accounts  | Done | antigravity | ef8825a | 2026-11-05 | — |
 | ANVIL-64 | web_search: allowlist of trusted domains per case/sk | Done | — | #97 | 2026-11-05 | — |
-| ANVIL-65 | CRA scanning with open-source tools: the agent runs  | To Do | — | — | — | — |
-| ANVIL-66 | Component-upgrade input: a version registry so the a | To Do | — | — | — | — |
-| ANVIL-67 | KB: faster import and incremental refresh from a sna | To Do | — | — | 2026-11-04 | — |
+| ANVIL-65 | CRA scanning with open-source tools: the agent runs  | To Do | claude | — | — | — |
+| ANVIL-66 | Component-upgrade input: a version registry so the a | To Do | devin | — | — | — |
+| ANVIL-67 | KB: faster import and incremental refresh from a sna | To Do | antigravity | — | 2026-11-04 | — |
 | ANVIL-68 | KB time guard misses rtems-docs and Confluence docum | Done | antigravity | #96 | 2026-11-05 | — |
-| ANVIL-69 | KB: configurable embedding model and dimension (on-p | To Do | — | — | — | — |
-| ANVIL-70 | Route a ticket to its repo from ticket metadata when | To Do | — | — | — | — |
+| ANVIL-69 | KB: configurable embedding model and dimension (on-p | To Do | antigravity | — | — | — |
+| ANVIL-70 | Route a ticket to its repo from ticket metadata when | To Do | cline | — | — | — |
 | ANVIL-71 | One active run per session: a second message while a | Done | claude | — | — | — |
 | ANVIL-72 | Graph checkpoints are keyed by session, not run: a n | Done | claude | — | — | — |
-| ANVIL-73 | Reopening a session shows nothing: load the session' | In Progress | cline | #79 | 2026-11-05 | — |
+| ANVIL-73 | Reopening a session shows nothing: load the session' | Done | cline | #79 | 2026-11-05 | — |
 | ANVIL-74 | The main prompt orders `pre-commit run --all-files`, | Done | claude | — | — | — |
 | ANVIL-75 | Stuck detector loopholes: a comment edit resets repe | Done | devin | #92 | 2026-11-04 | — |
 | ANVIL-76 | Polling tools (github_checks, github_pr_state) sleep | Done | claude | #85 | 2026-11-04 | — |
@@ -135,14 +135,14 @@ Counts: 101 ANVIL + 7 RTEMS = 108 (from the on-disk JSON).
 | ANVIL-79 | Metrics: spend-log lookup scans unindexed JSON and t | Done | antigravity | #99 | 2026-11-05 | — |
 | ANVIL-80 | Jira intake loop retries every 60 s forever when Jir | Done | — | — | 2026-11-04 | — |
 | ANVIL-81 | git_push: the shared host bare clone is locked only  | Done | — | — | 2026-11-04 | — |
-| ANVIL-82 | Deterministic vendor re-import tool (three-way merge | To Do | — | — | — | — |
+| ANVIL-82 | Deterministic vendor re-import tool (three-way merge | To Do | devin | — | — | — |
 | ANVIL-83 | Observability 1: persist per-step timing (tool, comm | Done | claude | — | — | — |
 | ANVIL-84 | Observability 2: persistent, structured, run-correla | Done | devin | — | 2026-11-04 | — |
 | ANVIL-85 | Observability 3: OpenTelemetry traces for runs, mode | To Do | antigravity | — | — | — |
 | ANVIL-86 | Observability 4: team flow metrics: PR lead time, re | Done | cline | #107 | 2026-11-05 | — |
 | ANVIL-87 | Offline chain integration test without an LLM: local | Done | devin | — | 2026-11-04 | — |
-| ANVIL-88 | Produce the Friday hand-over files: sandbox image ar | In Progress | — | a62e60b | 2026-11-05 | — |
-| ANVIL-89 | Speed: subagents consume 5M input tokens per TC1 run | In Progress | claude | #91 | 2026-11-04 | — |
+| ANVIL-88 | Produce the Friday hand-over files: sandbox image ar | Done | — | a62e60b | 2026-11-05 | — |
+| ANVIL-89 | Speed: subagents consume 5M input tokens per TC1 run | Done | claude | #91 | 2026-11-05 | — |
 | ANVIL-90 | Known build recipe: [build] section in cases/*.toml  | Done | devin | #90 | 2026-11-05 | — |
 | ANVIL-91 | Point the factory at a local project in any shape: p | Done | claude | #94 | 2026-11-04 | — |
 | ANVIL-92 | Junior hand-over by tomorrow morning: refresh backlo | Done | devin | #93 | 2026-11-05 | — |
@@ -153,5 +153,13 @@ Counts: 101 ANVIL + 7 RTEMS = 108 (from the on-disk JSON).
 | ANVIL-97 | The documented account-free start (SETUP.md step 3)  | Done | — | #112 | 2026-11-05 | — |
 | ANVIL-98 | Audit P0: bind autonomous-path tools to the run and  | Done | — | #115 | 2026-11-05 | — |
 | ANVIL-99 | Audit P0: host-side acceptance and verification must | Done | — | #113 | 2026-11-05 | — |
-| ANVIL-100 | Audit backlog (opencode 11-05): P1/P2 reliability an | To Do | — | — | — | — |
-| ANVIL-101 | v1 zip: start-api.ps1 dies without .git; localhost c | To Do | — | — | — | — |
+| ANVIL-100 | Audit backlog (opencode 11-05): P1/P2 reliability an | In Progress | devin | — | 2026-11-05 | — |
+| ANVIL-101 | v1 zip: start-api.ps1 dies without .git; localhost c | Done | — | #118 | 2026-11-05 | — |
+| ANVIL-102 | Lint in CI: ruff on changed files (blocking), with a | To Do | devin | — | — | — |
+| ANVIL-103 | Agents pass execute timeouts in milliseconds; the to | To Do | claude | — | — | — |
+| ANVIL-104 | Local tracker: a succeeded offline run leaves its ti | To Do | devin | — | — | — |
+| ANVIL-105 | Speed: the case's build recipe as `build` / `test_on | To Do | claude | — | — | — |
+| ANVIL-106 | Speed: the main agent's context grows to 20-27K toke | To Do | claude | — | — | — |
+| ANVIL-107 | Agent-written files copy a third party's copyright l | To Do | claude | — | — | — |
+| ANVIL-108 | Frontend dev proxy target configurable (ANVIL_API_PR | To Do | claude | — | — | — |
+| ANVIL-109 | Move development to a new machine: assets, environme | To Do | — | — | — | — |

@@ -1,0 +1,21 @@
+{
+  "key": "ANVIL-102",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "High",
+  "summary": "Lint in CI: ruff on changed files (blocking), with a ratchet for the existing 218 findings",
+  "labels": [
+    "agent-devin",
+    "audit",
+    "ci"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-05T11:03:54.844+0530",
+  "updated": "2026-11-05T11:03:54.948+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] Source: opencode audit 11-05 (ruff isn't in CI; 218 findings on main), plus #116 round 2: a heredoc turned `\\b` into literal backspace bytes in a regex, and nothing caught it. Neither ruff nor CI runs on our Python.\n\n**Want:**\n\n* A CI job: `ruff check` on the Python files a PR changes, blocking.\n* The existing 218 findings recorded as a baseline (per-file ignores or `ruff check --statistics` committed), with a ratchet so the count can only go down.\n* Rule set: ruff defaults plus `E402` (imports at top) and `PLE2510` (invalid backspace character in a string).\n* `ruff` added to the backend dev dependencies so `uv run --no-sync python -m ruff` works locally (today it isn't installed in the venv).\n* One short line in AGENTS.md/CONTRIBUTING: run `python -m ruff check <files>` before pushing.\n\n**Acceptance:**\n\n* A PR that adds a file containing a backspace byte inside a regex fails CI.\n* The baseline count is printed in the job log.\n* main stays green.\n",
+  "comments": []
+}

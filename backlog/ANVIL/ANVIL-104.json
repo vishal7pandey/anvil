@@ -1,0 +1,21 @@
+{
+  "key": "ANVIL-104",
+  "type": "Bug",
+  "status": "To Do",
+  "priority": "High",
+  "summary": "Local tracker: a succeeded offline run leaves its ticket In Progress with no completion comment",
+  "labels": [
+    "agent-devin",
+    "local-tracker",
+    "offline"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-05T11:22:27.032+0530",
+  "updated": "2026-11-05T11:22:27.278+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] Seen 2026-11-05 on run e115a19f: offline TC1, local ticket `RTEMS-1.json`, run **succeeded** at 11:18, patch and bundle exported. Afterwards the ticket JSON is still `\"status\": \"In Progress\"` in `in-progress/` and has **no comments**. Nobody reading the ticket can tell the run finished, or where the patch is.\n\n**Expected** (matches the Jira path): on a terminal outcome, the local tracker gets one comment with the outcome, the run id, the patch/bundle paths and the evidence summary. The ticket file moves:\n\n* to `done/` on succeeded, when `merge_policy` allows it;\n* or stays in `in-progress/` with the comment \"awaiting human review\" when `merge_policy = human`.\n\nA handoff writes the handoff note as the comment.\n\n**Check first:** whether the outcome comment is only wired for Jira (the `jira_comment` tool, or the executor's finish step). The GATE-1/GATE-2 file tickets on 11-04 did get comments; find what differs (autonomous intake vs an interactive session).\n\n**Acceptance:** a test where an autonomous local-ticket run that succeeds writes a comment with the patch path and moves or labels the file per `merge_policy`; same for handoff.\n",
+  "comments": []
+}

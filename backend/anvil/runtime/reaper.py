@@ -181,7 +181,9 @@ def evaluate_container_for_reap(
 
     # Special handling for handoff:
     if latest_run.status == "handoff":
-        if not has_handoff_evidence(latest_run) and latest_run.ended_at is None:
+        if not has_handoff_evidence(latest_run):
+            # ANVIL-100 #13: keep the sandbox until the evidence exists — a handoff that ended
+            # before posting still needs its sandbox, ended_at or not.
             return ContainerReapCheck(
                 c_name,
                 c_id,

@@ -120,9 +120,9 @@ ANVIL_CONTEXT_WINDOW=
 ANVIL_DEMO_TOKEN=sk-anvil-local-change-me
 
 # Host Database & Gateway defaults
-ANVIL_DATABASE_URL=postgresql+psycopg://anvil:anvil@localhost:5433/anvil
-ANVIL_KB_DATABASE_URL=postgresql+psycopg://anvil:anvil@localhost:5433/anvil
-ANVIL_GATEWAY_URL=http://localhost:4000
+ANVIL_DATABASE_URL=postgresql+psycopg://anvil:anvil@127.0.0.1:5433/anvil
+ANVIL_KB_DATABASE_URL=postgresql+psycopg://anvil:anvil@127.0.0.1:5433/anvil
+ANVIL_GATEWAY_URL=http://127.0.0.1:4000
 
 # Outbound LLM Provider Key (for LiteLLM proxy; omit if stored in Credential Manager)
 OPENAI_API_KEY=

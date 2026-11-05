@@ -171,7 +171,7 @@ class DeepAgentExecutor:
         self.push_hook = push_hook
         self.report_hook = report_hook
         self.image = image or os.environ.get("ANVIL_SANDBOX_IMAGE", DEFAULT_IMAGE)
-        self.db_url = db_url or os.environ.get("ANVIL_DATABASE_URL", "postgresql://anvil:anvil@localhost:5433/anvil")
+        self.db_url = db_url or os.environ.get("ANVIL_DATABASE_URL", "postgresql://anvil:anvil@127.0.0.1:5433/anvil")
         self.owner_id = (
             owner_id
             or os.environ.get("ANVIL_INSTANCE_ID")

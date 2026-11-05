@@ -24,4 +24,4 @@ docker compose -f (Join-Path $root "deploy/compose.yaml") up -d --wait 2>&1 | Fo
 $exit = $LASTEXITCODE
 $ErrorActionPreference = "Stop"
 if ($exit -ne 0) { throw "docker compose failed (exit $exit)" }
-Write-Host "Anvil stack up: Postgres on localhost:5433, gateway on http://localhost:4000"
+Write-Host "Anvil stack up: Postgres on 127.0.0.1:5433, gateway on http://127.0.0.1:4000 (use 127.0.0.1, not localhost: on Windows localhost tries IPv6 first and each connection waits about 30 s)"

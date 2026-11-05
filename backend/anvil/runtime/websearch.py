@@ -82,7 +82,7 @@ def make_web_search(blocklist: Iterable[str] = (), *, allowlist: Iterable[str] =
                     api_key: str | None = None, model: str = "anvil-fast", run_id: str | None = None,
                     client: httpx.Client | None = None) -> Callable[[str], str]:
     blocklist, allowlist = tuple(blocklist), tuple(allowlist)
-    base = (gateway_url or os.environ.get("ANVIL_GATEWAY_URL", "http://localhost:4000/v1")).rstrip("/")
+    base = (gateway_url or os.environ.get("ANVIL_GATEWAY_URL", "http://127.0.0.1:4000/v1")).rstrip("/")
     key = api_key or os.environ.get("LITELLM_MASTER_KEY", "sk-anvil-local")
     http = client or httpx.Client(timeout=180)
 

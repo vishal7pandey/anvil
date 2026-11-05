@@ -15,9 +15,15 @@ DEFAULT_GATEWAY_URL = "http://127.0.0.1:4000"
 
 
 def kb_database_url() -> str:
-    """ANVIL_KB_DATABASE_URL, else the run database (ANVIL_DATABASE_URL), else the local default."""
-    return (os.environ.get("ANVIL_KB_DATABASE_URL") or os.environ.get("ANVIL_DATABASE_URL")
-            or DEFAULT_DATABASE_URL)
+    """ANVIL_KB_DATABASE_URL, else the run database (ANVIL_DATABASE_URL), else the local default.
+
+    A `localhost` host is rewritten to 127.0.0.1 on Windows (ANVIL-101): the KB store never went through the
+    API's normalisation, so a `.env` saying `localhost` made the snapshot import and every `kb_search`
+    connection wait about 30 s on IPv6 first (a 6-minute import)."""
+    from anvil.api.config import normalize_database_url
+
+    return normalize_database_url(os.environ.get("ANVIL_KB_DATABASE_URL")
+                                  or os.environ.get("ANVIL_DATABASE_URL") or DEFAULT_DATABASE_URL)
 
 # Everything an eval case withholds (its upstream issues, merge requests and fix commits) must
 # never enter the knowledge base: the eval would leak the answer it is supposed to withhold.

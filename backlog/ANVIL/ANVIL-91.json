@@ -1,7 +1,7 @@
 {
   "key": "ANVIL-91",
   "type": "Story",
-  "status": "To Do",
+  "status": "Done",
   "priority": "Highest",
   "summary": "Point the factory at a local project in any shape: plain folder, git repo on any branch, archive, path with spaces",
   "labels": [
@@ -12,10 +12,15 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-04T22:29:26.593+0530",
-  "updated": "2026-11-04T22:29:26.817+0530",
-  "resolved": null,
+  "updated": "2026-11-04T23:23:48.176+0530",
+  "resolved": "2026-11-04T23:23:48.154+0530",
   "links": [],
   "subtasks": [],
   "description": "[claude] Owner, 2026-11-05: the juniors get the codebase tomorrow morning and must be able to point the factory at **their own project folder, in whatever shape or form**, not only a GitHub repo.\n\nANVIL-55 (#74) handles one shape: a git working copy at an absolute path with no spaces, on the branch the ticket names. Gaps found on main:\n\n* **a plain folder** (no `.git`) is refused;\n* **UI sessions hardcode **`base_ref=\"main\"` (`app.py` `create_run`), so a repo on `master` or any other branch fails;\n* **paths with spaces** are refused, and the ticket's `Code base:` line can't express them;\n* `.zip` / `.tar.gz` archives are not accepted;\n* **uncommitted changes** in a working copy are silently ignored;\n* **folder names** outside `[A-Za-z0-9_.-]` are refused.\n\n**Design:** the host normalises any source into the same thing #74 already ships, a shallow single-branch `.git`.\n\n* **Git working copy:** as today, but the default base is the repo's **current branch** (UI and intake when no branch is given). Uncommitted changes are **reported** in the run record and the agent's task, and are not copied by default; an explicit opt-in snapshots them as one extra commit.\n* **Plain folder:** the host makes a temporary git repo from it (one snapshot commit; respects a `.gitignore` if present, and skips `.git`, `node_modules`, `__pycache__`, `.venv`, `build/`), then continues as above. The patch and bundle apply to that snapshot.\n* **Archive (**`.zip`, `.tar.gz`, `.tgz`): extracted safely (no absolute paths, `..` or links) into a temp folder, then treated as a plain folder.\n* **Any path, including spaces:** the path is only ever used in host `subprocess` argument lists, never in a shell. The sandbox directory name is a sanitised slug of the folder name. Tickets may quote the path: `Code base: branch main of \"C:\\My Projects\\app\"`, and the branch is optional.\n\n**Acceptance:**\n\n* tests for each shape (plain folder, archive, a repo on `master` with no branch given, a path with spaces, a working copy with uncommitted changes reported);\n* an end-to-end run in the real sandbox for a plain folder, with its patch applying back with `git apply`;\n* SETUP.md documents the shapes.\n",
-  "comments": []
+  "comments": [
+    {
+      "created": "2026-11-04T23:23:47.062+0530",
+      "body": "[claude] Done: PR #94 merged (9e68e01), reviewed and re-approved by devin.\n\nAcceptance met (`backend/tests/test_local_shapes.py`):\n\n* **One test per shape:**\n\n  * plain folder snapshot (junk excluded; folder never written);\n  * `.gitignore` respected;\n  * zip and tar.gz;\n  * zip-slip refused;\n  * a repo on `master` with no branch given → `master`, with 2 uncommitted changes reported and the committed base copied;\n  * GitHub sessions still `main`;\n  * five ticket-line forms, including a quoted path with spaces and no branch.\n* **End to end in the real sandbox** (`test_plain_folder_with_spaces_end_to_end`): a plain folder at `My Projects\\Sensor App` → `/workspace/Sensor-App` → commit → patch → `git apply` in the original folder.\n* **Docs:** SETUP.md §5b and HANDOFF.md \"Known limits\" describe the shapes.\n\nFull suite at the PR: 346 passed. Devin rebuilds the junior zip from this main (ANVIL-92).\n"
+    }
+  ]
 }

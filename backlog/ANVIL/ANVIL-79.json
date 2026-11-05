@@ -1,20 +1,34 @@
 {
   "key": "ANVIL-79",
   "type": "Bug",
-  "status": "To Do",
+  "status": "Done",
   "priority": "Medium",
   "summary": "Metrics: spend-log lookup scans unindexed JSON and the API answers 503 while spend rows lag",
   "labels": [
+    "agent-antigravity",
     "api",
     "dfmea"
   ],
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-04T18:39:36.728+0530",
-  "updated": "2026-11-04T18:39:36.822+0530",
-  "resolved": null,
+  "updated": "2026-11-05T01:31:44.069+0530",
+  "resolved": "2026-11-05T01:31:44.049+0530",
   "links": [],
   "subtasks": [],
   "description": "Source: DFMEA 2026-11-04 (F10). Related: ANVIL-54 (the cost meter shows $0).\n\n**Problems:**\n\n* `load_litellm_spend_totals` filters `LiteLLM_SpendLogs` on `metadata->'spend_logs_metadata'->>'run_id'` with no expression index, so it's a sequential scan that grows with every call on the gateway.\n* The run and metrics endpoints return 503 while LiteLLM hasn't flushed spend rows (async batch), which breaks the dashboard during and right after a run.\n\n**Fix:**\n\n* Add the expression index in initdb / migration.\n* Never 503 for lagging spend: return `cost_status: \"pending\"` with an estimate from token counts, flagged as estimated.\n* Keep one cost source of truth with ANVIL-54.\n\n**Acceptance:**\n\n* a metrics query plan uses the index;\n* a test where token usage exists without spend rows returns 200 with `pending` plus an estimate.\n",
-  "comments": []
+  "comments": [
+    {
+      "created": "2026-11-05T00:14:15.340+0530",
+      "body": "[antigravity] PR #99 open: https://github.com/vishal7pandey/anvil/pull/99\n\nImplementation details:\n\n- Expression index added: ix_litellm_spend_logs_run_id on LiteLLM_SpendLogs (((metadata -> 'spend_logs_metadata') ->> 'run_id')) in deploy/initdb/01-init.sql and ensure_spend_log_index() in backend/anvil/api/metrics.py.\n\n- Removed 503 HTTP errors: when spend logs lag within the 5-minute grace period, GET /api/runs/{run_id} and GET /api/metrics return 200 with cost_status: 'pending' and an estimate derived from tokens/usage events (estimate_cost), flagged with cost_estimated: true.\n\n- Stale missing spend rows past the grace period continue to report cost_status: 'missing' with null costs.\n\n- Maintained single source of truth with ANVIL-54.\n\nProven by: backend/tests/test_api_metrics.py (test_load_litellm_spend_totals_query_plan_uses_index confirms index usage in query plan), backend/tests/test_api.py (test_run_metrics_return_pending_estimate_when_spend_logs_are_missing confirms 200 + pending + estimate), and 362/362 passing backend tests.\n"
+    },
+    {
+      "created": "2026-11-05T01:00:13.437+0530",
+      "body": "[antigravity] PR #99 updated in commit f0c50bf: removed LiteLLM_SpendLogs stub from deploy/initdb/01-init.sql, added lazy retry with warning logging for ensure_spend_log_index, and kept usd null during cost_status: pending (no synthetic pricing estimates). All API unit tests pass.\n"
+    },
+    {
+      "created": "2026-11-05T01:31:42.175+0530",
+      "body": "[claude] Done. Merged as c3b9182 (PR #99, antigravity; claude approved after the last commit, CI green).\n\nAcceptance:\n\n* **Query plan uses the index:** checked on the real local Postgres (9,966 spend rows): the spend-totals statement built by `build_spend_totals_statement` gets a Bitmap Index Scan on `ix_litellm_spend_logs_run_id`, with the index condition matching the query's `(metadata -> 'spend_logs_metadata') ->> 'run_id'` expression exactly (planner told to avoid seq scans because the table is small). `test_load_litellm_spend_totals_query_plan_uses_index` covers it on SQLite in CI. The index is created at runtime (`ensure_spend_log_index`, retried lazily, failures logged), not in initdb: LiteLLM owns that table, and a stub in initdb risked breaking its migration on a fresh volume.\n* **No 503 while spend rows lag:** `GET /api/runs/{id}` and `GET /api/metrics` return 200 with `cost_status: \"pending\"`; stale rows after the 5-minute grace report `missing`.\n\n**Acceptance changed on purpose (PM decision in review):** the ticket said \"pending plus an estimate\". While pending, `usd`/`cost_usd` are now `null` (tokens stay), instead of a dollar figure from hard-coded $3/$15 per million tokens, because that price is not the model's and the metrics page would show a made-up number as a cost (ANVIL-54's single source of truth). The cost meter shows \"pending\" until the real spend row arrives.\n\nFollow-up (non-blocking): `estimate_cost` in `metrics.py` is now unused outside its own test; delete it.\n"
+    }
+  ]
 }

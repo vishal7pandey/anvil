@@ -242,7 +242,10 @@ class DeepAgentExecutor:
         url = f"{GITHUB_BASE}/{repo}.git"
         script = (
             f"set -e; if [ ! -d {qpath}/.git ]; then "
-            f"git clone --quiet --single-branch --branch {shlex.quote(base)} --depth 200 {shlex.quote(url)} {qpath}; fi; "
+            f"git clone --quiet --single-branch --branch {shlex.quote(base)} --depth 200 {shlex.quote(url)} {qpath}; "
+            # ANVIL-100 #12: a reused session checkout must refresh when the base moved — fetch the
+            # base ref or origin/{base} stays where the first run left it.
+            f"else cd {qpath} && git fetch --quiet --depth 200 origin {shlex.quote(base)}; fi; "
             f"cd {qpath}; git config user.name anvil-bot; git config user.email anvil-bot@users.noreply.github.com; "
             f"git remote set-url origin {shlex.quote(url)}; "
             # Submodules come in while the sandbox still has network: vendored-component upgrades
@@ -250,26 +253,35 @@ class DeepAgentExecutor:
             + "".join(f"git config --global url.{shlex.quote(m)}.insteadOf {shlex.quote(o)}; "
                       for o, m in url_rewrites())
             + f"if [ -f .gitmodules ]; then git submodule update --init --quiet; fi; "
-            f"git switch --quiet {shlex.quote(branch)} 2>/dev/null || git switch --quiet -c {shlex.quote(branch)}; "
+            # ANVIL-100 #12: keep an existing work branch when its base is still current; reset it to
+            # the fresh base only when origin/base moved (a follow-up run keeps prior commits).
+            f"if git rev-parse --verify --quiet {shlex.quote('refs/heads/' + branch)} >/dev/null; then "
+            f"if [ \"$(git merge-base {shlex.quote(branch)} origin/{shlex.quote(base)})\" = \"$(git rev-parse origin/{shlex.quote(base)})\" ]; "
+            f"then git switch --quiet {shlex.quote(branch)}; "
+            f"else git switch --quiet -C {shlex.quote(branch)} origin/{shlex.quote(base)}; fi; "
+            f"else git switch --quiet -c {shlex.quote(branch)} origin/{shlex.quote(base)}; fi; "
             f"echo BASE_SHA=$(git rev-parse origin/{shlex.quote(base)}); echo HEAD_SHA=$(git rev-parse HEAD)"
         )
         sandbox.set_network("bridge")  # needed for the first clone; dropped again below for offline runs
-        res = host_run(sandbox, script, timeout=1800)
-        if res.exit_code != 0:
-            # Say what failed even when the command printed nothing (rehearsal 3e7db2f9: "checkout failed: ").
-            raise RuntimeError(f"checkout failed (exit {res.exit_code}): "
-                               f"{res.output[-1500:].strip() or 'no output'}")
-        found = dict(re.findall(r"^(BASE_SHA|HEAD_SHA)=(\w+)$", res.output, re.M))
-        # Answer-leak control: --single-branch only limits the *default* fetch; with network the agent
-        # could still `git fetch origin main` and read a withheld fix. Offline runs (the default) lose
-        # the network after checkout. Builds and simulator tests don't need it; push runs on the host.
-        files = skill_files()
-        uploaded = sandbox.upload_files(files)
-        failed = [r.path for r in uploaded if r.error]
-        if failed:
-            raise RuntimeError(f"could not upload skills: {failed}")
         network = run.get("network", "offline")
-        sandbox.set_network("bridge" if network == "online" else None)
+        try:
+            res = host_run(sandbox, script, timeout=1800)
+            if res.exit_code != 0:
+                # Say what failed even when the command printed nothing (rehearsal 3e7db2f9: "checkout failed: ").
+                raise RuntimeError(f"checkout failed (exit {res.exit_code}): "
+                                   f"{res.output[-1500:].strip() or 'no output'}")
+            found = dict(re.findall(r"^(BASE_SHA|HEAD_SHA)=(\w+)$", res.output, re.M))
+            # Answer-leak control: --single-branch only limits the *default* fetch; with network the agent
+            # could still `git fetch origin main` and read a withheld fix. Offline runs (the default) lose
+            # the network after checkout. Builds and simulator tests don't need it; push runs on the host.
+            files = skill_files()
+            uploaded = sandbox.upload_files(files)
+            failed = [r.path for r in uploaded if r.error]
+            if failed:
+                raise RuntimeError(f"could not upload skills: {failed}")
+        finally:
+            # ANVIL-100 #11: a failed clone or upload must not leave an "offline" run with egress.
+            sandbox.set_network("bridge" if network == "online" else None)
         return {"repo": repo, "path": path, "base_ref": base, "branch": branch, "network": network,
                 "skills": [p for p, _ in files if p.endswith("SKILL.md")], "skills_hash": skills_hash(files),
                 "base_sha": found.get("BASE_SHA"), "head_sha": found.get("HEAD_SHA")}
@@ -409,7 +421,9 @@ class DeepAgentExecutor:
                     yield ev
                 # ANVIL-77: a handoff call ends the run like stuck does. Its note is already in
                 # `handoffs`; keep streaming only until this item's events are out, then _handoff.
-                if stuck or handoffs:
+                # ANVIL-100: close on `waiting` too — a suspended generator's finally would run late
+                # (on GC) and clear the RESUMED run's cancel + deadline, not its own.
+                if waiting or stuck or handoffs:
                     break
         except GraphRecursionError:
             # Out of graph steps is a budget, not a crash: hand off with the WIP like any other budget.

@@ -367,3 +367,65 @@ async def test_compaction_is_reported_as_an_event_in_order():
     assert compacted["data"]["cutoff_index"] == 42 and compacted["agent"] == "main"
     assert types.index("context.compacted") < types.index("message")   # it happened before the next reply
     assert [e["seq"] for e in events] == list(range(1, len(events) + 1))
+
+
+def test_checkout_restores_offline_network_even_when_the_clone_fails():
+    """#11: a failed clone must not leave an "offline" run with egress — set_network is restored
+    in a finally (ANVIL-100)."""
+    class FailSandbox:
+        def __init__(self):
+            self.calls = []
+        def set_network(self, network):
+            self.calls.append(("network", network))
+        def execute(self, command, *, timeout=None):
+            return type("R", (), {"exit_code": 1, "output": "clone blew up"})()
+        def upload_files(self, files):
+            return [type("U", (), {"path": p, "error": None})() for p, _ in files]
+
+    sb = FailSandbox()
+    with pytest.raises(RuntimeError, match="checkout failed"):
+        DeepAgentExecutor(image="unused").checkout(sb, RUN)
+    # bridge went on for the clone; offline was restored in the finally despite the raise
+    assert sb.calls[0] == ("network", "bridge") and sb.calls[-1] == ("network", None)
+
+
+async def test_stream_closes_at_waiting_approval_not_after_the_rest():
+    """An interrupt pauses the run: the generator must close there, not keep streaming the items that
+    follow — a suspended generator's finally would run late (on GC) and clear the RESUMED run's
+    cancel + deadline (ANVIL-100)."""
+    class _Intr:      # the interrupt object shape _map_interrupts reads
+        id = "a1"
+        value = {"action_requests": [{"name": "jira_comment", "args": {}, "description": "post"}]}
+
+    interrupt_item = ((), "updates", {"__interrupt__": [_Intr()]})
+    more = [((), "updates", {"model": {"messages": [AIMessage(content=f"x{i}")]}}) for i in range(10)]
+    ex = OfflineExecutor(agent_factory=factory_for([interrupt_item] + more))
+    events = await collect(ex.start(RUN, "x"))
+    assert events[-1]["data"]["status"] == "waiting_approval"     # ended AT the pause
+    assert not any(e["type"] == "message" for e in events)        # the 10 later items never streamed
+    assert ex._cancel.get(RUN["run_id"]) is None                  # finally ran: own state popped
+
+
+def test_checkout_refreshes_a_reused_checkout_when_the_base_moved():
+    """#12: an existing session checkout fetches origin/base (it's stale after the first run) and
+    resets the work branch only when the base actually moved (ANVIL-100)."""
+    class RecordingSandbox:
+        def __init__(self):
+            self.calls = []
+        def set_network(self, network):
+            self.calls.append(("network", network))
+        def execute(self, command, *, timeout=None):
+            self.calls.append(("execute", command))
+            return type("R", (), {"exit_code": 0, "output": "BASE_SHA=" + "a" * 40 + "\nHEAD_SHA=" + "a" * 40})()
+        def upload_files(self, files):
+            return [type("U", (), {"path": p, "error": None})() for p, _ in files]
+
+    sb = RecordingSandbox()
+    DeepAgentExecutor(image="unused").checkout(sb, RUN)
+    script = next(c for kind, c in sb.calls if kind == "execute")
+    # clone only when .git is missing; otherwise fetch the base so origin/base is current
+    assert "if [ ! -d" in script and "git clone" in script
+    assert "git fetch --quiet --depth 200 origin" in script
+    # the work branch is kept while the base is unchanged; reset to the fresh base when it moved
+    assert "merge-base" in script and "rev-parse --verify" in script
+    assert "-c" in script or "switch" in script

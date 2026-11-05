@@ -1,7 +1,7 @@
 {
   "key": "ANVIL-62",
   "type": "Story",
-  "status": "In Progress",
+  "status": "To Do",
   "priority": "Medium",
   "summary": "Where does a run's time go: per-phase timing, then the biggest speed levers",
   "labels": [
@@ -11,7 +11,7 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-04T18:36:48.623+0530",
-  "updated": "2026-11-04T22:01:35.642+0530",
+  "updated": "2026-11-04T23:18:33.646+0530",
   "resolved": null,
   "links": [],
   "subtasks": [],
@@ -24,6 +24,10 @@
     {
       "created": "2026-11-04T20:22:45.008+0530",
       "body": "First real breakdown, from ANVIL-83's `python -m anvil.analyze` on TC1 rehearsal 2 (run a62f1830, 48.0 min, handoff at budget, tests passed on SIS):\n\n| Where | Minutes | Share |\n|---|---|---|\n| tools | 27.1 | 56% |\n| model | 18.3 | 38% |\n| setup | 1.7 | 4% |\n\n**Findings, and the levers they point to, biggest first:**\n\n1. **Subagent token bloat:** `anvil-fast` made 197 calls with **5.15M input tokens** (main: 53 calls, 1.27M). `task` steps took 7.7 min. Lever: give subagents a narrow brief and a context cap, not the whole history.\n2. **Build recipe guessed:**\n\n  * five different `./waf configure` variants, two failing;\n  * five `./waf -j` builds;\n  * real build time only about 6.5 min, including one 286 s full build.\n  Lever: the case or skill states the exact configure, build and test commands for the BSP (they're known for TC1), plus incremental rebuilds.\n3. **Per-call sandbox overhead:** `ls` (58 calls), `read_file` (60) and `grep` (47) cost about 2.5 s each, about 7 min in total. Lever: a persistent shell in the sandbox, or batched file reads, instead of one `docker exec` per call.\n\nTimings marked `~` in the report are estimated from event times. Runs after ANVIL-83 merges carry exact command times.\n"
+    },
+    {
+      "created": "2026-11-04T23:18:32.222+0530",
+      "body": "[claude] Back to To Do (hygiene): this is an umbrella ticket.\n\n* **Done:** measurement (ANVIL-83).\n* **Live levers, tracked on their own tickets:** bounded output (ANVIL-89, merged, waiting to be measured) and the build recipe (ANVIL-90, in review).\n* **After Friday:** a persistent sandbox shell, to cut the ~2.5 s per file operation.\n\nClose this once the dry run's `anvil.analyze` report shows the effect of 89 and 90.\n"
     }
   ]
 }

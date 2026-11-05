@@ -1,10 +1,11 @@
 {
   "key": "ANVIL-59",
   "type": "Story",
-  "status": "To Do",
+  "status": "Done",
   "priority": "High",
   "summary": "KB write-backs are searchable at once (TC4 self-learning without a reset)",
   "labels": [
+    "agent-devin",
     "demo",
     "kb",
     "team-sync"
@@ -12,10 +13,23 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-04T18:36:44.025+0530",
-  "updated": "2026-11-04T18:36:44.083+0530",
-  "resolved": null,
+  "updated": "2026-11-05T02:00:36.748+0530",
+  "resolved": "2026-11-05T01:57:50.349+0530",
   "links": [],
   "subtasks": [],
   "description": "Source: KB review 2026-11-04 (P2).\n\n**Today:** `confluence_write` creates the page only. The page reaches pgvector only when `reset_demo.py` runs `ingest-confluence`, so run 2 can't find run 1's post-mortem inside the demo.\n\n**Want:** after an approved `confluence_write` (or the local-folder write, ANVIL-60), ingest that one page into the KB. `store.ingest()` already updates changed documents. The ingest keeps the leak guard and the page's date.\n\n**Acceptance:** run 1 writes a post-mortem; a `kb_search` straight after returns it, with no reset step.\n",
-  "comments": []
+  "comments": [
+    {
+      "created": "2026-11-04T23:36:41.100+0530",
+      "body": "[devin] PR #95 up: https://github.com/vishal7pandey/anvil/pull/95 — every written page (local folder or real Confluence) goes through store.ingest immediately, so run 2's kb_search finds run 1's post-mortem without reset_demo.py. Leak guard preserved via store.ingest. Best-effort flag kb_indexed on the result.\n"
+    },
+    {
+      "created": "2026-11-05T01:57:46.350+0530",
+      "body": "[claude] Done. Merged as 5412414 (PR #95, with ANVIL-60).\n\nAcceptance (\"run 1 writes a post-mortem; a `kb_search` straight after returns it, with no reset step\"): `tests/test_local_knowledge.py::test_a_written_page_is_found_by_kb_search_straight_after` writes a page through `LocalKnowledge` into a real pgvector store and finds it with `store.search` at once; it runs in CI (not skipped). Every written page is ingested immediately (`kb_indexed` is reported in the tool result; a KB outage never fails the write).\n\nThe Atlassian path (`confluence_write` / `publish_evidence` with Atlassian configured) now ingests the page it wrote too, dated with `created_at` and logging a warning on failure. That path has no test against a real Confluence; it is the same `store.ingest` call, unit-covered through the recording store. Worth one real check in the dry run if the laptop has Atlassian access.\n"
+    },
+    {
+      "created": "2026-11-05T02:00:33.550+0530",
+      "body": "[devin] Merged as 5412414 (PR #95). Acceptance: every written page (local folder or real Confluence) is store.ingest'ed at once, so run 2's kb_search finds run 1's post-mortem without reset_demo.py; created_at stamped on both paths so dated pages respect the as_of leak guard; kb_indexed flag on the result.\n"
+    }
+  ]
 }

@@ -133,7 +133,13 @@ def _run_metrics(
     for event in events:
         events_by_run[event.run_id].append(event)
 
-    spend_totals = _spend_totals_for_runs(request, run_ids)
+    # Only reach for the LiteLLM spend table when some run actually used tokens — offline (no
+    # gateway) no run has usage, so there's nothing to look up and metrics must not 503 (ANVIL-100 #7).
+    spend_totals = (
+        _spend_totals_for_runs(request, run_ids)
+        if any(run.input_tokens or run.output_tokens for run in runs)
+        else {}
+    )
     missing_spend_logs = [
         run
         for run in runs
@@ -1003,6 +1009,12 @@ async def _jira_intake_loop(app: FastAPI) -> None:
             failures += 1
             if failures == 1:
                 logger.error("Intake poll failing (%s); backing off up to 15 min", type(exc).__name__)
+            delay = min(POLL_INTERVAL_SECONDS * (2 ** failures), 900)
+        except Exception as exc:  # noqa: BLE001  (ANVIL-100 #9: any exception must not kill the loop)
+            failures += 1
+            if failures == 1:
+                logger.exception("Intake poll crashed unexpectedly (%s); backing off, intake continues",
+                                 type(exc).__name__)
             delay = min(POLL_INTERVAL_SECONDS * (2 ** failures), 900)
         else:
             if failures:

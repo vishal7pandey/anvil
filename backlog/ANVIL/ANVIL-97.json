@@ -1,0 +1,27 @@
+{
+  "key": "ANVIL-97",
+  "type": "Bug",
+  "status": "Done",
+  "priority": "Highest",
+  "summary": "The documented account-free start (SETUP.md step 3) cannot start the API on a clean laptop",
+  "labels": [
+    "demo",
+    "docs",
+    "friday",
+    "offline"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-05T06:48:12.570+0530",
+  "updated": "2026-11-05T07:19:50.967+0530",
+  "resolved": "2026-11-05T07:19:50.951+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] Found 11-05 06:35 while smoke-testing main against an empty database; this is what the juniors and the clean-laptop dry run hit first.\n\n`docs/SETUP.md` step 3 says `.\\scripts\\start-api.ps1 -Force` on a machine with no Atlassian account and a fresh database. It fails five ways:\n\n1. the script `exit 1`s with \"Missing required credentials ... ATLASSIAN_*\" although SETUP says leave them unset (offline mode);\n2. it ends with a live Jira poll and `exit 1` if that fails (nothing to poll offline);\n3. its default database is `anvil_claude` (a per-agent database), not the `anvil` of `.env` and compose, and it overrides `.env`;\n4. nothing creates the Control API tables (`users`, `sessions`, `runs`, `events`, `approvals`): they exist only as Alembic migrations that no script or doc runs, so the API dies at startup with `relation \"users\" does not exist` (the dev databases only work because someone ran `alembic upgrade head`);\n5. `ANVIL_DEMO_TOKEN` is documented as optional (\"leave empty for unauthenticated local demo\") but the API answers 503 \"Demo authentication is not configured\" without it, and the UI needs the same value as `VITE_DEMO_TOKEN` in `frontend/.env`, which SETUP never mentions.\n\n**Fix:** `start-api.ps1` accepts offline mode (a half-set Atlassian configuration is still an error), skips the Jira poll offline, resolves the database from the parameter, then `.env`, then `anvil`, runs `alembic upgrade head` before starting (a no-op on a database at head), and fails fast with the cause when the API keeps answering HTTP 503/401. `.env.example` and SETUP.md say the token is required and add the frontend `.env` step and what the script does. A CI test applies the migrations to an empty database and re-runs them.\n\n**Acceptance:** on a machine with no `.env` Atlassian values, `start-api.ps1 -Force -DatabaseUrl <empty database>` ends with the API healthy (shown on 11-05 against a freshly created empty database: schema from nothing, sessions 200, no token 401, unknown session 404); `tests/test_migrations.py` passes in CI.\n\n**Note for agents:** the default database changed from `anvil_claude` to `.env`'s `ANVIL_DATABASE_URL` (else `anvil`): pass `-DatabaseUrl` to keep a per-agent database.\n",
+  "comments": [
+    {
+      "created": "2026-11-05T07:19:49.592+0530",
+      "body": "[claude] Done. PR #112 merged (claude author; approved by devin and antigravity after the last commit, CI green).\n\nAcceptance (\"on a machine with no Atlassian values, `start-api.ps1 -Force -DatabaseUrl <empty database>` ends with the API healthy; `tests/test_migrations.py` passes in CI\"):\n\n* **Shown on 11-05 against a freshly created empty database** (no `.env` Atlassian values, `.env` with only the token and tickets dir, port 8011): the script printed `[INFO] ... offline mode`, ran the migrations `-> 0001 -> 0002 -> 0003`, started the API and exited 0. `GET /api/sessions` 200, no token 401, wrong token 401, unknown session's runs 404, `/api/metrics` 200, `/api/approvals` `[]`. A second run on the same database ran no migration (idempotent).\n* **The trap** (demo token set only in the shell, no `.env`): the script fails after about ten polls with `The API is running but answers HTTP 503 ... put ANVIL_DEMO_TOKEN in the .env file`.\n* `backend/tests/test_migrations.py` (builds the schema from nothing in a subprocess and re-runs it): 1 passed locally against Postgres in 81 s; CI sets `ANVIL_TEST_DATABASE_URL`, so it runs there.\n\nWhat changed: Atlassian is optional (a half-set configuration still fails), no Jira poll offline, the database is `-DatabaseUrl`, else `.env`'s `ANVIL_DATABASE_URL`, else `anvil` (was my private `anvil_claude`), `alembic upgrade head` runs before the API starts, `ANVIL_DEMO_TOKEN` is documented as required and must equal the frontend's `VITE_DEMO_TOKEN`, and SETUP.md says what the script does.\n\nNot covered: running it from an extracted zip without `.git` (antigravity's rehearsal from the freeze zip does this); a non-Windows start path.\n"
+    }
+  ]
+}

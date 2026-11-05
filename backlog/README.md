@@ -1,8 +1,22 @@
 # Backlog (offline copy of Jira)
 
-Exported from Jira on 2026-11-04 by `backend/scripts/export_trackers.py`. This is now the backlog of
+Exported from Jira on 2026-11-05 by `backend/scripts/export_trackers.py`. This is now the backlog of
 record if you don't have the Jira site; edit the JSON files directly, or keep your own tracker and
-treat these as history.
+treat these as history. `STATUS.md` is the progress view (one table per epic: status, owner, merged
+PR/SHA, last comment, handoff scope) — regenerate it from these files after any export.
+
+## Refresh (needs Jira credentials)
+
+```powershell
+cd backend
+uv run python scripts/export_trackers.py    # rewrites ANVIL/, RTEMS/, index.json, confluence/
+```
+
+## Add a ticket by hand (no Jira)
+
+Create `ANVIL/ANVIL-<n>.json` (or a project folder like `RTEMS/`) in the format below — `key`,
+`summary`, `status` are enough for STATUS.md/index; use the next free number. Then re-run the
+export's index step or append to `index.json`.
 
 * `ANVIL/ANVIL-<n>.json`: the engineering work (epics, stories, tasks).
 * `RTEMS/RTEMS-<n>.json`: the demo tickets the **agent** receives as input. RTEMS-1 and RTEMS-7 are

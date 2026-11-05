@@ -263,3 +263,18 @@ def test_snapshot_import_skips_withheld_and_rejects_a_corrupt_file(store, tmp_pa
     (tmp_path / MANIFEST_FILE).write_text(json.dumps({"sha256": "0" * 64}))
     with pytest.raises(ValueError, match="does not match its manifest"):
         import_snapshot(store, tmp_path)
+
+
+def test_source_filter_applies_before_the_candidate_limit(store):
+    """#22: a sources-scoped query must not starve — filtering sources after LIMIT :cand let
+    foreign-source candidates crowd out the whole candidate window (ANVIL-100)."""
+    # 60 issues outrank the one docs page inside a 10-candidate window; with post-limit
+    # filtering the docs page would never survive to the outer SELECT.
+    docs = [_doc("gitlab-issue", f"{9000 + i}", f"Sched issue {i}",
+                 f"priority ceiling scheduling defect number {i}") for i in range(60)]
+    docs.append(_doc("rtems-docs", "sched.rst", "Scheduler doc",
+                     "priority ceiling scheduling documentation"))
+    store.ingest(docs)
+    hits = store.search("priority ceiling scheduling", k=5,
+                        candidate_limit=10, sources=["rtems-docs"])
+    assert hits and {hit.source for hit in hits} == {"rtems-docs"}

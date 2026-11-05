@@ -143,3 +143,30 @@ def test_startup_recovers_orphaned_runs(tmp_path, monkeypatch):
         by = {r.status for r in db.scalars(select(Run))}
     # running -> failed, cancel-requested queued -> cancelled, waiting_approval untouched
     assert "failed" in by and "cancelled" in by and "waiting_approval" in by and "running" not in by
+def test_intake_loop_survives_an_unexpected_exception(monkeypatch):
+    """#9: a poll crash that isn't an expected Jira error must not kill the loop — it backs off
+    and keeps polling (ANVIL-100)."""
+    import asyncio
+    from anvil.api import app as app_mod
+
+    calls = []
+    async def fake_poll(app):
+        calls.append(1)
+        if len(calls) == 1:
+            raise KeyError("unexpected bug, not a Jira error")
+        return []
+
+    sleeps = []
+    real_sleep = asyncio.sleep
+    async def fake_sleep(d):
+        sleeps.append(d)
+        if len(sleeps) >= 3:
+            raise asyncio.CancelledError
+        await real_sleep(0)
+
+    monkeypatch.setattr(app_mod, "poll_jira_intake", fake_poll)
+    monkeypatch.setattr(app_mod.asyncio, "sleep", fake_sleep)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(_jira_intake_loop(object()))
+    # crashed once, backed off to 120, then recovered and kept polling (didn't exit the loop)
+    assert len(calls) >= 3 and sleeps[0] == 120.0 and sleeps[1] == 60.0

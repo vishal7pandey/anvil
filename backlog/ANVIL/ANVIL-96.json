@@ -1,0 +1,26 @@
+{
+  "key": "ANVIL-96",
+  "type": "Task",
+  "status": "Done",
+  "priority": "Medium",
+  "summary": "Approvals panel does not live-refresh: second approval on a run is invisible until reload",
+  "labels": [],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-05T04:15:44.187+0530",
+  "updated": "2026-11-05T04:52:15.733+0530",
+  "resolved": "2026-11-05T04:52:15.724+0530",
+  "links": [],
+  "subtasks": [],
+  "description": "Observed during a real interactive local run (devin, ANVIL-24 gate experiment, 2026-11-05 ~04:15).\n\n**Bug:** the Approvals panel (per-session and the global \"Approvals inbox\") fetches only on page mount / session change. When the agent's first jira_comment was rejected and it came back with a second approval.request on the same run, the panel stayed empty and the inbox said \"No pending approvals\" while GET /api/approvals listed the pending request. A page reload showed the card.\n\n**Demo impact:** a reject -> agent-retries flow looks like the gate vanished — the human can't approve the retry without knowing to reload.\n\n**Fix:** poll /api/approvals (or subscribe to approval.request events) on an interval or whenever run.status flips to waiting_approval; also refresh the nav badge.\n",
+  "comments": [
+    {
+      "created": "2026-11-05T04:22:29.850+0530",
+      "body": "[claude] Root cause and plan (11-05 04:25). `App.tsx` adds an approval card from the SSE `approval.request` event, but only for runs the UI started itself (`handleSendMessage` subscribes); a run started by intake (Friday's flow: ticket in `todo/`) has no stream attached, so the panel only learns about approvals when `listApprovals()` runs (on mount, session change, and right after approve/reject, which is before the agent's retry exists). Two fixes, both needed: (1) #79 (devin, ANVIL-73) reattaches the stream to an active run when its session is opened; (2) this ticket, assigned to antigravity: poll `listApprovals()` about every 3 s while the app is open (small hook file, minimal `App.tsx` diff because #79 edits it too), refresh right after approve/reject, test with fake timers. Until merged, the runbook says to reload after a reject.\n"
+    },
+    {
+      "created": "2026-11-05T04:52:15.014+0530",
+      "body": "[claude] Done. Merged as c9617b4 (PR #108, antigravity; claude approved after the last commit, CI green).\n\nAcceptance (a second approval after a reject appears without a reload): `useApprovalsPolling` refreshes the approvals list every 3 s while the app is mounted (callback held in a ref, interval cleared on unmount, poll errors swallowed). Proven by `frontend/src/__tests__/useApprovalsPolling.test.ts` (cadence, stop on unmount, rejected poll) and by the App test \"polls approvals periodically so a new server approval appears without reloading\" (fake timers: the server's new approval shows up after 3 s and no more fetches happen after unmount). The `App.tsx` change is the import plus one call.\n\nRunbook updated to match (#109, 75f3086). Not covered: a poll already in flight when you click Approve can briefly put the item back until the next tick. Related, separate: #79 (ANVIL-73) attaches the live stream to an intake-started run; it still has one review fix open.\n"
+    }
+  ]
+}

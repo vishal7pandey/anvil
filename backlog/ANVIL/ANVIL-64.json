@@ -1,7 +1,7 @@
 {
   "key": "ANVIL-64",
   "type": "Story",
-  "status": "To Do",
+  "status": "Done",
   "priority": "Medium",
   "summary": "web_search: allowlist of trusted domains per case/skill, not only a blocklist",
   "labels": [
@@ -11,10 +11,15 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-04T18:36:51.960+0530",
-  "updated": "2026-11-04T18:36:52.036+0530",
-  "resolved": null,
+  "updated": "2026-11-05T01:33:31.185+0530",
+  "resolved": "2026-11-05T01:33:31.167+0530",
   "links": [],
   "subtasks": [],
   "description": "Source: team sync 2026-11-04. An agent that can search anywhere can be steered by a planted page. The owner's direction: limit search to known sources.\n\n**Today:** `runtime/websearch.py` has a per-run **blocklist** (the answer-leak guard), and a result that touches a blocked domain is withheld whole.\n\n**Want:**\n\n* an **allowlist** declared host-side (case file or skill frontmatter; never by the agent), e.g. rtems.org, docs.rtems.org, lists.rtems.org, savannah.nongnu.org (lwIP), osv.dev, nvd.nist.gov, eur-lex.europa.eu (CRA);\n* results whose sources fall outside the list are dropped, with a note to the agent;\n* the blocklist still applies on top.\n\n**Acceptance:** tests for allowed, outside the list, and blocked results; TC2 and TC3 declare their lists.\n",
-  "comments": []
+  "comments": [
+    {
+      "created": "2026-11-05T01:33:19.657+0530",
+      "body": "[claude] Done, with one part of the acceptance moved to ANVIL-50 (below). Merged as 7c8f8b7 (PR #97; devin approved after the last commit, re-confirmed after a merge-from-main commit; CI green).\n\nAcceptance:\n\n* **Allowed, outside the list, blocked:** `tests/test_websearch.py`: `test_allowlisted_result_passes_and_the_query_names_the_sources`, `test_a_page_outside_the_allowlist_withholds_the_whole_result` (a page that was only opened, not cited, still withholds; the planted text never reaches the agent), `test_retry_recovers_when_the_second_answer_stays_on_the_list`, `test_blocklist_still_wins_over_the_allowlist`, `test_allowlist_matching_is_host_and_path_segment_exact`.\n* **Declared host-side, never by the agent:** the case's `[web] allow` (`Case.web_allow`), else `ANVIL_WEB_ALLOWLIST`; wired in `runtime_factory._web_allowlist(run)`. Empty = unrestricted, as before. `test_deepagent_executor_receives_host_tools_and_hooks` shows RTEMS-1 gets TC1's list and a caseless run gets the env default.\n* **TC2 declares its list:** `cases/rtems-lwip-2.2.1.toml` (docs.rtems.org, the lwIP project pages on nongnu.org, osv.dev, nvd.nist.gov). TC1 and the 5806 case too; `test_cases_declare_trusted_sources_and_never_allow_a_blocked_one` checks no case allows a blocklisted host.\n\n**Moved to ANVIL-50:** TC3 has no case file on main (it runs through interactive intake), so there is nowhere host-side to declare its list yet. Its list (eur-lex.europa.eu, digital-strategy.ec.europa.eu, enisa.europa.eu, osv.dev, nvd.nist.gov, cve.org) is now an acceptance item on ANVIL-50. Until then a TC3 run is unrestricted unless `ANVIL_WEB_ALLOWLIST` is set in the environment.\n\nNot seen: a live search through the real gateway with an allowlist (the tests use a mocked gateway).\n"
+    }
+  ]
 }

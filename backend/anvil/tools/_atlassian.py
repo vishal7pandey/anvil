@@ -38,7 +38,11 @@ def client() -> httpx.Client:
 def request(method: str, path: str, **kwargs: Any) -> Any:
     """Call the Atlassian REST API; raise ToolError with the server's message on failure."""
     with client() as c:
-        r = c.request(method, path, **kwargs)
+        try:
+            r = c.request(method, path, **kwargs)
+        except httpx.TransportError as exc:
+            # ANVIL-100 #38: a network/DNS/timeout failure is a tool error, not a traceback.
+            raise ToolError(f"{method} {path} failed to reach Atlassian: {exc}") from exc
     if r.is_error:
         try:
             body = r.json()

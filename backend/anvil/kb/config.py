@@ -33,11 +33,16 @@ def _withheld() -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
 
     cases = load_cases()
     if not cases:
-        # Fail loudly: an empty leak guard would let withheld answers into the KB silently.
-        raise RuntimeError(
-            f"no eval cases found in {cases_dir()}; the KB leak guard would be empty. "
-            "Set ANVIL_CASES_DIR to the repo's cases/ directory."
+        # ANVIL-100 #24: import must not raise without a cases dir — a deployment with no eval
+        # cases (the release archive) has nothing to withhold, so the guard is empty on purpose.
+        # A path that actually RUNS a case requires the cases dir on its own.
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "no eval cases found in %s; the KB leak guard is empty (only correct on a machine "
+            "that runs no eval case). Set ANVIL_CASES_DIR if this is wrong.", cases_dir(),
         )
+        return (), (), ()
     union = withheld_union(cases)
     return union.issues, union.mrs, union.commits
 

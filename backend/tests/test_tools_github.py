@@ -282,3 +282,21 @@ def test_run_bound_wait_is_clamped_to_the_budget_and_sees_cancel(monkeypatch):
     sandbox.stop_requested.clear()
     sandbox.deadline = _time.monotonic() - 1
     assert seen["stop"]() == "budget"
+
+
+def test_gh_transport_error_is_a_tool_error_not_a_traceback(monkeypatch):
+    """#38: a network failure (DNS/timeout/refused) is a ToolError, not a raw httpx error
+    (ANVIL-100)."""
+    import httpx
+    from anvil.tools import github
+    from anvil.tools.errors import ToolError
+    import pytest
+
+    monkeypatch.setattr(github, "GitHubSettings",
+                        lambda: type("S", (), {"github_token": "t", "github_api": "https://x"})())
+    monkeypatch.setattr(github.httpx, "Client",
+                        lambda **k: type("C", (), {"request": lambda *a, **kw: (_ for _ in ()).throw(
+                            httpx.ConnectError("DNS")),
+                            "__enter__": lambda s: s, "__exit__": lambda *a: None})())
+    with pytest.raises(ToolError, match="failed to reach GitHub"):
+        github._gh("GET", "/repos/o/r/pulls/1")

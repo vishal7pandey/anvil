@@ -5,6 +5,7 @@
   "priority": "Medium",
   "summary": "KB: configurable embedding model and dimension (on-prem / local embeddings)",
   "labels": [
+    "agent-antigravity",
     "kb",
     "post-demo",
     "team-sync"
@@ -12,7 +13,7 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-04T18:37:01.426+0530",
-  "updated": "2026-11-04T18:37:01.499+0530",
+  "updated": "2026-11-05T10:51:01.998+0530",
   "resolved": null,
   "links": [],
   "subtasks": [],

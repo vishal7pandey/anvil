@@ -5,13 +5,15 @@
   "priority": "Medium",
   "summary": "Where does a run's time go: per-phase timing, then the biggest speed levers",
   "labels": [
+    "agent-claude",
     "demo",
+    "speed",
     "team-sync"
   ],
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-04T18:36:48.623+0530",
-  "updated": "2026-11-04T23:18:33.646+0530",
+  "updated": "2026-11-05T11:23:35.632+0530",
   "resolved": null,
   "links": [],
   "subtasks": [],
@@ -28,6 +30,14 @@
     {
       "created": "2026-11-04T23:18:32.222+0530",
       "body": "[claude] Back to To Do (hygiene): this is an umbrella ticket.\n\n* **Done:** measurement (ANVIL-83).\n* **Live levers, tracked on their own tickets:** bounded output (ANVIL-89, merged, waiting to be measured) and the build recipe (ANVIL-90, in review).\n* **After Friday:** a persistent sandbox shell, to cut the ~2.5 s per file operation.\n\nClose this once the dry run's `anvil.analyze` report shows the effect of 89 and 90.\n"
+    },
+    {
+      "created": "2026-11-05T11:17:03.622+0530",
+      "body": "[claude] **Cross-run analysis, 2026-11-05 11:2x:** `python -m anvil.analyze` over every substantive run in the anvil and anvil_claude databases. 31 runs in total; 14 are real case runs, the rest are smoke tests.\n\n| Run | Ticket | Outcome | Min | Tools % | Model % | main in-tokens / calls | fast in-tokens / calls |\n|---|---|---|---|---|---|---|---|\n| c820a577 | RTEMS-1 | failed | 30.6 | 50 | 44 | 1.27M / 65 | 0.06M / 11 |\n| 30467063 | RTEMS-1 | handoff | 3.6 | 60 | 15 | 0.29M / 19 | 0.17M / 23 |\n| eed58f6c | RTEMS-1 | failed (NUL byte) | 12.8 | 64 | 30 | 1.47M / 71 | — |\n| 6d9317d3 | RTEMS-1 | \"succeeded\" (no CI) | 37.5 | 85 | 13 | 1.29M / 75 | 0.82M / 66 |\n| 825ae133 | RTEMS-1 | handoff | 11.3 | 38 | 54 | 0.96M / 43 | 0.18M / 29 |\n| 170c75eb | RTEMS-1 | handoff (150 steps) | 20.3 | 69 | 26 | 1.02M / 47 | 1.24M / 102 |\n| 750cffd7 | RTEMS-1 | handoff (150 steps) | 14.7 | 82 | 12 | 1.40M / 59 | 1.36M / 94 |\n| f24dafc4 | RTEMS-1 | handoff (SonarCloud) | 24.2 | 76 | 21 | 2.40M / 88 | — |\n| a62f1830 | RTEMS-1 | handoff (budget) | 48.0 | 56 | 38 | 1.27M / 53 | **5.15M / 197** |\n| 8e9cec14 | RTEMS-4 | handoff | 18.0 | 60 | 32 | 0.34M / 26 | 1.62M / 79 |\n| 7e81c6a2 | RTEMS-4 | failed | 36.9 | 43 | 56 | 1.89M / 54 | — |\n| 7772117c | RTEMS-4 | handoff | 45.9 | 72 | 26 | 2.65M / 70 | 0.25M / 49 |\n| f9181d40 | RTEMS-3 | failed (KB DB) | 5.3 | 72 | 22 | 0.37M / 23 | — |\n| **e115a19f** | RTEMS-1 offline, today, at 16 min | running | — | 62 | 24 | 0.90M / 41 | **0.39M / 66** |\n\n**Findings:**\n\n1. **No TC1 run has yet ended \"succeeded\" under today's rules.** 6d9317d3 opened its PR against `main`, so no CI ran (fixed by #57).\n2. **Tools take 50-85% of wall time.** `task` (subagent) time is counted under tools, so the tools share includes subagents' own model time. Real build and test time (`execute`) is 4-10 min per run; the rest is file operations and subagents.\n3. **ANVIL-89 looks effective, pending the final number.** Subagent input per call fell from about 26K (a62f1830: 5.15M / 197) to about 6K in today's run (0.39M / 66).\n4. **The main agent's context keeps growing:** about 20-27K input tokens per call, 2.4M in a 24-minute run. Next lever: compaction thresholds and narrower subagent returns.\n5. **New, ANVIL-103:** 63 refused `execute` calls over 10 runs. The agent passes the timeout in milliseconds and the tool reads seconds, so every build and configure costs an extra round-trip.\n6. **The build recipe (ANVIL-90) reaches the agent but isn't followed literally.** Today's run tried 3 configure variants (all exit 0 on the retry) and rebuilt 3 times. Lever: the recipe as a `build`/`test` tool rather than prose.\n7. **ANVIL-83 gap:** `sandbox.exec` events carry no `duration_ms`, so every command time is still estimated (`~`). Folded into ANVIL-103.\n\nThe final numbers for e115a19f follow when it ends.\n"
+    },
+    {
+      "created": "2026-11-05T11:23:35.632+0530",
+      "body": "[claude] **Final numbers for e115a19f** (offline TC1, succeeded):\n\n* 22.4 min in total: tools 849 s (63%), model 401 s (30%), setup 64 s.\n* Tools by type: execute 238 s / 22 calls, task 207 s / 5, read_file 172 s / 38, grep 111 s / 26, ls 73 s / 34.\n* Tokens: main 1.47M in / 78 calls, fast 0.41M / 67.\n\nThat's the first TC1 run under the 45-minute budget that ended succeeded. The levers left are now separate tickets:\n\n* ANVIL-103: execute timeout units (63 refused calls across runs) + exact command durations.\n* ANVIL-105: the build recipe as tools.\n* ANVIL-106: the main agent's context.\n* The persistent sandbox shell (about 2.5 s per file operation): `read_file` + `grep` + `ls` = 356 s in this run.\n\nThis umbrella closes when two of these show a measured cut on a TC1 run.\n"
     }
   ]
 }

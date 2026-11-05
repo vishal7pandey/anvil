@@ -1,10 +1,11 @@
 {
   "key": "ANVIL-100",
   "type": "Story",
-  "status": "To Do",
+  "status": "In Progress",
   "priority": "Medium",
   "summary": "Audit backlog (opencode 11-05): P1/P2 reliability and hardening items, scheduled after the demo",
   "labels": [
+    "agent-devin",
     "audit",
     "post-demo",
     "security"
@@ -12,10 +13,19 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-05T07:22:19.207+0530",
-  "updated": "2026-11-05T07:22:19.317+0530",
+  "updated": "2026-11-05T11:23:39.066+0530",
   "resolved": null,
   "links": [],
   "subtasks": [],
   "description": "[claude] Source: opencode audit 11-05, main@5412414 (full report: `C:\\Dev\\comms\\claude\\Archived\\20261105-0652-opencode-anvil-security-audit.md`, item numbers below refer to it). My triage after reading the code:\n\n**Already done:** #19 (the demo-token contract: `.env.example` and SETUP.md now say the token is required, ANVIL-97 / #112); #10 (the stale vector sidecar was only this laptop's untracked copy in `data/kb/`; replaced from the verified handover copy, the importer refusing a stale sidecar is intended); #34, #36 and the other \"verified, not findings\" are not bugs.\n\n**Fix soon after the demo (P1, ordered by value):**\n\n* #6 close the generator at `waiting_approval` (a late finalizer can clear the resumed run's cancel and deadline state);\n* #8 startup recovery for orphaned queued/running runs; #9 intake loop must survive any exception (backoff);\n* #11 restore the sandbox network in a `finally` after checkout (an \"offline\" run can keep egress after a failed clone);\n* #12 refresh a reused session checkout when the base changes; #13 reaper must keep a handoff until its evidence exists;\n* #16 `github_merge` honours the case's required checks (done with ANVIL-98 item 4); #17 `github_checks` returns at once when a PR has no checks;\n* #7 metrics must not 503 offline when no run has token usage; #14 and #42 path hygiene (done with ANVIL-98 item 5);\n* #20 `run-api.cmd` interpolates host/port into Python code; #21 `jira_transition` exact match; #22 KB source filter applied after the candidate limit;\n* #23 lint filenames (NUL-separated, `--`); #24 `kb.config` must not raise at import without cases; #38 wrap transport errors as ToolError; #48 frontend: catch rejected `sendMessage`/`send`.\n\n**P2 (#25 to #50):** hardening and tidy-ups, scheduled as time allows (check-run vs Actions job id for log tails, protected-path normalisation, `full_name` strictness, redirects with bearer auth, unbounded timeline/event queries, trailing-dot host in the web-search blocklist, command-log I/O, etc.). Not security-critical; no deadline.\n\n**Also noted by the audit and worth a separate decision:** ruff is not in CI (218 findings); `npm audit` shows 6 dev-dependency vulnerabilities (vitest/tinypool critical, vite high). Dev-only, not shipped.\n\nEach fix needs its own regression test; reviewer claude. Owners assigned when scheduled.\n",
-  "comments": []
+  "comments": [
+    {
+      "created": "2026-11-05T11:04:19.148+0530",
+      "body": "[claude] Scheduled now, owner devin, reviewer claude. One audit item per PR, titled `ANVIL-100 (#N): ...`, each with a regression test.\n\n**Merged:**\n\n* #6 (PR #120, 0c3e196): the run generator closes at waiting_approval.\n* #9 (PR #121, 917a5dc): the intake loop survives any exception.\n\n**Approved, merges when CI is green:** #11 (PR #122): network restored in a finally after checkout.\n\n**Next, in order:**\n\n1. #8 startup recovery for orphaned queued/running runs. Highest value: we restart APIs many times a day.\n2. #13 the reaper keeps a handoff sandbox until its evidence exists.\n3. #12 a reused session checkout is refreshed when the base changes.\n4. #17 `github_checks` returns at once when a PR has no checks, plus #38 transport errors become ToolError (one tools PR).\n5. #21 `jira_transition` exact match, plus #23 lint filenames NUL-separated with `--` (one tools-hygiene PR).\n6. #22 KB source filter applied before the candidate limit, plus #24 `kb.config` doesn't raise at import (one KB PR).\n7. #20 `run-api.cmd` stops interpolating host/port into Python.\n8. #7 check against ANVIL-79 (metrics no 503): close it with evidence, or fix it.\n\n**Moved:** #48 (frontend rejected `sendMessage`) goes to cline.\n\n**Split out:** ruff in CI is now **ANVIL-102** (devin).\n\nP2 (#25 to #50) stays as time allows.\n"
+    },
+    {
+      "created": "2026-11-05T11:23:39.066+0530",
+      "body": "[claude] **Status 2026-11-05 11:3x:**\n\n**Merged:**\n\n| Item | PR | Commit |\n|---|---|---|\n| #6 | #120 | 0c3e196 |\n| #9 | #121 | 917a5dc |\n| #11 | #122 | 90f6eb0 |\n| #7 | #125 | b7be4da |\n| #38 | #127 | 8ce4a5c |\n| #13 | #128 | 68ff47d |\n| #12 | #129 | dd3ff31 |\n\n**Open:**\n\n* **#8 (PR #123):** approved, but conflicts with #121 in app.py / test_intake_loop.py. Devin: merge main into the branch.\n* **#17 (PR #124), CHANGES REQUESTED:** CI checks register seconds after a PR opens, so `none` needs a grace period before returning, or a fresh PR hands off as \"no CI\".\n* **#24 (PR #126), CHANGES REQUESTED:** non-fatal at import is right, but KB-writing paths must refuse while the leak guard is empty (opt-in override `ANVIL_KB_ALLOW_EMPTY_GUARD=1`).\n\n**Not started:** #21+#23, #22, #20. #48 belongs to cline.\n"
+    }
+  ]
 }

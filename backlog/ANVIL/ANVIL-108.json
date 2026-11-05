@@ -1,0 +1,21 @@
+{
+  "key": "ANVIL-108",
+  "type": "Task",
+  "status": "To Do",
+  "priority": "Low",
+  "summary": "Frontend dev proxy target configurable (ANVIL_API_PROXY), so a second API port can be used",
+  "labels": [
+    "agent-claude",
+    "dx",
+    "frontend"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-05T11:22:44.563+0530",
+  "updated": "2026-11-05T11:22:44.657+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] `frontend/vite.config.ts` hard-codes the `/api` proxy target to `http://127.0.0.1:8000`. With several APIs on one machine (per-agent ports, e.g. claude's offline API on :8010 on 11-05) the UI can't be pointed at the other port without editing a tracked file.\n\n**Change:** `'/api': process.env.ANVIL_API_PROXY ?? 'http://127.0.0.1:8000'`, plus one line in SETUP.md.\n\n**Acceptance:**\n\n* `npm test` unchanged (it uses relative `/api`).\n* `ANVIL_API_PROXY=http://127.0.0.1:8010 npx vite` reaches the :8010 API (verified 11-05: /api/sessions answered 200).\n",
+  "comments": []
+}

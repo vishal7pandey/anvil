@@ -5,6 +5,7 @@
   "priority": "Medium",
   "summary": "KB: faster import and incremental refresh from a snapshot",
   "labels": [
+    "agent-antigravity",
     "kb",
     "post-demo",
     "team-sync"
@@ -12,7 +13,7 @@
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-04T18:36:57.805+0530",
-  "updated": "2026-11-04T18:40:01.846+0530",
+  "updated": "2026-11-05T10:50:59.674+0530",
   "resolved": null,
   "links": [],
   "subtasks": [],

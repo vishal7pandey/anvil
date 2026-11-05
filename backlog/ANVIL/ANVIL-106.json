@@ -1,0 +1,20 @@
+{
+  "key": "ANVIL-106",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Speed: the main agent's context grows to 20-27K tokens per call; compact earlier and keep subagent returns short",
+  "labels": [
+    "agent-claude",
+    "speed"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-05T11:22:32.148+0530",
+  "updated": "2026-11-05T11:22:32.638+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] Finding 4 of the 11-05 cross-run analysis (ANVIL-62).\n\nAfter ANVIL-89, subagents are cheap: about 6K input tokens per call, against 26K before. The main agent is now the cost:\n\n* e115a19f: 78 calls, 1.47M input tokens, about 19K per call;\n* f24dafc4: 88 calls, 2.40M, about 27K per call;\n* 7772117c (TC2): 70 calls, 2.65M.\n\nEvery main call re-reads the whole history: tool outputs, subagent reports, file reads.\n\n**Levers** (measure each one alone):\n\n1. A lower compaction threshold (`ANVIL_CONTEXT_WINDOW`), so compaction happens before the main context passes about 12K.\n2. Subagent results returned as a bounded summary (findings + file:line list) instead of the full transcript; the full transcript stays in the events.\n3. `read_file` results older than N turns replaced by a stub (\"read X lines of Y earlier\") in the main context.\n\n**Acceptance:** a TC1 run with main-agent input of at most 0.8M tokens (e115a19f: 1.47M), with the same outcome.\n",
+  "comments": []
+}

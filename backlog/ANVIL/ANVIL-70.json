@@ -5,13 +5,14 @@
   "priority": "Medium",
   "summary": "Route a ticket to its repo from ticket metadata when one tracker spans many repos",
   "labels": [
+    "agent-cline",
     "post-demo",
     "team-sync"
   ],
   "epic": null,
   "epic_summary": null,
   "created": "2026-11-04T18:37:03.596+0530",
-  "updated": "2026-11-04T18:37:03.665+0530",
+  "updated": "2026-11-05T10:51:07.229+0530",
   "resolved": null,
   "links": [],
   "subtasks": [],

@@ -370,7 +370,7 @@
   "summary": "E2E browser tests, demo runbook, reset script, rehearsals",
   "labels": [
    "M4",
-   "agent-antigravity"
+   "agent-claude"
   ],
   "epic": "ANVIL-16"
  },
@@ -754,7 +754,9 @@
   "priority": "Medium",
   "summary": "Where does a run's time go: per-phase timing, then the biggest speed levers",
   "labels": [
+   "agent-claude",
    "demo",
+   "speed",
    "team-sync"
   ],
   "epic": null
@@ -762,7 +764,7 @@
  {
   "key": "ANVIL-63",
   "type": "Story",
-  "status": "In Progress",
+  "status": "Done",
   "priority": "Highest",
   "summary": "Setup guide for a fresh laptop without our accounts (zip to first run)",
   "labels": [
@@ -794,6 +796,7 @@
   "priority": "Medium",
   "summary": "CRA scanning with open-source tools: the agent runs the scanners and imports their reports",
   "labels": [
+   "agent-claude",
    "post-demo",
    "tc3",
    "team-sync"
@@ -807,6 +810,7 @@
   "priority": "Medium",
   "summary": "Component-upgrade input: a version registry so the agent finds outdated components itself",
   "labels": [
+   "agent-devin",
    "post-demo",
    "tc2",
    "team-sync"
@@ -820,6 +824,7 @@
   "priority": "Medium",
   "summary": "KB: faster import and incremental refresh from a snapshot",
   "labels": [
+   "agent-antigravity",
    "kb",
    "post-demo",
    "team-sync"
@@ -847,6 +852,7 @@
   "priority": "Medium",
   "summary": "KB: configurable embedding model and dimension (on-prem / local embeddings)",
   "labels": [
+   "agent-antigravity",
    "kb",
    "post-demo",
    "team-sync"
@@ -860,6 +866,7 @@
   "priority": "Medium",
   "summary": "Route a ticket to its repo from ticket metadata when one tracker spans many repos",
   "labels": [
+   "agent-cline",
    "post-demo",
    "team-sync"
   ],
@@ -898,7 +905,7 @@
  {
   "key": "ANVIL-73",
   "type": "Bug",
-  "status": "In Progress",
+  "status": "Done",
   "priority": "High",
   "summary": "Reopening a session shows nothing: load the session's runs and replay the latest run's events",
   "labels": [
@@ -1024,6 +1031,7 @@
   "priority": "Medium",
   "summary": "Deterministic vendor re-import tool (three-way merge) for component upgrades",
   "labels": [
+   "agent-devin",
    "dfmea",
    "post-demo",
    "tc2"
@@ -1096,7 +1104,7 @@
  {
   "key": "ANVIL-88",
   "type": "Task",
-  "status": "In Progress",
+  "status": "Done",
   "priority": "Highest",
   "summary": "Produce the Friday hand-over files: sandbox image archive, KB vectors snapshot, TC1 local repo + ticket",
   "labels": [
@@ -1109,7 +1117,7 @@
  {
   "key": "ANVIL-89",
   "type": "Story",
-  "status": "In Progress",
+  "status": "Done",
   "priority": "High",
   "summary": "Speed: subagents consume 5M input tokens per TC1 run; give them a narrow brief and bounded context",
   "labels": [
@@ -1245,10 +1253,11 @@
  {
   "key": "ANVIL-100",
   "type": "Story",
-  "status": "To Do",
+  "status": "In Progress",
   "priority": "Medium",
   "summary": "Audit backlog (opencode 11-05): P1/P2 reliability and hardening items, scheduled after the demo",
   "labels": [
+   "agent-devin",
    "audit",
    "post-demo",
    "security"
@@ -1258,7 +1267,7 @@
  {
   "key": "ANVIL-101",
   "type": "Bug",
-  "status": "To Do",
+  "status": "Done",
   "priority": "Highest",
   "summary": "v1 zip: start-api.ps1 dies without .git; localhost costs 30 s per DB connection on Windows; frontend .env.example breaks npm test",
   "labels": [
@@ -1266,6 +1275,105 @@
    "docs",
    "friday",
    "offline"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-102",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "High",
+  "summary": "Lint in CI: ruff on changed files (blocking), with a ratchet for the existing 218 findings",
+  "labels": [
+   "agent-devin",
+   "audit",
+   "ci"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-103",
+  "type": "Bug",
+  "status": "To Do",
+  "priority": "High",
+  "summary": "Agents pass execute timeouts in milliseconds; the tool refuses them (63 wasted round-trips over 10 runs)",
+  "labels": [
+   "agent-claude",
+   "speed"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-104",
+  "type": "Bug",
+  "status": "To Do",
+  "priority": "High",
+  "summary": "Local tracker: a succeeded offline run leaves its ticket In Progress with no completion comment",
+  "labels": [
+   "agent-devin",
+   "local-tracker",
+   "offline"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-105",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "High",
+  "summary": "Speed: the case's build recipe as `build` / `test_one` tools instead of prose (agents still guess configure)",
+  "labels": [
+   "agent-claude",
+   "speed"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-106",
+  "type": "Story",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Speed: the main agent's context grows to 20-27K tokens per call; compact earlier and keep subagent returns short",
+  "labels": [
+   "agent-claude",
+   "speed"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-107",
+  "type": "Bug",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Agent-written files copy a third party's copyright line from neighbouring files",
+  "labels": [
+   "agent-claude",
+   "quality"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-108",
+  "type": "Task",
+  "status": "To Do",
+  "priority": "Low",
+  "summary": "Frontend dev proxy target configurable (ANVIL_API_PROXY), so a second API port can be used",
+  "labels": [
+   "agent-claude",
+   "dx",
+   "frontend"
+  ],
+  "epic": null
+ },
+ {
+  "key": "ANVIL-109",
+  "type": "Task",
+  "status": "To Do",
+  "priority": "High",
+  "summary": "Move development to a new machine: assets, environment, and what does not travel",
+  "labels": [
+   "dx",
+   "owner"
   ],
   "epic": null
  },

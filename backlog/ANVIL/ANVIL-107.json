@@ -1,0 +1,20 @@
+{
+  "key": "ANVIL-107",
+  "type": "Bug",
+  "status": "To Do",
+  "priority": "Medium",
+  "summary": "Agent-written files copy a third party's copyright line from neighbouring files",
+  "labels": [
+    "agent-claude",
+    "quality"
+  ],
+  "epic": null,
+  "epic_summary": null,
+  "created": "2026-11-05T11:22:41.442+0530",
+  "updated": "2026-11-05T11:22:41.499+0530",
+  "resolved": null,
+  "links": [],
+  "subtasks": [],
+  "description": "[claude] Seen in run e115a19f's patch (offline TC1, 2026-11-05). The new `spec/build/testsuites/psxtests/psxmutexinit01.yml` says `Copyright (C) 2026 embedded brains GmbH & Co. KG`, copied from the neighbouring files' pattern. Anvil wrote that file, not that company. A reviewer upstream would reject it, and it misattributes authorship.\n\n**Want:**\n\n* The defect-fix and component-upgrade skills say: new files carry the project's licence header, with the copyright holder taken from the case or ticket config (e.g. `[authorship] copyright = \"...\"`), else none. Never copy another holder's name.\n* A cheap host-side check in acceptance: added files whose copyright names a holder not in an allowlist get a warning in the evidence.\n\n**Acceptance:** a unit test for the check; the next TC1 patch has a correct header.\n",
+  "comments": []
+}

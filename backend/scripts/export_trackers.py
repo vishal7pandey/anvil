@@ -233,10 +233,18 @@ def write_status_md(root: Path) -> int:
         return "—"
 
     def merged_sha(comments, body=""):
-        text = " ".join(c.get("body", "") for c in comments) + " " + body
-        pr = _re.search(r"#(\d+).*merged|merged.*#(\d+)", text)
-        m = _re.search(r"(?:merged|sha|commit)\D{0,20}([0-9a-f]{7,40})", text, _re.I)
-        return ("#" + next(g for g in pr.groups() if g) if pr else (m.group(1)[:7] if m else "—"))
+        """The merged PR (#n) or commit SHA for the ticket, newest comment first (ANVIL-92 round 2:
+        the earlier heredoc wrote a literal backspace byte for \\b, so nothing ever matched)."""
+        for c in sorted(comments, key=lambda c: c.get("created", ""), reverse=True):
+            text = c.get("body", "")
+            pr = _re.search(r"merged\b.*#(\d+)\b|#(\d+)\b.*merged\b", text, _re.I)
+            if pr:
+                return "#" + next(g for g in pr.groups() if g)
+            m = _re.search(r"(?:merged|sha|commit)\D{0,20}\b([0-9a-f]{7,40})\b", text, _re.I)
+            if m:
+                return m.group(1)[:7]
+        m = _re.search(r"(?:merged|sha|commit)\D{0,20}\b([0-9a-f]{7,40})\b", body or "", _re.I)
+        return m.group(1)[:7] if m else "—"
 
     def last_comment(comments):
         d = [c.get("created", "")[:10] for c in comments if c.get("created")]
@@ -244,7 +252,7 @@ def write_status_md(root: Path) -> int:
 
     anv = sum(1 for i in issues if i["key"].startswith("ANVIL-"))
     rt = sum(1 for i in issues if i["key"].startswith("RTEMS-"))
-    lines = ["# Backlog status — freeze snapshot", "",
+    lines = ["# Backlog status", "",
              "Regenerate: `uv run python scripts/export_trackers.py --status-md` (offline).",
              f"Counts: {anv} ANVIL + {rt} RTEMS = {len(issues)} (from the on-disk JSON).", ""]
     for epic in sorted(by_epic):

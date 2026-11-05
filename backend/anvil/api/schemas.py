@@ -50,7 +50,7 @@ class SessionCreate(BaseModel):
     environment: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
     ]
-    mode: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]
+    mode: Literal["interactive", "autonomous"]
     model_profile: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
     ]

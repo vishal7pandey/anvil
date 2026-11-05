@@ -171,6 +171,10 @@ class LocalTracker:
 
     def create(self, project: str, type: str, summary: str, description: str = "",
                labels: list[str] | None = None) -> dict[str, str]:
+        # The project becomes the ticket key's filename — validate before it can touch a path
+        # (project="../x" would otherwise write outside the tickets dir, ANVIL-98).
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", project):
+            raise ToolError(f"invalid project key {project!r}: must match [A-Za-z][A-Za-z0-9_]*")
         highest = 0
         for _, _, data in self._iter():
             m = re.fullmatch(rf"{re.escape(project)}-(\d+)", str(data.get("key") or ""))

@@ -38,11 +38,14 @@ class RunConfig:
 
 
 def approval_policy(mode: Mode, merge_policy: MergePolicy) -> dict[str, bool]:
-    """Which tool calls pause for a human (docs/02-architecture.md "Safety rails")."""
-    if mode == "interactive":
-        policy = {name: True for name in OUTWARD_TOOLS}
-    else:
+    """Which tool calls pause for a human (docs/02-architecture.md "Safety rails").
+
+    Default-deny: only an explicit "autonomous" drops the gates — an unknown mode value pauses
+    every outward tool (ANVIL-98), never silently allows them."""
+    if mode == "autonomous":
         policy = {name: False for name in OUTWARD_TOOLS}
+    else:
+        policy = {name: True for name in OUTWARD_TOOLS}
     # Merge: never without a human unless the run says the agent may merge on its own.
     policy["github_merge"] = merge_policy != "agent"
     return policy

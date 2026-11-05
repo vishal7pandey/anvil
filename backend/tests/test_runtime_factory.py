@@ -229,3 +229,18 @@ def test_deepagent_executor_receives_host_tools_and_hooks(
         ("RTEMS-1", ["anvil-needs-human"]),
         ("RTEMS-2", ["anvil-needs-human"]),
     ]
+
+
+def test_approval_policy_is_default_deny_for_an_unknown_mode():
+    """Anything except 'autonomous' gates every outward tool (ANVIL-98)."""
+    from anvil.runtime.agent import approval_policy, OUTWARD_TOOLS
+
+    interactive = approval_policy("interactive", "human")
+    assert all(interactive.values())
+    gated = [t for t in OUTWARD_TOOLS if t != "github_merge"]   # merge honors merge_policy on its own
+    for bad in ("", "autonomouz", "AUTO", "none"):
+        policy = approval_policy(bad, "agent")
+        # unknown mode: every outward tool pauses, exactly like interactive — never default-allow
+        assert all(policy[t] for t in gated), bad
+    # the only permissive mode is explicit
+    assert not any(approval_policy("autonomous", "agent")[t] for t in gated)

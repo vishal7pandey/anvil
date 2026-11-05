@@ -116,3 +116,18 @@ def test_intake_starts_a_local_run_and_moves_the_ticket(tmp_path, monkeypatch):
         run = db.scalars(select(Run).where(Run.trigger == "local:RTEMS-1")).one()
         assert run.repo == str(repo) and run.network == "offline"
     assert (tmp_path / "in-progress" / "RTEMS-1.json").exists()
+
+
+def test_create_rejects_a_project_key_that_escapes_the_tickets_dir(tmp_path):
+    """project="../x" must not write outside the tracker root (ANVIL-98)."""
+    from anvil.tickets import LocalTracker
+    from anvil.tools.errors import ToolError
+
+    tracker = LocalTracker(tmp_path)
+    with pytest.raises(ToolError, match="invalid project"):
+        tracker.create("../x", "Task", "evil")
+    assert not (tmp_path / "x-1.json").exists()
+    assert not (tmp_path.parent / "x-1.json").exists()
+    # a normal project still creates
+    out = tracker.create("GATE", "Task", "ok")
+    assert out["key"] == "GATE-1"

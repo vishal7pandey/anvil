@@ -202,7 +202,9 @@ def github_checks(repo: str, pr: int, wait_seconds: int = 900, poll_seconds: int
     name, deadline = full_name(repo), time.monotonic() + wait_seconds
     while True:
         result = _check_state(name, pr, with_logs=False, default_required=default_required)
-        if result["state"] in {"success", "failure"} or time.monotonic() >= deadline:
+        # "none" breaks too (ANVIL-100 #17): a PR with no checks returns at once — polling until the
+        # deadline can't make a missing CI appear.
+        if result["state"] in {"success", "failure", "none"} or time.monotonic() >= deadline:
             break
         if stopped := _pause(min(poll_seconds, max(0.0, deadline - time.monotonic())), should_stop):
             if stopped == "cancelled":

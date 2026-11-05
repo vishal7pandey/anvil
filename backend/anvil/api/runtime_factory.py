@@ -53,6 +53,7 @@ def create_executor_from_environment() -> RunExecutor | None:
     from anvil.tools.github import github_open_pr
     from anvil.tools.jira import jira_comment, jira_set_labels
     from anvil.tools.lint import make_lint_changed
+    from anvil.tools.vendor import make_vendor_reimport
     from anvil.tools.run_scope import run_tools, verify_outcome
 
     def _case_as_of(run: dict[str, Any]) -> str | None:
@@ -76,6 +77,9 @@ def create_executor_from_environment() -> RunExecutor | None:
             make_kb_search(_case_as_of(run)),
             # The one way to run pre-commit: changed files only (ANVIL-74).
             make_lint_changed(run, sandbox),
+            # The mechanical part of a vendored-component upgrade: three-way merge, agent resolves
+            # only the true conflicts (ANVIL-82).
+            make_vendor_reimport(run, sandbox),
         ]
         # A ToolError goes back to the model instead of failing the run (ANVIL-19, run c820a577).
         return [returning_errors(t) if callable(t) else t for t in tools]

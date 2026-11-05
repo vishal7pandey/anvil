@@ -81,7 +81,7 @@ From clean-laptop rehearsals on the Windows development laptop (your machine wil
 * **Sandbox image hash verification**: ~7 s (`import-sandbox-image.ps1`); loading the 1.6 GB image into Docker takes minutes.
 * **First API start** (`.\scripts\start-api.ps1 -Force`): 38 to 49 s (imports, migrations, readiness). It prints nothing for a while: that is normal, wait for `API READY`.
 * **Knowledge base snapshot import**: **6 to 9 minutes** (measured 367 s and 527 s; 7,573 documents, 14,654 chunks, 0 gateway calls). It inserts 14,654 vector rows one by one, so it is slow by itself; it is not a network problem. Speeding it up is ticket ANVIL-67.
-* **Use `127.0.0.1`, never `localhost`, in database and gateway URLs on Windows.** `localhost` is tried over IPv6 first and every new Postgres connection waited about 30 s (measured: 30.0 s via `localhost:5433`, 0.08 s via `127.0.0.1:5433`; about 2 s per gateway call). Anvil rewrites a `localhost` database host for you now, but your own scripts and tools will not.
+* **Use `127.0.0.1`, never `localhost`, in database and gateway URLs on Windows.** `localhost` is tried over IPv6 first and every new Postgres connection waited about 30 s (measured on the Postgres port: 30.0 s with the host `localhost`, 0.08 s with `127.0.0.1`; about 2 s per gateway call). Anvil rewrites a `localhost` database host for you now, but your own scripts and tools will not.
 
 ### Step 1: Configure Environment Variables
 

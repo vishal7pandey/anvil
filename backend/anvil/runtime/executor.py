@@ -409,7 +409,9 @@ class DeepAgentExecutor:
                     yield ev
                 # ANVIL-77: a handoff call ends the run like stuck does. Its note is already in
                 # `handoffs`; keep streaming only until this item's events are out, then _handoff.
-                if stuck or handoffs:
+                # ANVIL-100: close on `waiting` too — a suspended generator's finally would run late
+                # (on GC) and clear the RESUMED run's cancel + deadline, not its own.
+                if waiting or stuck or handoffs:
                     break
         except GraphRecursionError:
             # Out of graph steps is a budget, not a crash: hand off with the WIP like any other budget.

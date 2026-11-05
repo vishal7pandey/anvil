@@ -61,7 +61,11 @@ def _gh(method: str, path: str, **kwargs: Any) -> Any:
         raise ToolError("no GitHub credentials: set GITHUB_TOKEN or log in with `gh auth login`")
     headers = {"Authorization": f"Bearer {s.github_token}", "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
     with httpx.Client(base_url=s.github_api, headers=headers, timeout=30, follow_redirects=True) as c:
-        r = c.request(method, path, **kwargs)
+        try:
+            r = c.request(method, path, **kwargs)
+        except httpx.TransportError as exc:
+            # ANVIL-100 #38: a network/DNS/timeout failure is a tool error, not a traceback.
+            raise ToolError(f"{method} {path} failed to reach GitHub: {exc}") from exc
     if r.is_error:
         try:
             detail = r.json().get("message", r.text[:300])

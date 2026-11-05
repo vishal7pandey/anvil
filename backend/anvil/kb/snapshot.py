@@ -129,6 +129,16 @@ class ImportReport:
 
 def import_snapshot(store: KBStore, in_dir: Path, *, batch_chunks: int = 256) -> ImportReport:
     """Load a snapshot into the KB, embedding chunks in batches across documents."""
+    from anvil.kb.config import empty_guard_writes_allowed
+
+    if store.guard.is_empty and not empty_guard_writes_allowed():
+        from anvil.tools.errors import ToolError
+
+        raise ToolError(
+            "KB leak guard is empty (no eval cases loaded): import-snapshot is refused so withheld "
+            "answers cannot enter the KB silently. If this deployment runs no eval cases, "
+            "set ANVIL_KB_ALLOW_EMPTY_GUARD=1."
+        )
     manifest = json.loads((in_dir / MANIFEST_FILE).read_text(encoding="utf-8"))
     actual = hashlib.sha256((in_dir / SNAPSHOT_FILE).read_bytes()).hexdigest()
     if actual != manifest["sha256"]:

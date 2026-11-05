@@ -74,6 +74,11 @@ class ExclusionGuard:
             return _normalise_mr_id(external_id) in self.mr_ids
         return False
 
+    @property
+    def is_empty(self) -> bool:
+        """No withheld ids at all — a deployment without eval cases (ANVIL-100 #24 round 2)."""
+        return not (self.issue_ids or self.mr_ids or self.commit_prefixes)
+
     def allows(self, source: str, external_id: str) -> bool:
         return not self.is_excluded(source, external_id)
 

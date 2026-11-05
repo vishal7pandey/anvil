@@ -23,7 +23,7 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.engine import Engine
 
 from .chunking import chunk_text, content_hash
-from .config import KBSettings
+from .config import KBSettings, empty_guard_writes_allowed
 from .embeddings import Embedder, GatewayEmbedder
 from .exclusions import ExclusionGuard
 from .models import EMBED_DIM, ensure_schema, kb_chunks, kb_documents
@@ -122,6 +122,16 @@ class KBStore:
         ensure_schema(self.engine)
 
     def ingest(self, documents: Iterable[SourceDocument]) -> IngestReport:
+        if self.guard.is_empty and not empty_guard_writes_allowed():
+            # ANVIL-100 #24 round 2: an empty leak guard silently lets withheld answers in. Writes
+            # refuse unless ANVIL_KB_ALLOW_EMPTY_GUARD=1 says this machine runs no eval cases.
+            from anvil.tools.errors import ToolError
+
+            raise ToolError(
+                "KB leak guard is empty (no eval cases loaded): writes are refused so withheld "
+                "answers cannot enter the KB silently. If this deployment runs no eval cases, "
+                "set ANVIL_KB_ALLOW_EMPTY_GUARD=1."
+            )
         added = updated = skipped = excluded = chunks_written = 0
         for document in documents:
             if not self.guard.allows(document.source, document.external_id):

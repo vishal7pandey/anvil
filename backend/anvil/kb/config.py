@@ -10,6 +10,11 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
+
+def empty_guard_writes_allowed() -> bool:
+    """ANVIL_KB_ALLOW_EMPTY_GUARD=1 opts a case-free deployment out of the write refusal below."""
+    return os.environ.get("ANVIL_KB_ALLOW_EMPTY_GUARD", "").lower() in {"1", "true", "yes"}
+
 DEFAULT_DATABASE_URL = "postgresql+psycopg://anvil:anvil@127.0.0.1:5433/anvil"
 DEFAULT_GATEWAY_URL = "http://127.0.0.1:4000"
 

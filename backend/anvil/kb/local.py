@@ -89,10 +89,19 @@ class LocalKnowledge:
     def write_page(self, space_key: str, title: str, markdown: str,
                    parent_id: str | None = None) -> dict[str, Any]:
         """Upsert <root>/<SPACE>/<slug>.md (same title -> same slug) and index it at once."""
+        from anvil.kb.config import empty_guard_writes_allowed
+        from anvil.kb.exclusions import ExclusionGuard
+        from anvil.tools.errors import ToolError
+
+        if ExclusionGuard().is_empty and not empty_guard_writes_allowed():
+            # ANVIL-100 #24 round 2: write-back also feeds the KB — same refusal as ingest.
+            raise ToolError(
+                "KB leak guard is empty (no eval cases loaded): knowledge writes are refused so "
+                "withheld answers cannot enter the KB silently. If this deployment runs no eval "
+                "cases, set ANVIL_KB_ALLOW_EMPTY_GUARD=1."
+            )
         space = space_key.upper()
         if not self._SPACE_RE.fullmatch(space):  # space_key is agent input: never a path
-            from anvil.tools.errors import ToolError
-
             raise ToolError(f"refused: knowledge space '{space_key}' is not a folder-safe name")
         slug = slugify(title)
         path = self.root / f"{space}/{slug}.md"

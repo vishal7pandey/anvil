@@ -366,3 +366,36 @@ def test_kb_config_imports_without_a_cases_dir(monkeypatch, tmp_path):
     monkeypatch.setattr("anvil.cases.spec.load_cases", lambda *a, **k: [])
     out = kc._withheld()
     assert out == ((), (), ())   # empty guard, no raise
+
+
+def test_kb_writes_refuse_when_the_leak_guard_is_empty(monkeypatch, tmp_path):
+    """#24 round 2: the import stays non-fatal, but every KB write path refuses while the guard
+    is empty unless ANVIL_KB_ALLOW_EMPTY_GUARD=1 (ANVIL-100)."""
+    from anvil.kb.exclusions import ExclusionGuard
+    from anvil.kb.local import LocalKnowledge
+    from anvil.kb.store import KBStore
+    from anvil.kb.snapshot import import_snapshot
+    from anvil.tools.errors import ToolError
+    import pytest
+
+    monkeypatch.delenv("ANVIL_KB_ALLOW_EMPTY_GUARD", raising=False)
+    guard = ExclusionGuard(issue_ids=frozenset(), mr_ids=frozenset(), commit_prefixes=())
+    assert guard.is_empty
+
+    # ingest
+    store = KBStore(engine=None, embedder=None, guard=guard)
+    with pytest.raises(ToolError, match="leak guard is empty"):
+        store.ingest([])
+    # import-snapshot
+    with pytest.raises(ToolError, match="leak guard is empty"):
+        import_snapshot(store, tmp_path)
+    # local knowledge write-back (its guard comes from the config; force it empty like the others)
+    import anvil.kb.exclusions as exc_mod
+    monkeypatch.setattr(exc_mod, "ExclusionGuard", lambda *a, **k: guard)
+    with pytest.raises(ToolError, match="leak guard is empty"):
+        LocalKnowledge(root=tmp_path).write_page("ANV", "T", "x")
+
+    # the explicit opt-out lets writes through again
+    monkeypatch.setenv("ANVIL_KB_ALLOW_EMPTY_GUARD", "1")
+    out = LocalKnowledge(root=tmp_path).write_page("ANV", "T", "x")
+    assert "id" in out or "page" in str(out).lower() or (tmp_path / "ANV").exists()

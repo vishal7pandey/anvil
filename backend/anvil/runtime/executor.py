@@ -254,22 +254,25 @@ class DeepAgentExecutor:
             f"echo BASE_SHA=$(git rev-parse origin/{shlex.quote(base)}); echo HEAD_SHA=$(git rev-parse HEAD)"
         )
         sandbox.set_network("bridge")  # needed for the first clone; dropped again below for offline runs
-        res = host_run(sandbox, script, timeout=1800)
-        if res.exit_code != 0:
-            # Say what failed even when the command printed nothing (rehearsal 3e7db2f9: "checkout failed: ").
-            raise RuntimeError(f"checkout failed (exit {res.exit_code}): "
-                               f"{res.output[-1500:].strip() or 'no output'}")
-        found = dict(re.findall(r"^(BASE_SHA|HEAD_SHA)=(\w+)$", res.output, re.M))
-        # Answer-leak control: --single-branch only limits the *default* fetch; with network the agent
-        # could still `git fetch origin main` and read a withheld fix. Offline runs (the default) lose
-        # the network after checkout. Builds and simulator tests don't need it; push runs on the host.
-        files = skill_files()
-        uploaded = sandbox.upload_files(files)
-        failed = [r.path for r in uploaded if r.error]
-        if failed:
-            raise RuntimeError(f"could not upload skills: {failed}")
         network = run.get("network", "offline")
-        sandbox.set_network("bridge" if network == "online" else None)
+        try:
+            res = host_run(sandbox, script, timeout=1800)
+            if res.exit_code != 0:
+                # Say what failed even when the command printed nothing (rehearsal 3e7db2f9: "checkout failed: ").
+                raise RuntimeError(f"checkout failed (exit {res.exit_code}): "
+                                   f"{res.output[-1500:].strip() or 'no output'}")
+            found = dict(re.findall(r"^(BASE_SHA|HEAD_SHA)=(\w+)$", res.output, re.M))
+            # Answer-leak control: --single-branch only limits the *default* fetch; with network the agent
+            # could still `git fetch origin main` and read a withheld fix. Offline runs (the default) lose
+            # the network after checkout. Builds and simulator tests don't need it; push runs on the host.
+            files = skill_files()
+            uploaded = sandbox.upload_files(files)
+            failed = [r.path for r in uploaded if r.error]
+            if failed:
+                raise RuntimeError(f"could not upload skills: {failed}")
+        finally:
+            # ANVIL-100 #11: a failed clone or upload must not leave an "offline" run with egress.
+            sandbox.set_network("bridge" if network == "online" else None)
         return {"repo": repo, "path": path, "base_ref": base, "branch": branch, "network": network,
                 "skills": [p for p, _ in files if p.endswith("SKILL.md")], "skills_hash": skills_hash(files),
                 "base_sha": found.get("BASE_SHA"), "head_sha": found.get("HEAD_SHA")}
